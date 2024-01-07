@@ -1,8 +1,9 @@
-package Ereshkigal;
+package Ereshkigal::Kur;
 
 use 5.006;
 use strict;
 use warnings;
+use base 'Error::Helper';
 use JSON;
 use POE;
 use POE::Wheel::SocketFactory;
@@ -10,10 +11,11 @@ use POE::Wheel::Run;
 use POE::Wheel::ReadWrite;
 use Socket;
 use Sys::Syslog;
+use Net::Firewall::BlockerHelper;
 
 =head1 NAME
 
-Ereshkigal - Handle firewall or similar bans.
+Ereshkigal::Kur - FW handler for Ereshkigal.
 
 =head1 VERSION
 
@@ -25,25 +27,36 @@ our $VERSION = '0.0.1';
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
+    use Ereshkigal::Kur;
 
-Perhaps a little code snippet.
-
-    use Ereshkigal;
-
-    my $foo = Ereshkigal->new();
-    ...
-
+    my $kur = Ereshkigal::Kur->new(
+                backend => 'ipfw',
+                ports => ['22'],
+                protocols => ['tcp'],
+                name => 'ssh',
+              );
 
 =head1 METHODS
 
 =head2 new
 
-    - socket :: Socket location.
-        Default :: /var/run/ereshkigal/socket
+    - run_base_dir :: The default directory to use for the base for PID
+            files and sockets.
+        - Default :: /var/run/ereshkigal
 
-    - config :: Location of the config file that will be passed to kur.
+    - cache_base_dir :: The directory to use for storing caches.
+        - Default :: /var/cache/ereshkigal
 
+    - backend :: The Net::Firewall::BlockerHelper backend to use.
+        - Default :: undef
+
+    - ports :: The ports array to pass to Net::Firewall::BlockerHelper.
+        - Default :: []
+
+    - protocols :: The protocols array to pass to Net::Firewall::BlockerHelper.
+        - Default :: []
+
+    - name :: The name value to pass to Net::Firewall::BlockerHelper.
 
 =cut
 
@@ -51,24 +64,110 @@ sub new {
 	my ( $blank, %opts ) = @_;
 
 	my $self = {
-		socket => '/var/run/ereshkigal/socket',
-		stats  => {
-			buckets       => {},
-			total         => 0,
-			bucket_totals => {},
+		perror        => undef,
+		error         => undef,
+		errorLine     => undef,
+		errorFilename => undef,
+		errorString   => "",
+		errorExtra    => {
+			all_errors_fatal => 1,
+			flags            => {
+				1 => 'NErunBaseDir',
+				2 => 'invalidName',
+				3 => 'backendInitFailed',
+				4 => 'nonRWrunBaseDir',
+				5 => 'NEcacheBaseDir',
+				6 => 'nonRWcacheBaseDir',
+			},
+			fatal_flags      => {},
+			perror_not_fatal => 0,
 		},
+		run_base_dir   => '/var/run/ereshkigal',
+		cache_base_dir => '/var/cache/ereshkigal',
+		backend        => undef,
+		backend_obj    => undef,
+		config         => undef,
+		ports          => undef,
+		protocols      => undef,
+		options        => undef,
+		name           => undef,
 	};
 	bless $self;
 
-	my @to_merge = ( 'pid', 'socket' );
+	my @to_merge = ( 'run_base_dir', 'ports', 'protocols', 'backend', 'name', 'options', 'cache_base_dir' );
 	foreach my $item (@to_merge) {
 		if ( defined( $opts{$item} ) ) {
-			$self->{$item} = $opts{item};
+			$self->{$item} = $opts{$item};
 		}
 	}
 
-	return $self;
+	if ( !defined( $self->{name} ) ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 2;
+		$self->{errorString} = 'name is undef';
+		$self->warn;
+	} elsif ( $self->{name} !~ /^[a-zA-Z0-9\-]+$/ ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 2;
+		$self->{errorString} = 'The specified name, "' . $self->{name} . '", does not match /^[a-zA-Z0-9\-]+$/';
+		$self->warn;
+	}
 
+	if ( !-e $self->{run_base_dir} ) {
+		# don't need to check if this worked failed or not here as the next if statement will handle that
+		eval { mkdir( $self->{run_base_dir} ); };
+	}
+	if ( !-d $self->{run_base_dir} ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 1;
+		$self->{errorString} = 'run_base_dir,"' . $self->{run_base_dir} . '", does not exist or is not a directory';
+		$self->warn;
+	}
+	if ( !-r $self->{run_base_dir} || !-w $self->{run_base_dir} ) {
+		$self->{perror} = 1;
+		$self->{error}  = 4;
+		$self->{errorString}
+			= 'run_base_dir,"' . $self->{run_base_dir} . '", is either not writable or readable by the current user';
+		$self->warn;
+	}
+
+	if ( !-e $self->{cache_base_dir} ) {
+		# don't need to check if this worked failed or not here as the next if statement will handle that
+		eval { mkdir( $self->{cache_base_dir} ); };
+	}
+	if ( !-d $self->{cache_base_dir} ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 5;
+		$self->{errorString} = 'cache_base_dir,"' . $self->{cache_base_dir} . '", does not exist or is not a directory';
+		$self->warn;
+	}
+	if ( !-r $self->{cache_base_dir} || !-w $self->{cache_base_dir} ) {
+		$self->{perror} = 1;
+		$self->{error}  = 7;
+		$self->{errorString}
+			= 'cache_base_dir,"'
+			. $self->{cache_base_dir}
+			. '", is either not writable or readable by the current user';
+		$self->warn;
+	}
+
+	eval {
+		$self->{backend_obj} = Net::Firewall::BlockerHelper->new(
+			backend   => $self->{backend},
+			ports     => $self->{ports},
+			protocols => $self->{protocols},
+			name      => $self->{name},
+		);
+		$self->{backend_obj}->init_backend;
+	};
+	if ($@) {
+		$self->{perror}      = 1;
+		$self->{error}       = 3;
+		$self->{errorString} = 'Failed to init the backend... ' . $@;
+		$self->warn;
+	}
+
+	return $self;
 } ## end sub new
 
 =head2 start_server
@@ -77,10 +176,22 @@ Starts up server, calling $poe_kernel->run.
 
 This should not be expected to return.
 
+    - instance :: The instance to start. This must be specified.
+        Default :: undef
+
 =cut
 
 sub start_server {
-	my ($self) = @_;
+	my ( $self, %opts ) = @_;
+
+	$self->errorblank;
+
+	if ( defined( $opts{instance} ) ) {
+		$self->{error}       = 2;
+		$self->{errorString} = 'No value for instance specified';
+		$self->warn;
+		return;
+	}
 
 	POE::Session->create(
 		inline_states => {
@@ -88,7 +199,7 @@ sub start_server {
 			got_client => \&server_accepted,
 			got_error  => \&server_error,
 		},
-		heap => { socket => $self->{socket}, self => $self },
+		heap => { socket => $self->{socket}, self => $self, instance => $opts{instance}, },
 	);
 
 	$poe_kernel->run();
@@ -146,7 +257,6 @@ sub server_session_start {
 		InputEvent => 'got_client_input',
 		ErrorEvent => 'got_client_error',
 	);
-	$heap->{client}->put( "Connected to Net::LDAP::KeyCache v. " . $Net::LDAP::KeyCache::VERSION );
 }
 
 # handle line inputs
@@ -197,7 +307,6 @@ sub server_session_input {
 		return;
 	}
 
-
 } ## end sub server_session_input
 
 sub server_session_error {
@@ -228,11 +337,11 @@ sub server_session_error {
 sub verbose {
 	my ( $blank, %opts ) = @_;
 
-	if ( !defined($opts{string}) || $opts{string} eq '' ) {
+	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
 		return;
 	}
 
-	if ( !defined($opts{level}) ) {
+	if ( !defined( $opts{level} ) ) {
 		$opts{level} = 'info';
 	}
 
@@ -240,22 +349,50 @@ sub verbose {
 	syslog( $opts{level}, $opts{string} );
 	closelog();
 
-	if ( !defined($opts{string}) || $opts{string} eq '' ) {
+	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
 		return;
 	}
 
-	if ($opts{warn}) {
-		warn($opts{string});
+	if ( $opts{warn} ) {
+		warn( $opts{string} );
 		return;
 	}
 
-	if ($opts{print}) {
-		print($opts{string});
+	if ( $opts{print} ) {
+		print( $opts{string} );
 	}
 
 	return;
 } ## end sub verbose
 
+=head1 ERRORS CODES / ERROR FLAGS
+
+Error handling is provided by L<Error::Helper>. All errors
+are considered fatal.
+
+=head2 1, NErunBaseDir
+
+The run base dir does not exist or is not a directory.
+
+=head2 2, invalidName
+
+Name not defined or does not match /^[a-zA-Z0-9\-]+$/.
+
+=head2 3, backendInitFailed
+
+Failed to initialize the backend.
+
+=head 4, nonRWrunBaseDir
+
+The run base dir is not readable or writable by the current user.
+
+=head2 5, NEcacheBaseDir
+
+The cache base dir does not exist or is not a directory.
+
+=head 6, nonRWrunBaseDir
+
+The cache base dir is not readable or writable by the current user.
 
 =head1 AUTHOR
 
