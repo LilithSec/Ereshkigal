@@ -1,0 +1,26 @@
+#!perl
+
+=head1 NAME
+
+kur - 
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+=head1 FLAGS
+
+
+
+use strict;
+use warnings;
+use Getopt::Long qw(:config pass_through);
+use File::Slurp;
+use JSON;
+use YAML::XS   qw(Load);
+use Ixchel;
+use utf8;
+use Pod::Usage;
+use Net::Server::Daemonize qw(daemonize);
+use kur;
+

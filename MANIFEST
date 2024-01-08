@@ -1,5 +1,7 @@
 Changes
+src_bin/kur
 lib/Ereshkigal.pm
+lib/Ereshkigal/Kur.pm
 Makefile.PL
 MANIFEST			This list of files
 README.md
