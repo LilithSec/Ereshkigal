@@ -197,7 +197,6 @@ sub server_session_input {
 		return;
 	}
 
-
 } ## end sub server_session_input
 
 sub server_session_error {
@@ -228,11 +227,11 @@ sub server_session_error {
 sub verbose {
 	my ( $blank, %opts ) = @_;
 
-	if ( !defined($opts{string}) || $opts{string} eq '' ) {
+	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
 		return;
 	}
 
-	if ( !defined($opts{level}) ) {
+	if ( !defined( $opts{level} ) ) {
 		$opts{level} = 'info';
 	}
 
@@ -240,22 +239,21 @@ sub verbose {
 	syslog( $opts{level}, $opts{string} );
 	closelog();
 
-	if ( !defined($opts{string}) || $opts{string} eq '' ) {
+	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
 		return;
 	}
 
-	if ($opts{warn}) {
-		warn($opts{string});
+	if ( $opts{warn} ) {
+		warn( $opts{string} );
 		return;
 	}
 
-	if ($opts{print}) {
-		print($opts{string});
+	if ( $opts{print} ) {
+		print( $opts{string} );
 	}
 
 	return;
 } ## end sub verbose
-
 
 =head1 AUTHOR
 

@@ -22,12 +22,19 @@ my %WriteMakefileArgs = (
 	TEST_REQUIRES => {
 		'Test::More' => '0',
 	},
-	PREREQ_PM => {
-		#'ABC'              => '1.6',
-		#'Foo::Bar::Module' => '5.0401',
-	},
-	dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
-	clean => { FILES    => 'Ereshkigal-*' },
+	PREREQ_PM  => {},
+	dist       => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
+	clean      => { FILES    => 'Ereshkigal-*' },
+	META_MERGE => {
+		"meta-spec" => { version => 2 },
+		resources   => {
+			repository => {
+				type => 'git',
+				url  => 'https://github.com/LilithSec/Ereshkigal.git',
+				web  => 'https://github.com/LilithSec/Ereshkigal',
+			},
+		},
+	}
 );
 
 # Compatibility with old versions of ExtUtils::MakeMaker

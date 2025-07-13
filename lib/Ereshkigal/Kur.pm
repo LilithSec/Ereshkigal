@@ -4,14 +4,14 @@ use 5.006;
 use strict;
 use warnings;
 use base 'Error::Helper';
-use JSON;
+use JSON qw( decode_json encode_json );
 use POE;
-use POE::Wheel::SocketFactory;
-use POE::Wheel::Run;
-use POE::Wheel::ReadWrite;
-use Socket;
-use Sys::Syslog;
-use Net::Firewall::BlockerHelper;
+use POE::Wheel::SocketFactory    ();
+use POE::Wheel::Run              ();
+use POE::Wheel::ReadWrite        ();
+use Socket                       qw(PF_UNIX);
+use Sys::Syslog                  qw( closelog openlog syslog );
+use Net::Firewall::BlockerHelper ();
 
 =head1 NAME
 
@@ -39,6 +39,8 @@ our $VERSION = '0.0.1';
 =head1 METHODS
 
 =head2 new
+
+Initiates the object. Anything without a default must be specified.
 
     - run_base_dir :: The default directory to use for the base for PID
             files and sockets.
@@ -176,9 +178,6 @@ Starts up server, calling $poe_kernel->run.
 
 This should not be expected to return.
 
-    - instance :: The instance to start. This must be specified.
-        Default :: undef
-
 =cut
 
 sub start_server {
@@ -209,10 +208,10 @@ sub server_started {
 	my ( $kernel, $heap ) = @_[ KERNEL, HEAP ];
 	unlink $heap->{socket} if -e $heap->{socket};
 	$heap->{server} = POE::Wheel::SocketFactory->new(
-		SocketDomain => PF_UNIX,
-		BindAddress  => $heap->{socket},
-		SuccessEvent => 'got_client',
-		FailureEvent => 'got_error',
+		'SocketDomain' => PF_UNIX,
+		'BindAddress'  => $heap->{socket},
+		'SuccessEvent' => 'got_client',
+		'FailureEvent' => 'got_error',
 	);
 } ## end sub server_started
 

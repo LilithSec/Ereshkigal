@@ -2,25 +2,110 @@
 
 =head1 NAME
 
-kur - 
+kur - Firewall ban manager for Ereshkiga.
 
 =head1 SYNOPSIS
+
+kur [B<--ports>=<ports>] [B<--protocols>=<protocols>] [B<--cache>=<cache dir>]
+[B<--run>=<run dir>] B<--name>=<name> B<--backend>=<backend>
+
+kur -v|--version
+
+kur -h|--help
 
 =head1 DESCRIPTION
 
 =head1 FLAGS
 
+==head2 -v|--version
 
+Show version info.
+
+==head2 -h|--help
+
+Show help info.
+
+==head2 --ports=<ports>
+
+A comma seperated list of ports to block. Must be a positive integer greater than zero or
+a name resolvable via getservbyname.
+
+If not specified, all are blocked.
+
+==head2 --protocols=<protocols>
+
+A comma seperated list of ports to block. This is checked against /etc/protocols via the
+function getprotobyname.
+
+If not specified, it will block all.
+
+==head2 --name=<name>
+
+The name to use for this instance.
+
+This must be specified.
+
+==head2 --backend=<backend>
+
+The backend to use.
+
+=cut
 
 use strict;
 use warnings;
 use Getopt::Long qw(:config pass_through);
-use File::Slurp;
-use JSON;
-use YAML::XS   qw(Load);
-use Ixchel;
-use utf8;
 use Pod::Usage;
 use Net::Server::Daemonize qw(daemonize);
-use kur;
+use Ereshkigal::Kur;
 
+sub main::VERSION_MESSAGE {
+	print 'sneck v. ' . $Ereshkigal::Kur::VERSION . "\n";
+	exit 255;
+}
+
+sub main::HELP_MESSAGE {
+	pod2usage( -exitval => 255, -verbose => 2, -output => \*STDOUT, );
+}
+
+my $name;
+my $prefix;
+my $backend;
+my $cache_dir = '/var/cache/ereshkigal';
+my $run_dir   = '/var/run/ereshkigal/';
+my $ports;
+my $protocols;
+my $version;
+my $help;
+GetOptions(
+	'version'     => \$version,
+	'v'           => \$version,
+	'help'        => \$help,
+	'h'           => \$help,
+	'ports=s'     => \$ports,
+	'protocols=s' => \$protocols,
+	'cache=s'     => \$cache_dir,
+	'run=s'       => \$run_dir,
+	'name=s'      => \$name,
+	'backend=s'   => \$backend,
+);
+
+# print version or help if requested
+if ($help) {
+	main::HELP_MESSAGE;
+	exit 42;
+}
+if ($version) {
+	main::VERSION_MESSAGE;
+	exit 42;
+}
+
+my $kur = Ereshkigal::Kur->new(
+	'protocols'      => \$protocols,
+	'ports'          => \$ports,
+	'run_base_dir'   => \$run_dir,
+	'cache_base_dir' => \$cache_dir,
+	'backend'        => \$backend,
+	'name'           => \$name,
+);
+
+$kur->start_server;
