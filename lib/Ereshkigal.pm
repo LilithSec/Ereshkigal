@@ -146,7 +146,7 @@ sub server_session_start {
 		InputEvent => 'got_client_input',
 		ErrorEvent => 'got_client_error',
 	);
-	$heap->{client}->put( "Connected to Net::LDAP::KeyCache v. " . $Net::LDAP::KeyCache::VERSION );
+	$heap->{client}->put( "Connected to Ereshkiga v. " . $Ereshkigal::VERSION );
 }
 
 # handle line inputs
