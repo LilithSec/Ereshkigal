@@ -30,33 +30,18 @@ our $VERSION = '0.0.1';
     use Ereshkigal::Kur;
 
     my $kur = Ereshkigal::Kur->new(
-                backend => 'ipfw',
-                ports => ['22'],
-                protocols => ['tcp'],
-                name => 'ssh',
+                  'backend_options' => $backend_options,
+                  'name' => $name,
               );
 
 =head1 METHODS
 
 =head2 new
 
-Initiates the object. Anything without a default must be specified.
+Initiates the object.
 
-    - run_base_dir :: The default directory to use for the base for PID
-            files and sockets.
-        - Default :: /var/run/ereshkigal
-
-    - cache_base_dir :: The directory to use for storing caches.
-        - Default :: /var/cache/ereshkigal
-
-    - backend :: The Net::Firewall::BlockerHelper backend to use.
-        - Default :: undef
-
-    - ports :: The ports array to pass to Net::Firewall::BlockerHelper.
-        - Default :: []
-
-    - protocols :: The protocols array to pass to Net::Firewall::BlockerHelper.
-        - Default :: []
+    - backend_options :: Hashref to pass to Net::Firewall::BlockerHelper. 'name'
+        will will be over written with what ever is passed by name.
 
     - name :: The name value to pass to Net::Firewall::BlockerHelper.
 
@@ -86,22 +71,9 @@ sub new {
 		},
 		run_base_dir   => '/var/run/ereshkigal',
 		cache_base_dir => '/var/cache/ereshkigal',
-		backend        => undef,
 		backend_obj    => undef,
-		config         => undef,
-		ports          => undef,
-		protocols      => undef,
-		options        => undef,
-		name           => undef,
 	};
 	bless $self;
-
-	my @to_merge = ( 'run_base_dir', 'ports', 'protocols', 'backend', 'name', 'options', 'cache_base_dir' );
-	foreach my $item (@to_merge) {
-		if ( defined( $opts{$item} ) ) {
-			$self->{$item} = $opts{$item};
-		}
-	}
 
 	if ( !defined( $self->{name} ) ) {
 		$self->{perror}      = 1;
