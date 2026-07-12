@@ -180,7 +180,8 @@ protocols = [ "tcp" ]
 		. $group . '"' . "\n"
 		. 'socket_mode    = "0660"' . "\n"
 		. 'kur_bin        = "'
-		. $wrapper . '"' . "\n\n"
+		. $wrapper . '"' . "\n"
+		. ( defined( $opts{settings_toml} ) ? $opts{settings_toml} : '' ) . "\n"
 		. $kurs_toml;
 	close($config_fh);
 
@@ -192,8 +193,11 @@ protocols = [ "tcp" ]
 # response may be...
 #     - a hash ref :: encoded to JSON and sent, or if it contains a true
 #           __no_reply__ it just sits there, for timeout testing
-#     - a code ref :: called with the decoded request, the return used as above
+#     - a code ref :: called with the decoded request and a per connection
+#           state hashref, the return used as above
 #     - a plain scalar :: sent raw, for testing undecodable responses
+# multiple requests may be sent on one connection, which along with the per
+# connection state allows scripting conversations such as the auth challenge
 sub mock_server {
 	my ( $socket_path, $responses ) = @_;
 
@@ -208,29 +212,27 @@ sub mock_server {
 	if ( !$pid ) {
 		$SIG{PIPE} = 'IGNORE';
 		while ( my $conn = $listener->accept ) {
-			my $line = <$conn>;
-			if ( !defined($line) ) {
-				close($conn);
-				next;
-			}
-			my $request;
-			eval { $request = decode_json($line); };
-			my $command = ref($request) eq 'HASH' ? $request->{command} : undef;
-			$command = '' if !defined($command);
-			my $response = $responses->{$command};
-			if ( ref($response) eq 'CODE' ) {
-				$response = $response->($request);
-			}
-			if ( !defined($response) ) {
-				$response = { 'status' => 'error', 'error' => 'unknown command: ' . $command };
-			}
-			if ( ref($response) eq '' ) {
-				print $conn $response . "\n";
-			} elsif ( ref($response) eq 'HASH' && $response->{__no_reply__} ) {
-				sleep(60);
-			} else {
-				print $conn encode_json($response) . "\n";
-			}
+			my $state = {};
+			while ( my $line = <$conn> ) {
+				my $request;
+				eval { $request = decode_json($line); };
+				my $command = ref($request) eq 'HASH' ? $request->{command} : undef;
+				$command = '' if !defined($command);
+				my $response = $responses->{$command};
+				if ( ref($response) eq 'CODE' ) {
+					$response = $response->( $request, $state );
+				}
+				if ( !defined($response) ) {
+					$response = { 'status' => 'error', 'error' => 'unknown command: ' . $command };
+				}
+				if ( ref($response) eq '' ) {
+					print $conn $response . "\n";
+				} elsif ( ref($response) eq 'HASH' && $response->{__no_reply__} ) {
+					sleep(60);
+				} else {
+					print $conn encode_json($response) . "\n";
+				}
+			} ## end while ( my $line = <$conn> )
 			close($conn);
 		} ## end while ( my $conn = $listener->accept )
 		exit 0;

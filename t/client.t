@@ -72,6 +72,82 @@ throws_ok { $client->call('arrayish') } qr/not a JSON object/, 'non-object JSON 
 
 throws_ok { $client->call(undef) } qr/No command specified/, 'undef command dies';
 
+#
+# the transparent auth challenge retry
+#
+
+my $auth_socket = $dir . '/auth.sock';
+my $cookie_dir  = $dir . '/cookies';
+mkdir($cookie_dir) || die($!);
+my $cookie = 'deadbeefcafe1234';
+mock_server(
+	$auth_socket,
+	{
+		'auth_start' => sub {
+			return { 'status' => 'ok', 'result' => { 'cookie' => $cookie, 'temp_dir' => $cookie_dir } };
+		},
+		'auth_verify' => sub {
+			my ( $request, $state ) = @_;
+			my $path = $request->{args}{path};
+			if ( !defined($path) || !-f $path ) {
+				return { 'status' => 'error', 'error' => 'no such cookie file' };
+			}
+			open( my $fh, '<', $path ) || die($!);
+			my $got = <$fh>;
+			close($fh);
+			if ( $got ne $cookie ) {
+				return { 'status' => 'error', 'error' => 'cookie mismatch' };
+			}
+			$state->{authed} = 1;
+			return { 'status' => 'ok', 'result' => { 'uid' => $>, 'username' => 'testuser' } };
+		},
+		'secured' => sub {
+			my ( $request, $state ) = @_;
+			if ( !$state->{authed} ) {
+				return {
+					'status' => 'error',
+					'error'  => 'authentication required: call auth_start then auth_verify first'
+				};
+			}
+			return { 'status' => 'ok', 'result' => { 'secret' => 42 } };
+		},
+	}
+);
+
+my $auth_client = Ereshkigal::Client->new( 'socket' => $auth_socket );
+is_deeply( $auth_client->call_ok('secured'), { 'secret' => 42 },
+	'the challenge is completed transparently and the command resent' );
+opendir( my $cookie_dh, $cookie_dir ) || die($!);
+my @leftover = grep { $_ ne '.' && $_ ne '..' } readdir($cookie_dh);
+closedir($cookie_dh);
+is_deeply( \@leftover, [], 'the cookie file was cleaned up' );
+
+# a server rejecting the challenge surfaces as a die rather than a retry loop
+my $bad_socket = $dir . '/bad-auth.sock';
+mock_server(
+	$bad_socket,
+	{
+		'auth_start' => sub {
+			return { 'status' => 'ok', 'result' => { 'cookie' => 'right', 'temp_dir' => $cookie_dir } };
+		},
+		'auth_verify' => sub {
+			return { 'status' => 'error', 'error' => 'cookie mismatch' };
+		},
+		'secured' => sub {
+			return {
+				'status' => 'error',
+				'error'  => 'authentication required: call auth_start then auth_verify first'
+			};
+		},
+	}
+);
+throws_ok { Ereshkigal::Client->new( 'socket' => $bad_socket )->call('secured') }
+qr/auth_verify failed.*cookie mismatch/, 'a rejected challenge dies';
+opendir( $cookie_dh, $cookie_dir ) || die($!);
+@leftover = grep { $_ ne '.' && $_ ne '..' } readdir($cookie_dh);
+closedir($cookie_dh);
+is_deeply( \@leftover, [], 'the cookie file was cleaned up after the rejection too' );
+
 # this one last as the mock will be stuck sleeping afterwards
 throws_ok { Ereshkigal::Client->new( 'socket' => $socket, 'timeout' => 1 )->call('sleepy') }
 qr/timed out/, 'times out when the server never replies';

@@ -75,6 +75,26 @@ throws_ok {
 }
 qr/checkpoint for the kur/, 'dies on a non-int kur checkpoint';
 
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq(authed_users = "zane"\n)) )
+}
+qr/authed_users is not a array/, 'dies on a non-array top level authed_users';
+
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq(authed_groups = "wheel"\n)) )
+}
+qr/authed_groups is not a array/, 'dies on a non-array top level authed_groups';
+
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq([kur.sshd]\nbackend      = "dummy"\nauthed_users = "zane"\n)) )
+}
+qr/authed_users for the kur/, 'dies on a non-array kur authed_users';
+
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq([kur.sshd]\nbackend       = "dummy"\nauthed_groups = "wheel"\n)) )
+}
+qr/authed_groups for the kur/, 'dies on a non-array kur authed_groups';
+
 #
 # defaults
 #
@@ -90,6 +110,9 @@ is( $ereshkigal->{timeout},     30,    'timeout defaults to 30' );
 is( $ereshkigal->{kur_bin},     'kur', 'kur_bin defaults to kur' );
 is( $ereshkigal->{ban_time},    600,   'ban_time defaults to 600' );
 is( $ereshkigal->{checkpoint},  60,    'checkpoint defaults to 60' );
+ok( !$ereshkigal->{enable_auth}, 'enable_auth defaults to off' );
+is_deeply( $ereshkigal->{authed_users},  [], 'authed_users defaults to empty' );
+is_deeply( $ereshkigal->{authed_groups}, [], 'authed_groups defaults to empty' );
 is( $ereshkigal->{socket_gid}, ( getpwnam('root') )[3], 'socket_gid defaults to the default group of root' );
 ok( -d $dir . '/defrun/kur', 'new created the run dirs' );
 
@@ -106,7 +129,11 @@ my $full = write_cfg( 'run_base_dir   = "' . $dir . '/run"' . "\n"
 		. 'kur_bin        = "/somewhere/kur"' . "\n"
 		. 'timeout        = 5' . "\n"
 		. 'ban_time       = 120' . "\n"
-		. 'checkpoint     = 90' . "\n\n"
+		. 'checkpoint     = 90' . "\n"
+		. 'enable_auth    = true' . "\n"
+		. 'auth_temp_dir  = "/tmp"' . "\n"
+		. 'authed_users   = [ "zane" ]' . "\n"
+		. 'authed_groups  = [ "' . $group . '" ]' . "\n\n"
 		. '[kur.sshd]' . "\n"
 		. 'backend   = "dummy"' . "\n"
 		. 'ports     = [ "22", "80" ]' . "\n"
@@ -129,6 +156,10 @@ is( $ereshkigal->{kur_bin},        '/somewhere/kur', 'kur_bin merged' );
 is( $ereshkigal->{timeout},        5,                'timeout merged' );
 is( $ereshkigal->{ban_time},       120,              'ban_time merged' );
 is( $ereshkigal->{checkpoint},     90,               'checkpoint merged' );
+ok( $ereshkigal->{enable_auth}, 'enable_auth merged' );
+is( $ereshkigal->{auth_temp_dir}, '/tmp', 'auth_temp_dir merged' );
+is_deeply( $ereshkigal->{authed_users},  ['zane'], 'authed_users merged' );
+is_deeply( $ereshkigal->{authed_groups}, [$group], 'authed_groups merged' );
 is( $ereshkigal->{socket_mode},    0640,             'socket_mode processed via oct' );
 is( $ereshkigal->{socket_gid}, ( split( /\s+/, $( ) )[0], 'socket_group resolved to our GID' );
 

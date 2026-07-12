@@ -33,6 +33,7 @@ t/kur-new.t
 t/kur-server.t
 t/lib/EreshkigalTest.pm
 t/logdrek.t
+t/manager-auth.t
 t/manager-new.t
 t/manager.t
 t/manifest.t

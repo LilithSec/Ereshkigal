@@ -81,6 +81,31 @@ Top level keys are manager settings.
           via checkpoint in it's hash.
         Default :: 60
 
+    - enable_auth :: Enables the L<POE::Component::Server::JSONUnix>
+          auth_required cookie file ownership challenge on the manager
+          socket, along with authorization via authed_users/authed_groups.
+        Default :: 0
+
+    - authed_users :: A array of users with global access.
+        Default :: []
+
+    - authed_groups :: A array of groups with global access.
+        Default :: []
+
+    - auth_temp_dir :: Dir used for the ownership challenge cookie files,
+          passed through to L<POE::Component::Server::JSONUnix>.
+        Default :: undef
+
+Each kur hash may also carry it's own C<authed_users>/C<authed_groups>,
+which expand upon the global ones for that kur... the effective lists for
+a kur are the global ones plus it's own. A command must be authorized for
+every kur it touches, with untargeted fan-out commands touching every kur,
+while commands about the manager it's self (stop, add_kur, remove_kur, and
+the whole manager views status/status_all) require the global lists. UID 0
+is always authorized. The kur backends do no checking at all... their
+sockets are 0600 and only ereshkigal is expected to be able to write to
+them, so enforcement is entirely the manager's responsibility.
+
 Example...
 
     socket_group = "wheel"
@@ -122,6 +147,7 @@ sub new {
 				5 => 'badSocketGroup',
 				6 => 'invalidBanTime',
 				7 => 'invalidCheckpoint',
+				8 => 'invalidAuthedList',
 			},
 			fatal_flags      => {},
 			perror_not_fatal => 0,
@@ -133,6 +159,10 @@ sub new {
 		timeout        => 30,
 		ban_time       => 600,
 		checkpoint     => 60,
+		enable_auth    => 0,
+		authed_users   => [],
+		authed_groups  => [],
+		auth_temp_dir  => undef,
 		socket_group   => undef,
 		socket_mode    => 0660,
 		kurs           => {},
@@ -173,8 +203,10 @@ sub new {
 		$self->warn;
 	}
 
-	my @settings_to_merge
-		= ( 'run_base_dir', 'cache_base_dir', 'kur_bin', 'timeout', 'ban_time', 'checkpoint', 'socket_group' );
+	my @settings_to_merge = (
+		'run_base_dir', 'cache_base_dir', 'kur_bin', 'timeout', 'ban_time', 'checkpoint',
+		'enable_auth',  'auth_temp_dir',  'socket_group'
+	);
 	foreach my $item (@settings_to_merge) {
 		if ( defined( $config->{$item} ) ) {
 			$self->{$item} = $config->{$item};
@@ -197,6 +229,19 @@ sub new {
 		$self->{errorString} = 'checkpoint, "' . $self->{checkpoint} . '", is not a non-negative int of seconds';
 		$self->warn;
 	}
+
+	foreach my $item ( 'authed_users', 'authed_groups' ) {
+		if ( defined( $config->{$item} ) ) {
+			my $list_error = _authed_list_error( $config->{$item} );
+			if ( defined($list_error) ) {
+				$self->{perror}      = 1;
+				$self->{error}       = 8;
+				$self->{errorString} = $item . ' is ' . $list_error;
+				$self->warn;
+			}
+			$self->{$item} = $config->{$item};
+		} ## end if ( defined( $config->{$item} ) )
+	} ## end foreach my $item ( 'authed_users', 'authed_groups')
 
 	# default to the default group of the root user... wheel on the BSDs, root on Linux
 	if ( !defined( $self->{socket_group} ) ) {
@@ -360,48 +405,61 @@ sub start_server {
 	);
 
 	my $server = POE::Component::Server::JSONUnix->spawn(
-		'socket_path' => $self->socket_path,
-		'socket_mode' => $self->{socket_mode},
-		'alias'       => 'ereshkigal_server',
-		'on_error'    => sub {
+		'socket_path'   => $self->socket_path,
+		'socket_mode'   => $self->{socket_mode},
+		'alias'         => 'ereshkigal_server',
+		'auth_required' => $self->{enable_auth} ? 1 : 0,
+		defined( $self->{auth_temp_dir} ) ? ( 'auth_temp_dir' => $self->{auth_temp_dir} ) : (),
+		'on_error' => sub {
 			my ( $operation, $errnum, $errstr ) = @_;
 			log_drek( 'err', 'socket error during ' . $operation . '... ' . $errstr . ' (' . $errnum . ')' );
 		},
 		'commands' => {
 			'status' => sub {
+				my ( undef, undef, $ctx ) = @_;
+				$self->_authorize($ctx);
 				return $self->_cmd_status;
 			},
 			'status_all' => sub {
+				my ( undef, undef, $ctx ) = @_;
+				$self->_authorize($ctx);
 				return $self->_cmd_status_all;
 			},
 			'status_kur' => sub {
-				my ( undef, $request ) = @_;
-				return $self->_cmd_status_kur($request);
+				my ( undef, $request, $ctx ) = @_;
+				return $self->_cmd_status_kur( $request, $ctx );
 			},
 			'banned' => sub {
+				my ( undef, undef, $ctx ) = @_;
+				$self->_authorize( $ctx, sort( keys( %{ $self->{kurs} } ) ) );
 				return $self->_cmd_banned;
 			},
 			'ban' => sub {
-				my ( undef, $request ) = @_;
-				return $self->_cmd_ban($request);
+				my ( undef, $request, $ctx ) = @_;
+				return $self->_cmd_ban( $request, $ctx );
 			},
 			'unban' => sub {
-				my ( undef, $request ) = @_;
+				my ( undef, $request, $ctx ) = @_;
+				$self->_authorize( $ctx, sort( keys( %{ $self->{kurs} } ) ) );
 				return $self->_cmd_unban($request);
 			},
 			'add_kur' => sub {
-				my ( undef, $request ) = @_;
+				my ( undef, $request, $ctx ) = @_;
+				$self->_authorize($ctx);
 				return $self->_cmd_add_kur($request);
 			},
 			'remove_kur' => sub {
-				my ( undef, $request ) = @_;
+				my ( undef, $request, $ctx ) = @_;
+				$self->_authorize($ctx);
 				return $self->_cmd_remove_kur($request);
 			},
 			'checkpoint' => sub {
-				my ( undef, $request ) = @_;
-				return $self->_cmd_checkpoint($request);
+				my ( undef, $request, $ctx ) = @_;
+				return $self->_cmd_checkpoint( $request, $ctx );
 			},
 			'stop' => sub {
+				my ( undef, undef, $ctx ) = @_;
+				$self->_authorize($ctx);
 				log_drek( 'info', 'stop requested' );
 				$poe_kernel->post( 'ereshkigal_manager', 'stop_all' );
 				# the current session is the JSONUnix server session, so this
@@ -452,6 +510,10 @@ sub _check_kur_def {
 			. $name . '", "'
 			. $def->{checkpoint}
 			. '", is not a non-negative int of seconds';
+	} elsif ( defined( $def->{authed_users} ) && defined( _authed_list_error( $def->{authed_users} ) ) ) {
+		$error = 'The authed_users for the kur "' . $name . '" is ' . _authed_list_error( $def->{authed_users} );
+	} elsif ( defined( $def->{authed_groups} ) && defined( _authed_list_error( $def->{authed_groups} ) ) ) {
+		$error = 'The authed_groups for the kur "' . $name . '" is ' . _authed_list_error( $def->{authed_groups} );
 	}
 
 	if ( defined($error) ) {
@@ -466,6 +528,103 @@ sub _check_kur_def {
 
 	return;
 } ## end sub _check_kur_def
+
+# returns a error string if the passed value is not a array of strings,
+# undef otherwise
+sub _authed_list_error {
+	my ($list) = @_;
+
+	if ( ref($list) ne 'ARRAY' ) {
+		return 'not a array';
+	}
+	foreach my $item ( @{$list} ) {
+		if ( !defined($item) || ref($item) ne '' ) {
+			return 'not a array of just strings';
+		}
+	}
+
+	return undef;
+} ## end sub _authed_list_error
+
+# checks if the user is in the passed users list or a member of one of the
+# passed groups... membership is resolved at request time so user/group
+# database changes apply with out a restart
+sub _user_in_lists {
+	my ( $self, $username, $uid, $users, $groups ) = @_;
+
+	foreach my $user ( @{$users} ) {
+		if ( $user eq $username ) {
+			return 1;
+		}
+	}
+
+	# the user's primary group
+	my $primary_gid = ( getpwuid($uid) )[3];
+	my $primary_group;
+	if ( defined($primary_gid) ) {
+		$primary_group = getgrgid($primary_gid);
+	}
+
+	foreach my $group ( @{$groups} ) {
+		if ( defined($primary_group) && $group eq $primary_group ) {
+			return 1;
+		}
+		# unknown groups just never match rather than erroring
+		my $members = ( getgrnam($group) )[3];
+		if ( defined($members) ) {
+			foreach my $member ( split( /\s+/, $members ) ) {
+				if ( $member eq $username ) {
+					return 1;
+				}
+			}
+		}
+	} ## end foreach my $group ( @{$groups} )
+
+	return 0;
+} ## end sub _user_in_lists
+
+# authorizes the authenticated user behind the context for the specified
+# kurs, or for manager level commands when no kurs are specified, dieing if
+# they are not allowed... a no-op when enable_auth is off
+sub _authorize {
+	my ( $self, $ctx, @kurs ) = @_;
+
+	if ( !$self->{enable_auth} ) {
+		return;
+	}
+
+	my $uid      = $ctx->uid;
+	my $username = $ctx->username;
+	if ( !defined($uid) ) {
+		# should be unreachable as JSONUnix gates unauthed commands first
+		die('authentication required');
+	}
+	if ( $uid == 0 ) {
+		return;
+	}
+	$username = '' if !defined($username);
+
+	if ( !@kurs ) {
+		if ( $self->_user_in_lists( $username, $uid, $self->{authed_users}, $self->{authed_groups} ) ) {
+			return;
+		}
+		die( 'The user "' . $username . '" is not authorized for manager level commands' );
+	}
+
+	foreach my $name (@kurs) {
+		# the effective lists for a kur are the global ones plus it's own
+		my $def = defined( $self->{kurs}{$name} ) ? $self->{kurs}{$name}{opts} : {};
+		my @users
+			= ( @{ $self->{authed_users} }, ref( $def->{authed_users} ) eq 'ARRAY' ? @{ $def->{authed_users} } : () );
+		my @groups = ( @{ $self->{authed_groups} },
+			ref( $def->{authed_groups} ) eq 'ARRAY' ? @{ $def->{authed_groups} } : () );
+		if ( !$self->_user_in_lists( $username, $uid, \@users, \@groups ) ) {
+			die( 'The user "' . $username . '" is not authorized for the kur "' . $name . '"' );
+		}
+	} ## end foreach my $name (@kurs)
+
+	return;
+} ## end sub _authorize
 
 sub _kur_client {
 	my ( $self, $name ) = @_;
@@ -706,10 +865,11 @@ sub _cmd_status {
 	my ($self) = @_;
 
 	return {
-		'pid'    => $$,
-		'uptime' => time - $self->{started},
-		'config' => $self->{config},
-		'kurs'   => $self->_kur_summary,
+		'pid'         => $$,
+		'uptime'      => time - $self->{started},
+		'config'      => $self->{config},
+		'enable_auth' => $self->{enable_auth} ? 1 : 0,
+		'kurs'        => $self->_kur_summary,
 	};
 } ## end sub _cmd_status
 
@@ -734,7 +894,7 @@ sub _cmd_status_all {
 } ## end sub _cmd_status_all
 
 sub _cmd_status_kur {
-	my ( $self, $request ) = @_;
+	my ( $self, $request, $ctx ) = @_;
 
 	my $args = $request->{args};
 	if ( !defined($args) || !defined( $args->{name} ) ) {
@@ -746,6 +906,8 @@ sub _cmd_status_kur {
 	if ( !defined($entry) ) {
 		die( 'No such kur instance, "' . $name . '"' );
 	}
+
+	$self->_authorize( $ctx, $name );
 
 	my $status = {
 		'name'     => $name,
@@ -784,7 +946,7 @@ sub _cmd_banned {
 } ## end sub _cmd_banned
 
 sub _cmd_ban {
-	my ( $self, $request ) = @_;
+	my ( $self, $request, $ctx ) = @_;
 
 	my $args = $request->{args};
 	if ( !defined($args) || ref( $args->{ips} ) ne 'ARRAY' || !@{ $args->{ips} } ) {
@@ -803,6 +965,8 @@ sub _cmd_ban {
 	if ( !@targets ) {
 		die('No kur instances');
 	}
+
+	$self->_authorize( $ctx, @targets );
 
 	my $kur_args = { 'ips' => $args->{ips} };
 	if ( defined( $args->{ban_time} ) ) {
@@ -852,7 +1016,7 @@ sub _cmd_unban {
 } ## end sub _cmd_unban
 
 sub _cmd_checkpoint {
-	my ( $self, $request ) = @_;
+	my ( $self, $request, $ctx ) = @_;
 
 	my $args = $request->{args};
 
@@ -865,6 +1029,8 @@ sub _cmd_checkpoint {
 	} else {
 		@targets = sort( keys( %{ $self->{kurs} } ) );
 	}
+
+	$self->_authorize( $ctx, @targets );
 
 	my $kurs = {};
 	foreach my $name (@targets) {
@@ -969,6 +1135,10 @@ ban_time is not a non-negative int of seconds.
 =head2 7, invalidCheckpoint
 
 checkpoint is not a non-negative int of seconds.
+
+=head2 8, invalidAuthedList
+
+authed_users or authed_groups is not a array of strings.
 
 =head1 AUTHOR
 
