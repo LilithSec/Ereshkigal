@@ -3,13 +3,12 @@ package Ereshkigal;
 use 5.006;
 use strict;
 use warnings;
-use JSON;
-use POE;
-use POE::Wheel::SocketFactory;
-use POE::Wheel::Run;
-use POE::Wheel::ReadWrite;
-use Socket;
-use Sys::Syslog;
+use base 'Error::Helper';
+use POE                              qw( Wheel::Run );
+use POE::Component::Server::JSONUnix ();
+use TOML::Tiny                       qw( from_toml );
+use Ereshkigal::Client               ();
+use Ereshkigal::LogDrek              qw( log_drek );
 
 =head1 NAME
 
@@ -25,25 +24,82 @@ our $VERSION = '0.0.1';
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
-
-Perhaps a little code snippet.
-
     use Ereshkigal;
 
-    my $foo = Ereshkigal->new();
-    ...
+    my $ereshkigal = Ereshkigal->new( config => '/usr/local/etc/ereshkigal.toml' );
 
+    $ereshkigal->start_server;
+
+Ereshkigal is a ban manager for firewalls. It wrangles various
+L<Ereshkigal::Kur> instances, spawned via the C<kur> bin, each of which runs
+as it's own process and uses L<Net::Firewall::BlockerHelper> for talking to
+the firewall.
+
+The manager listens on a unix socket, by default
+C</var/run/ereshkigal/socket>, speaking the newline delimited JSON protocol
+of L<POE::Component::Server::JSONUnix>, and proxies per instance work to the
+kur sockets under C</var/run/ereshkigal/kur/>.
+
+=head1 CONFIG FILE
+
+The config file is TOML. Hashes under C<kur> define instances. The instance
+name is the hash name, so the hash at C<kur.sshd> is the kur instance
+C<sshd>. Keys inside are what kur/L<Net::Firewall::BlockerHelper> take...
+C<backend>, C<ports>, C<protocols>, C<prefix>, C<self_heal>, and the backend
+specific C<options> table.
+
+Top level keys are manager settings.
+
+    - socket_group :: Group ownership of the manager socket.
+        Default :: the default group of the root user
+
+    - socket_mode :: Perms for the manager socket. Processed via oct, so
+          should be specified as a string such as "0660". Kur sockets are
+          always 0600 and not configurable.
+        Default :: 0660
+
+    - run_base_dir :: Base dir for run files.
+        Default :: /var/run/ereshkigal
+
+    - cache_base_dir :: Base dir for cache files, passed to kur.
+        Default :: /var/cache/ereshkigal
+
+    - kur_bin :: The kur bin to spawn instances with.
+        Default :: kur
+
+    - timeout :: Timeout in seconds used when talking to kur sockets.
+        Default :: 30
+
+    - ban_time :: How long bans should last in seconds. 0 means bans never
+          time out. May be overridden per kur via ban_time in it's hash and
+          per ban request.
+        Default :: 600
+
+    - checkpoint :: Seconds between periodic rewrites of each kur's ban
+          state CSV. 0 disables the periodic rewrite... ban/unban, stop,
+          and on demand checkpoints still happen. May be overridden per kur
+          via checkpoint in it's hash.
+        Default :: 60
+
+Example...
+
+    socket_group = "wheel"
+    socket_mode  = "0660"
+
+    [kur.sshd]
+    backend   = "ipfw"
+    ports     = [ "22" ]
+    protocols = [ "tcp" ]
 
 =head1 METHODS
 
 =head2 new
 
-    - socket :: Socket location.
-        Default :: /var/run/ereshkigal/socket
+Initiates the object. All errors are considered fatal, meaning if new fails
+it will die.
 
-    - config :: Location of the config file that will be passed to kur.
-
+    - config :: Path to the TOML config file.
+        Default :: /usr/local/etc/ereshkigal.toml
 
 =cut
 
@@ -51,209 +107,868 @@ sub new {
 	my ( $blank, %opts ) = @_;
 
 	my $self = {
-		socket => '/var/run/ereshkigal/socket',
-		stats  => {
-			buckets       => {},
-			total         => 0,
-			bucket_totals => {},
+		perror        => undef,
+		error         => undef,
+		errorLine     => undef,
+		errorFilename => undef,
+		errorString   => "",
+		errorExtra    => {
+			all_errors_fatal => 1,
+			flags            => {
+				1 => 'configReadFailed',
+				2 => 'configParseFailed',
+				3 => 'invalidKurDef',
+				4 => 'runBaseDirError',
+				5 => 'badSocketGroup',
+				6 => 'invalidBanTime',
+				7 => 'invalidCheckpoint',
+			},
+			fatal_flags      => {},
+			perror_not_fatal => 0,
 		},
+		config         => '/usr/local/etc/ereshkigal.toml',
+		run_base_dir   => '/var/run/ereshkigal',
+		cache_base_dir => '/var/cache/ereshkigal',
+		kur_bin        => 'kur',
+		timeout        => 30,
+		ban_time       => 600,
+		checkpoint     => 60,
+		socket_group   => undef,
+		socket_mode    => 0660,
+		kurs           => {},
+		wheel_to_kur   => {},
+		pid_to_kur     => {},
+		shutting_down  => 0,
+		started        => undef,
+		server         => undef,
 	};
 	bless $self;
 
-	my @to_merge = ( 'pid', 'socket' );
-	foreach my $item (@to_merge) {
-		if ( defined( $opts{$item} ) ) {
-			$self->{$item} = $opts{item};
-		}
+	if ( defined( $opts{config} ) ) {
+		$self->{config} = $opts{config};
 	}
 
-	return $self;
+	my $raw_config;
+	{
+		local $/ = undef;
+		my $fh;
+		if ( !open( $fh, '<', $self->{config} ) ) {
+			$self->{perror}      = 1;
+			$self->{error}       = 1;
+			$self->{errorString} = 'Failed to open the config, "' . $self->{config} . '"... ' . $!;
+			$self->warn;
+		}
+		$raw_config = <$fh>;
+		close($fh);
+	}
 
+	my ( $config, $parse_error ) = from_toml($raw_config);
+	if ( !defined($config) || ref($config) ne 'HASH' ) {
+		$self->{perror} = 1;
+		$self->{error}  = 2;
+		$self->{errorString}
+			= 'Failed to parse the config, "'
+			. $self->{config} . '"... '
+			. ( defined($parse_error) ? $parse_error : 'parsing did not return a hash' );
+		$self->warn;
+	}
+
+	my @settings_to_merge
+		= ( 'run_base_dir', 'cache_base_dir', 'kur_bin', 'timeout', 'ban_time', 'checkpoint', 'socket_group' );
+	foreach my $item (@settings_to_merge) {
+		if ( defined( $config->{$item} ) ) {
+			$self->{$item} = $config->{$item};
+		}
+	}
+	if ( defined( $config->{socket_mode} ) ) {
+		$self->{socket_mode} = oct( '' . $config->{socket_mode} );
+	}
+
+	if ( $self->{ban_time} !~ /^[0-9]+$/ ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 6;
+		$self->{errorString} = 'ban_time, "' . $self->{ban_time} . '", is not a non-negative int of seconds';
+		$self->warn;
+	}
+
+	if ( $self->{checkpoint} !~ /^[0-9]+$/ ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 7;
+		$self->{errorString} = 'checkpoint, "' . $self->{checkpoint} . '", is not a non-negative int of seconds';
+		$self->warn;
+	}
+
+	# default to the default group of the root user... wheel on the BSDs, root on Linux
+	if ( !defined( $self->{socket_group} ) ) {
+		$self->{socket_gid} = ( getpwnam('root') )[3];
+	} else {
+		$self->{socket_gid} = getgrnam( $self->{socket_group} );
+	}
+	if ( !defined( $self->{socket_gid} ) ) {
+		$self->{perror} = 1;
+		$self->{error}  = 5;
+		$self->{errorString}
+			= 'Failed to resolve the socket group'
+			. ( defined( $self->{socket_group} ) ? ', "' . $self->{socket_group} . '",' : ' for the root user' )
+			. ' to a GID';
+		$self->warn;
+	}
+
+	if ( defined( $config->{kur} ) && ref( $config->{kur} ) ne 'HASH' ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 3;
+		$self->{errorString} = 'kur in the config is defined but not a hash';
+		$self->warn;
+	}
+	if ( defined( $config->{kur} ) ) {
+		foreach my $name ( keys( %{ $config->{kur} } ) ) {
+			my $def = $config->{kur}{$name};
+			$self->_check_kur_def( $name, $def, 1 );
+			$self->{kurs}{$name} = {
+				'opts'     => $def,
+				'wheel'    => undef,
+				'pid'      => undef,
+				'restarts' => 0,
+				'delay'    => 1,
+				'enabled'  => 1,
+				'spawned'  => undef,
+			};
+		} ## end foreach my $name ( keys( %{ $config->{kur} } ) )
+	} ## end if ( defined( $config->{kur} ) )
+
+	# create these here rather than in start_server as the PID file gets
+	# written prior to start_server being called
+	foreach my $dir ( $self->{run_base_dir}, $self->{run_base_dir} . '/kur' ) {
+		if ( !-e $dir ) {
+			# don't need to check if this worked failed or not here as the next if statement will handle that
+			eval { mkdir($dir); };
+		}
+		if ( !-d $dir || !-r $dir || !-w $dir ) {
+			$self->{perror}      = 1;
+			$self->{error}       = 4;
+			$self->{errorString} = 'The dir "' . $dir . '" is not a directory or is not read/writable';
+			$self->warn;
+		}
+	} ## end foreach my $dir ( $self->{run_base_dir}, $self->...)
+
+	return $self;
 } ## end sub new
+
+=head2 socket_path
+
+Returns the path of the manager unix socket.
+
+    my $socket_path = $ereshkigal->socket_path;
+
+=cut
+
+sub socket_path {
+	my ($self) = @_;
+
+	return $self->{run_base_dir} . '/socket';
+}
+
+=head2 pid_path
+
+Returns the path of the manager PID file.
+
+    my $pid_path = $ereshkigal->pid_path;
+
+=cut
+
+sub pid_path {
+	my ($self) = @_;
+
+	return $self->{run_base_dir} . '/pid';
+}
+
+=head2 kur_socket_path
+
+Returns the path of the unix socket for the specified kur instance.
+
+    my $kur_socket_path = $ereshkigal->kur_socket_path($name);
+
+=cut
+
+sub kur_socket_path {
+	my ( $self, $name ) = @_;
+
+	return $self->{run_base_dir} . '/kur/' . $name . '.sock';
+}
 
 =head2 start_server
 
-Starts up server, calling $poe_kernel->run.
+Starts the manager. Spawns all configured kur instances, each supervised and
+restarted with a backoff should it die, and brings up the
+L<POE::Component::Server::JSONUnix> server on the manager socket, then calls
+$poe_kernel->run.
 
-This should not be expected to return.
+This should not be expected to return till the manager is told to stop.
+
+After binding, the manager socket is chowned to the configured group and
+chmoded to the configured mode.
+
+The JSON commands handled are as below.
+
+    - status :: Manager status... uptime and kur list with up/down state.
+
+    - status_all :: The above plus each kur's full status block.
+
+    - status_kur :: Full status of the kur instance args.name.
+
+    - banned :: Banned IPs, grouped per kur, along with when each expires.
+
+    - ban :: Ban the IPs args.ips on the kur args.kur, or on all kurs if
+          args.kur is not specified. args.ban_time, if defined, is forwarded
+          to the kurs, overriding their default for how long the bans should
+          last in seconds, with 0 meaning never time out.
+
+    - unban :: If args.all is true, flush every kur. Otherwise check each kur
+          for args.ip and unban it from each kur it is present on.
+
+    - add_kur :: Define and start a new kur instance, args.name and
+          args.opts. Does not rewrite the config file.
+
+    - remove_kur :: Stop the kur instance args.name and deregister it. Does
+          not rewrite the config file.
+
+    - checkpoint :: Force the kur args.kur, or all kurs if args.kur is not
+          specified, to write their ban state CSV out now.
+
+    - stop :: Stop all kur instances and then the manager.
 
 =cut
 
 sub start_server {
 	my ($self) = @_;
 
+	$self->errorblank;
+
 	POE::Session->create(
-		inline_states => {
-			_start     => \&server_started,
-			got_client => \&server_accepted,
-			got_error  => \&server_error,
-		},
-		heap => { socket => $self->{socket}, self => $self },
+		object_states => [
+			$self => {
+				'_start'      => '_poe_start',
+				'spawn_kur'   => '_poe_spawn_kur',
+				'restart_kur' => '_poe_restart_kur',
+				'kur_stdout'  => '_poe_kur_stdout',
+				'kur_stderr'  => '_poe_kur_stderr',
+				'kur_reaped'  => '_poe_kur_reaped',
+				'remove_kur'  => '_poe_remove_kur',
+				'stop_all'    => '_poe_stop_all',
+			},
+		],
 	);
 
-	$poe_kernel->run();
+	my $server = POE::Component::Server::JSONUnix->spawn(
+		'socket_path' => $self->socket_path,
+		'socket_mode' => $self->{socket_mode},
+		'alias'       => 'ereshkigal_server',
+		'on_error'    => sub {
+			my ( $operation, $errnum, $errstr ) = @_;
+			log_drek( 'err', 'socket error during ' . $operation . '... ' . $errstr . ' (' . $errnum . ')' );
+		},
+		'commands' => {
+			'status' => sub {
+				return $self->_cmd_status;
+			},
+			'status_all' => sub {
+				return $self->_cmd_status_all;
+			},
+			'status_kur' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_status_kur($request);
+			},
+			'banned' => sub {
+				return $self->_cmd_banned;
+			},
+			'ban' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_ban($request);
+			},
+			'unban' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_unban($request);
+			},
+			'add_kur' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_add_kur($request);
+			},
+			'remove_kur' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_remove_kur($request);
+			},
+			'checkpoint' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_checkpoint($request);
+			},
+			'stop' => sub {
+				log_drek( 'info', 'stop requested' );
+				$poe_kernel->post( 'ereshkigal_manager', 'stop_all' );
+				# the current session is the JSONUnix server session, so this
+				# fires its shutdown state after the response has had time to flush
+				$poe_kernel->delay( 'shutdown', 1 );
+				return { 'stopping' => 1 };
+			},
+		},
+	);
+	$self->{server} = $server;
+
+	# group ownership gates who may drive the manager
+	if ( !chown( $>, $self->{socket_gid}, $self->socket_path ) ) {
+		log_drek( 'err', 'chown of "' . $self->socket_path . '" to GID ' . $self->{socket_gid} . ' failed... ' . $! );
+	}
+
+	$self->{started} = time;
+
+	log_drek( 'info',
+		'started... socket=' . $self->socket_path . ' kurs=' . join( ',', sort( keys( %{ $self->{kurs} } ) ) ) );
+
+	$poe_kernel->run;
+
+	log_drek( 'info', 'stopped' );
+
+	return;
 } ## end sub start_server
 
-sub server_started {
-	my ( $kernel, $heap ) = @_[ KERNEL, HEAP ];
-	unlink $heap->{socket} if -e $heap->{socket};
-	$heap->{server} = POE::Wheel::SocketFactory->new(
-		SocketDomain => PF_UNIX,
-		BindAddress  => $heap->{socket},
-		SuccessEvent => 'got_client',
-		FailureEvent => 'got_error',
-	);
-} ## end sub server_started
+sub _check_kur_def {
+	my ( $self, $name, $def, $perror ) = @_;
 
-sub server_error {
-	my ( $heap, $syscall, $errno, $error ) = @_[ HEAP, ARG0 .. ARG2 ];
-	$error = "Normal disconnection." unless $errno;
-	warn "Server socket encountered $syscall error $errno: $error\n";
-	delete $heap->{server};
-}
-
-sub server_accepted {
-	my ( $heap, $client_socket ) = @_[ HEAP, ARG0 ];
-	session_spawn( $client_socket, $heap->{self} );
-}
-
-##
-##
-## for when we get a connection
-##
-##
-
-# spawns the session
-sub session_spawn {
-	my $socket = shift;
-	my $self   = shift;
-	POE::Session->create(
-		inline_states => {
-			_start           => \&server_session_start,
-			got_client_input => \&server_session_input,
-			got_client_error => \&server_session_error,
-		},
-		args => [$socket],
-		heap => { self => $self, processing => 0 },
-	);
-} ## end sub session_spawn
-
-# starts the session and setup handlers referenced in session_spawn
-sub server_session_start {
-	my ( $heap, $socket ) = @_[ HEAP, ARG0 ];
-	$heap->{client} = POE::Wheel::ReadWrite->new(
-		Handle     => $socket,
-		InputEvent => 'got_client_input',
-		ErrorEvent => 'got_client_error',
-	);
-	$heap->{client}->put( "Connected to Ereshkiga v. " . $Ereshkigal::VERSION );
-}
-
-# handle line inputs
-sub server_session_input {
-	my ( $heap, $input ) = @_[ HEAP, ARG0 ];
-
-	if ( $input eq 'exit' ) {
-		delete $heap->{client};
-		return;
+	my $error;
+	if ( !defined($name) || $name !~ /^[a-zA-Z0-9\-]+$/ ) {
+		$error = 'The kur name, "' . ( defined($name) ? $name : 'undef' ) . '", does not match /^[a-zA-Z0-9\-]+$/';
+	} elsif ( ref($def) ne 'HASH' ) {
+		$error = 'The def for the kur "' . $name . '" is not a hash';
+	} elsif ( !defined( $def->{backend} ) ) {
+		$error = 'The def for the kur "' . $name . '" lacks a backend';
+	} elsif ( defined( $def->{ban_time} ) && $def->{ban_time} !~ /^[0-9]+$/ ) {
+		$error
+			= 'The ban_time for the kur "'
+			. $name . '", "'
+			. $def->{ban_time}
+			. '", is not a non-negative int of seconds';
+	} elsif ( defined( $def->{checkpoint} ) && $def->{checkpoint} !~ /^[0-9]+$/ ) {
+		$error
+			= 'The checkpoint for the kur "'
+			. $name . '", "'
+			. $def->{checkpoint}
+			. '", is not a non-negative int of seconds';
 	}
 
-	if ( $heap->{processing} ) {
-		my $error = { status => 1, error => 'already processing a request' };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	}
-
-	my $json;
-	eval { $json = decode_json($input); };
-	if ($@) {
-		my $error = { status => 1, error => $@ };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	} elsif ( !defined($json) ) {
-		my $error = { status => 1, error => 'parsing JSON returned undef' };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	}
-
-	if ( !defined( $json->{command} ) ) {
-		my $error = { status => 1, error => '$json->{command} is undef' };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	}
-
-	my $do_action = 0;
-	if ( !defined( $json->{action} ) ) {
-		my $error = { status => 1, error => '$json->{action} is undef' };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	} elsif ( $json->{action} eq 'ban'
-		|| $json->{action} eq 'unban' )
-	{
-		$do_action = 1;
-	} elsif ( $json->{action} eq 'stats' ) {
-		my $stats = { status => 0, stats => $heap->{self}->{stats} };
-		$heap->{client}->put( encode_json($stats) );
-		return;
-	}
-
-} ## end sub server_session_input
-
-sub server_session_error {
-	my ( $heap, $syscall, $errno, $error ) = @_[ HEAP, ARG0 .. ARG2 ];
-	$error = "Normal disconnection." unless $errno;
-	warn "Server session encountered $syscall error $errno: $error\n";
-	delete $heap->{client};
-}
-
-=head2 verbose
-
-
-    - string :: String to use for verbose. If undef or '', it just returns.
-        Default :: undef
-
-    - level :: Syslog level to use.
-        Default :: info
-
-    - print :: The string to stdout.
-        Default :: undef
-
-    - warn :: Use warn to print the message. If print is also true, this
-              takes prescence.
-        Default :: undef
-
-=cut
-
-sub verbose {
-	my ( $blank, %opts ) = @_;
-
-	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
-		return;
-	}
-
-	if ( !defined( $opts{level} ) ) {
-		$opts{level} = 'info';
-	}
-
-	openlog( 'ereshkigal', undef, 'daemon' );
-	syslog( $opts{level}, $opts{string} );
-	closelog();
-
-	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
-		return;
-	}
-
-	if ( $opts{warn} ) {
-		warn( $opts{string} );
-		return;
-	}
-
-	if ( $opts{print} ) {
-		print( $opts{string} );
+	if ( defined($error) ) {
+		if ($perror) {
+			$self->{perror}      = 1;
+			$self->{error}       = 3;
+			$self->{errorString} = $error;
+			$self->warn;
+		}
+		die($error);
 	}
 
 	return;
-} ## end sub verbose
+} ## end sub _check_kur_def
+
+sub _kur_client {
+	my ( $self, $name ) = @_;
+
+	return Ereshkigal::Client->new(
+		'socket'  => $self->kur_socket_path($name),
+		'timeout' => $self->{timeout},
+	);
+}
+
+sub _build_kur_cmd {
+	my ( $self, $name ) = @_;
+
+	my $def = $self->{kurs}{$name}{opts};
+
+	my @cmd = (
+		$self->{kur_bin}, '--foreground',  '--name', $name,
+		'--backend',      $def->{backend}, '--run',  $self->{run_base_dir},
+		'--cache',        $self->{cache_base_dir},
+	);
+
+	foreach my $listy ( 'ports', 'protocols' ) {
+		if ( defined( $def->{$listy} ) ) {
+			my @items = ref( $def->{$listy} ) eq 'ARRAY' ? @{ $def->{$listy} } : ( $def->{$listy} );
+			if (@items) {
+				push( @cmd, '--' . $listy, join( ',', @items ) );
+			}
+		}
+	}
+
+	if ( defined( $def->{prefix} ) ) {
+		push( @cmd, '--prefix', $def->{prefix} );
+	}
+
+	if ( defined( $def->{self_heal} ) ) {
+		push( @cmd, '--self-heal', $def->{self_heal} ? 1 : 0 );
+	}
+
+	# the kur ban_time and checkpoint, defaulting to the manager wide ones
+	push( @cmd, '--ban-time',   defined( $def->{ban_time} )   ? $def->{ban_time}   : $self->{ban_time} );
+	push( @cmd, '--checkpoint', defined( $def->{checkpoint} ) ? $def->{checkpoint} : $self->{checkpoint} );
+
+	if ( ref( $def->{options} ) eq 'HASH' ) {
+		foreach my $key ( sort( keys( %{ $def->{options} } ) ) ) {
+			push( @cmd, '--option', $key . '=' . $def->{options}{$key} );
+		}
+	}
+
+	return @cmd;
+} ## end sub _build_kur_cmd
+
+#
+# POE states for the manager session
+#
+
+sub _poe_start {
+	my ( $self, $kernel ) = @_[ OBJECT, KERNEL ];
+
+	$kernel->alias_set('ereshkigal_manager');
+
+	foreach my $name ( sort( keys( %{ $self->{kurs} } ) ) ) {
+		$kernel->yield( 'spawn_kur', $name );
+	}
+
+	return;
+} ## end sub _poe_start
+
+sub _poe_spawn_kur {
+	my ( $self, $kernel, $name ) = @_[ OBJECT, KERNEL, ARG0 ];
+
+	my $entry = $self->{kurs}{$name};
+	if ( !defined($entry) || !$entry->{enabled} || defined( $entry->{wheel} ) || $self->{shutting_down} ) {
+		return;
+	}
+
+	my @cmd = $self->_build_kur_cmd($name);
+
+	my $wheel = POE::Wheel::Run->new(
+		'Program'     => \@cmd,
+		'StdoutEvent' => 'kur_stdout',
+		'StderrEvent' => 'kur_stderr',
+	);
+
+	$kernel->sig_child( $wheel->PID, 'kur_reaped' );
+
+	$entry->{wheel}   = $wheel;
+	$entry->{pid}     = $wheel->PID;
+	$entry->{spawned} = time;
+
+	$self->{wheel_to_kur}{ $wheel->ID } = $name;
+	$self->{pid_to_kur}{ $wheel->PID }  = $name;
+
+	log_drek( 'info', 'spawned kur "' . $name . '" as PID ' . $wheel->PID . '... ' . join( ' ', @cmd ) );
+
+	return;
+} ## end sub _poe_spawn_kur
+
+sub _poe_restart_kur {
+	my ( $self, $kernel, $name ) = @_[ OBJECT, KERNEL, ARG0 ];
+
+	$kernel->yield( 'spawn_kur', $name );
+
+	return;
+}
+
+sub _poe_kur_stdout {
+	my ( $self, $line, $wheel_id ) = @_[ OBJECT, ARG0, ARG1 ];
+
+	my $name = $self->{wheel_to_kur}{$wheel_id};
+	$name = 'unknown' if !defined($name);
+	log_drek( 'info', 'kur "' . $name . '" stdout... ' . $line );
+
+	return;
+}
+
+sub _poe_kur_stderr {
+	my ( $self, $line, $wheel_id ) = @_[ OBJECT, ARG0, ARG1 ];
+
+	my $name = $self->{wheel_to_kur}{$wheel_id};
+	$name = 'unknown' if !defined($name);
+	log_drek( 'err', 'kur "' . $name . '" stderr... ' . $line );
+
+	return;
+}
+
+sub _poe_kur_reaped {
+	my ( $self, $kernel, $pid, $exit ) = @_[ OBJECT, KERNEL, ARG1, ARG2 ];
+
+	my $name = delete( $self->{pid_to_kur}{$pid} );
+	if ( !defined($name) ) {
+		return;
+	}
+
+	my $entry = $self->{kurs}{$name};
+	if ( defined($entry) && defined( $entry->{wheel} ) ) {
+		delete( $self->{wheel_to_kur}{ $entry->{wheel}->ID } );
+		$entry->{wheel} = undef;
+		$entry->{pid}   = undef;
+	}
+
+	log_drek( 'info', 'kur "' . $name . '" PID ' . $pid . ' exited with ' . ( $exit >> 8 ) );
+
+	if ( $self->{shutting_down} || !defined($entry) || !$entry->{enabled} ) {
+		return;
+	}
+
+	# it ran long enough to be considered to have started fine, so reset the backoff
+	if ( defined( $entry->{spawned} ) && ( time - $entry->{spawned} ) > 60 ) {
+		$entry->{delay} = 1;
+	}
+
+	my $delay = $entry->{delay};
+	$entry->{delay} = $delay * 2 > 60 ? 60 : $delay * 2;
+	$entry->{restarts}++;
+
+	log_drek( 'err', 'kur "' . $name . '" died, restarting in ' . $delay . ' seconds' );
+
+	$kernel->delay_set( 'restart_kur', $delay, $name );
+
+	return;
+} ## end sub _poe_kur_reaped
+
+# the actual removal has to happen in the manager session as destroying a
+# POE::Wheel::Run from within another session leaves it's watchers behind,
+# keeping the manager session alive forever
+sub _poe_remove_kur {
+	my ( $self, $name ) = @_[ OBJECT, ARG0 ];
+
+	my $entry = $self->{kurs}{$name};
+	if ( !defined($entry) ) {
+		return;
+	}
+
+	if ( defined( $entry->{pid} ) ) {
+		eval { $self->_kur_client($name)->call_ok('stop'); };
+		if ($@) {
+			log_drek( 'err', 'stopping kur "' . $name . '" via it\'s socket failed, sending TERM... ' . $@ );
+			if ( defined( $entry->{wheel} ) ) {
+				$entry->{wheel}->kill('TERM');
+			}
+		}
+	}
+
+	delete( $self->{kurs}{$name} );
+
+	log_drek( 'info', 'removed kur "' . $name . '"' );
+
+	return;
+} ## end sub _poe_remove_kur
+
+sub _poe_stop_all {
+	my ( $self, $kernel ) = @_[ OBJECT, KERNEL ];
+
+	$self->{shutting_down} = 1;
+
+	foreach my $name ( sort( keys( %{ $self->{kurs} } ) ) ) {
+		my $entry = $self->{kurs}{$name};
+		if ( !defined( $entry->{pid} ) ) {
+			next;
+		}
+		eval { $self->_kur_client($name)->call_ok('stop'); };
+		if ($@) {
+			log_drek( 'err', 'stopping kur "' . $name . '" via it\'s socket failed, sending TERM... ' . $@ );
+			if ( defined( $entry->{wheel} ) ) {
+				$entry->{wheel}->kill('TERM');
+			}
+		}
+	} ## end foreach my $name ( sort( keys( %{ $self->{kurs}...})))
+
+	$kernel->alarm_remove_all;
+	$kernel->alias_remove('ereshkigal_manager');
+
+	return;
+} ## end sub _poe_stop_all
+
+#
+# JSONUnix command handlers
+#
+
+sub _kur_summary {
+	my ($self) = @_;
+
+	my $kurs = {};
+	foreach my $name ( keys( %{ $self->{kurs} } ) ) {
+		my $entry = $self->{kurs}{$name};
+		$kurs->{$name} = {
+			'running'  => defined( $entry->{pid} ) ? 1 : 0,
+			'pid'      => $entry->{pid},
+			'restarts' => $entry->{restarts},
+			'enabled'  => $entry->{enabled} ? 1 : 0,
+		};
+	}
+
+	return $kurs;
+} ## end sub _kur_summary
+
+sub _cmd_status {
+	my ($self) = @_;
+
+	return {
+		'pid'    => $$,
+		'uptime' => time - $self->{started},
+		'config' => $self->{config},
+		'kurs'   => $self->_kur_summary,
+	};
+} ## end sub _cmd_status
+
+sub _cmd_status_all {
+	my ($self) = @_;
+
+	my $status = $self->_cmd_status;
+
+	foreach my $name ( keys( %{ $status->{kurs} } ) ) {
+		if ( $status->{kurs}{$name}{running} ) {
+			my $kur_status;
+			eval { $kur_status = $self->_kur_client($name)->call_ok('status'); };
+			if ($@) {
+				$status->{kurs}{$name}{error} = $@;
+			} else {
+				$status->{kurs}{$name}{status} = $kur_status;
+			}
+		}
+	} ## end foreach my $name ( keys( %{ $status->{kurs} } ))
+
+	return $status;
+} ## end sub _cmd_status_all
+
+sub _cmd_status_kur {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || !defined( $args->{name} ) ) {
+		die('args.name must be the name of a kur instance');
+	}
+	my $name = $args->{name};
+
+	my $entry = $self->{kurs}{$name};
+	if ( !defined($entry) ) {
+		die( 'No such kur instance, "' . $name . '"' );
+	}
+
+	my $status = {
+		'name'     => $name,
+		'running'  => defined( $entry->{pid} ) ? 1 : 0,
+		'pid'      => $entry->{pid},
+		'restarts' => $entry->{restarts},
+		'enabled'  => $entry->{enabled} ? 1 : 0,
+	};
+
+	if ( $status->{running} ) {
+		$status->{status} = $self->_kur_client($name)->call_ok('status');
+	}
+
+	return $status;
+} ## end sub _cmd_status_kur
+
+sub _cmd_banned {
+	my ($self) = @_;
+
+	my $kurs = {};
+	foreach my $name ( keys( %{ $self->{kurs} } ) ) {
+		if ( !defined( $self->{kurs}{$name}{pid} ) ) {
+			$kurs->{$name} = { 'error' => 'not running' };
+			next;
+		}
+		my $result;
+		eval { $result = $self->_kur_client($name)->call_ok('banned'); };
+		if ($@) {
+			$kurs->{$name} = { 'error' => $@ };
+		} else {
+			$kurs->{$name} = { 'banned' => $result->{banned}, 'expires' => $result->{expires} };
+		}
+	} ## end foreach my $name ( keys( %{ $self->{kurs} } ) )
+
+	return { 'kurs' => $kurs };
+} ## end sub _cmd_banned
+
+sub _cmd_ban {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || ref( $args->{ips} ) ne 'ARRAY' || !@{ $args->{ips} } ) {
+		die('args.ips must be a array of one or more IPs');
+	}
+
+	my @targets;
+	if ( defined( $args->{kur} ) ) {
+		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
+			die( 'No such kur instance, "' . $args->{kur} . '"' );
+		}
+		@targets = ( $args->{kur} );
+	} else {
+		@targets = sort( keys( %{ $self->{kurs} } ) );
+	}
+	if ( !@targets ) {
+		die('No kur instances');
+	}
+
+	my $kur_args = { 'ips' => $args->{ips} };
+	if ( defined( $args->{ban_time} ) ) {
+		$kur_args->{ban_time} = $args->{ban_time};
+	}
+
+	my $kurs = {};
+	foreach my $name (@targets) {
+		my $result;
+		eval { $result = $self->_kur_client($name)->call_ok( 'ban', $kur_args ); };
+		if ($@) {
+			$kurs->{$name} = { 'error' => $@ };
+		} else {
+			$kurs->{$name} = $result;
+		}
+	}
+
+	return { 'kurs' => $kurs };
+} ## end sub _cmd_ban
+
+sub _cmd_unban {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || ( !$args->{all} && !defined( $args->{ip} ) ) ) {
+		die('Either args.all must be true or args.ip must be a IP');
+	}
+
+	my $kurs = {};
+	foreach my $name ( sort( keys( %{ $self->{kurs} } ) ) ) {
+		my $result;
+		if ( $args->{all} ) {
+			eval { $result = $self->_kur_client($name)->call_ok('flush'); };
+		} else {
+			# the kur checks if the IP is present and only unbans it if it is,
+			# reporting back via was_banned
+			eval { $result = $self->_kur_client($name)->call_ok( 'unban', { 'ip' => $args->{ip} } ); };
+		}
+		if ($@) {
+			$kurs->{$name} = { 'error' => $@ };
+		} else {
+			$kurs->{$name} = $result;
+		}
+	} ## end foreach my $name ( sort( keys( %{ $self->{kurs}...})))
+
+	return { 'kurs' => $kurs };
+} ## end sub _cmd_unban
+
+sub _cmd_checkpoint {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+
+	my @targets;
+	if ( defined($args) && defined( $args->{kur} ) ) {
+		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
+			die( 'No such kur instance, "' . $args->{kur} . '"' );
+		}
+		@targets = ( $args->{kur} );
+	} else {
+		@targets = sort( keys( %{ $self->{kurs} } ) );
+	}
+
+	my $kurs = {};
+	foreach my $name (@targets) {
+		my $result;
+		eval { $result = $self->_kur_client($name)->call_ok('checkpoint'); };
+		if ($@) {
+			$kurs->{$name} = { 'error' => $@ };
+		} else {
+			$kurs->{$name} = $result;
+		}
+	}
+
+	return { 'kurs' => $kurs };
+} ## end sub _cmd_checkpoint
+
+sub _cmd_add_kur {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || !defined( $args->{name} ) ) {
+		die('args.name must be the name for the new kur instance');
+	}
+	my $name = $args->{name};
+
+	if ( defined( $self->{kurs}{$name} ) ) {
+		die( 'The kur instance "' . $name . '" already exists' );
+	}
+
+	$self->_check_kur_def( $name, $args->{opts}, 0 );
+
+	$self->{kurs}{$name} = {
+		'opts'     => $args->{opts},
+		'wheel'    => undef,
+		'pid'      => undef,
+		'restarts' => 0,
+		'delay'    => 1,
+		'enabled'  => 1,
+		'spawned'  => undef,
+	};
+
+	$poe_kernel->post( 'ereshkigal_manager', 'spawn_kur', $name );
+
+	log_drek( 'info', 'added kur "' . $name . '"' );
+
+	return { 'added' => $name };
+} ## end sub _cmd_add_kur
+
+sub _cmd_remove_kur {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || !defined( $args->{name} ) ) {
+		die('args.name must be the name of a kur instance');
+	}
+	my $name = $args->{name};
+
+	my $entry = $self->{kurs}{$name};
+	if ( !defined($entry) ) {
+		die( 'No such kur instance, "' . $name . '"' );
+	}
+
+	$entry->{enabled} = 0;
+
+	# the actual stop and removal happens in the manager session given the
+	# wheel has to be destroyed there
+	$poe_kernel->post( 'ereshkigal_manager', 'remove_kur', $name );
+
+	return { 'removed' => $name };
+} ## end sub _cmd_remove_kur
+
+=head1 ERRORS CODES / ERROR FLAGS
+
+Error handling is provided by L<Error::Helper>. All errors
+are considered fatal.
+
+=head2 1, configReadFailed
+
+Failed to read the config file.
+
+=head2 2, configParseFailed
+
+Failed to parse the config file as TOML.
+
+=head2 3, invalidKurDef
+
+A kur def in the config is invalid... bad name, not a hash, or lacking a
+backend.
+
+=head2 4, runBaseDirError
+
+The run base dir or the kur dir under it could not be created or is not
+read/writable.
+
+=head2 5, badSocketGroup
+
+Failed to resolve the socket group to a GID.
+
+=head2 6, invalidBanTime
+
+ban_time is not a non-negative int of seconds.
+
+=head2 7, invalidCheckpoint
+
+checkpoint is not a non-negative int of seconds.
 
 =head1 AUTHOR
 

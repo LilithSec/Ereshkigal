@@ -1,0 +1,49 @@
+#!perl
+
+=head1 NAME
+
+ereshkigal - Firewall ban manager.
+
+=head1 SYNOPSIS
+
+ereshkigal [B<-s> <socket>] <command> [<args>]
+
+ereshkigal start [B<--config>=<config>] [B<-f>|B<--foreground>]
+
+ereshkigal stop
+
+ereshkigal status [B<--all>] [<kur>]
+
+ereshkigal banned
+
+ereshkigal ban [B<--kur>=<kur>] <IP> [<IP> ...]
+
+ereshkigal unban B<--all>|<IP>
+
+ereshkigal add <kur> B<--backend>=<backend> [B<--ports>=<ports>]
+[B<--protocols>=<protocols>] [B<--prefix>=<prefix>] [B<--option> <key>=<value>]
+[B<--self-heal> <0/1>]
+
+ereshkigal remove <kur>
+
+=head1 DESCRIPTION
+
+Manages kur instances, each of which is a single
+L<Net::Firewall::BlockerHelper> instance served up over a unix socket.
+
+C<ereshkigal start> reads the config, by default
+C</usr/local/etc/ereshkigal.toml>, daemonizes, and spawns and supervises a
+kur process for each hash under C<kur> in the config. The other commands talk
+to the running manager over it's unix socket, by default
+C</var/run/ereshkigal/socket>.
+
+See L<Ereshkigal> for the config file format and
+C<ereshkigal help <command>> for the various commands.
+
+=cut
+
+use strict;
+use warnings;
+use Ereshkigal::App;
+
+Ereshkigal::App->run;

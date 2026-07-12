@@ -2,12 +2,14 @@
 
 =head1 NAME
 
-kur - Firewall ban manager for Ereshkiga.
+kur - Firewall ban manager worker for Ereshkigal.
 
 =head1 SYNOPSIS
 
-kur [B<--ports>=<ports>] [B<--protocols>=<protocols>] [B<--cache>=<cache dir>]
-[B<--run>=<run dir>] B<--name>=<name> B<--backend>=<backend>
+kur B<--name>=<name> B<--backend>=<backend> [B<--ports>=<ports>]
+[B<--protocols>=<protocols>] [B<--prefix>=<prefix>] [B<--option> <key>=<value>]
+[B<--self-heal> <0/1>] [B<--cache>=<cache dir>] [B<--run>=<run dir>]
+[B<-f>|B<--foreground>]
 
 kur -v|--version
 
@@ -15,51 +17,111 @@ kur -h|--help
 
 =head1 DESCRIPTION
 
+Runs a single L<Net::Firewall::BlockerHelper> instance via L<Ereshkigal::Kur>,
+serving it up on a unix socket speaking the newline delimited JSON protocol of
+L<POE::Component::Server::JSONUnix>.
+
+The socket and PID file go under C<$run_dir/kur/>, named for the instance...
+C<< <name>.sock >> and C<< <name>.pid >>.
+
+Normally spawned and supervised by C<ereshkigal>, but usable standalone.
+
 =head1 FLAGS
 
-==head2 -v|--version
+=head2 -v|--version
 
 Show version info.
 
-==head2 -h|--help
+=head2 -h|--help
 
 Show help info.
 
-==head2 --ports=<ports>
+=head2 --name=<name>
 
-A comma seperated list of ports to block. Must be a positive integer greater than zero or
-a name resolvable via getservbyname.
-
-If not specified, all are blocked.
-
-==head2 --protocols=<protocols>
-
-A comma seperated list of ports to block. This is checked against /etc/protocols via the
-function getprotobyname.
-
-If not specified, it will block all.
-
-==head2 --name=<name>
-
-The name to use for this instance.
+The name to use for this instance. Must match /^[a-zA-Z0-9\-]+$/.
 
 This must be specified.
 
-==head2 --backend=<backend>
+=head2 --backend=<backend>
 
-The backend to use.
+The Net::Firewall::BlockerHelper backend to use.
+
+This must be specified.
+
+=head2 --ports=<ports>
+
+A comma seperated list of ports to block. Must be a positive integer greater
+than zero or a name resolvable via getservbyname.
+
+If not specified, all are blocked.
+
+=head2 --protocols=<protocols>
+
+A comma seperated list of protocols to block. This is checked against
+/etc/protocols via the function getprotobyname.
+
+If not specified, it will block all.
+
+=head2 --prefix=<prefix>
+
+The prefix to use. Must match /^[a-zA-Z0-9]+$/.
+
+Default is kur.
+
+=head2 --option <key>=<value>
+
+A backend specific option. May be specified multiple times.
+
+=head2 --self-heal <0/1>
+
+If the firewall setup should be verified and re-inited if needed before each
+ban or unban.
+
+Default is 1.
+
+=head2 --ban-time <seconds>
+
+How long bans should last in seconds. 0 means bans never time out. May be
+overridden per ban request.
+
+Default is 600.
+
+=head2 --checkpoint <seconds>
+
+Seconds between periodic rewrites of the ban state CSV under the cache dir.
+0 disables the periodic rewrite... ban/unban, stop, and on demand
+checkpoints still happen.
+
+Default is 60.
+
+=head2 --run=<run dir>
+
+The base dir for run files.
+
+Default is /var/run/ereshkigal
+
+=head2 --cache=<cache dir>
+
+The base dir for cache files.
+
+Default is /var/cache/ereshkigal
+
+=head2 -f|--foreground
+
+Do not daemonize. This is used by ereshkigal when spawning kur instances so
+they can be supervised.
 
 =cut
 
 use strict;
 use warnings;
-use Getopt::Long qw(:config pass_through);
+use Getopt::Long;
 use Pod::Usage;
 use Net::Server::Daemonize qw(daemonize);
 use Ereshkigal::Kur;
 
 sub main::VERSION_MESSAGE {
-	print 'sneck v. ' . $Ereshkigal::Kur::VERSION . "\n";
+	print 'kur v. ' . $Ereshkigal::Kur::VERSION . "\n";
 	exit 255;
 }
 
@@ -68,26 +130,35 @@ sub main::HELP_MESSAGE {
 }
 
 my $name;
-my $prefix;
 my $backend;
-my $cache_dir = '/var/cache/ereshkigal';
-my $run_dir   = '/var/run/ereshkigal/';
+my $prefix;
 my $ports;
 my $protocols;
+my @options;
+my $self_heal;
+my $ban_time;
+my $checkpoint;
+my $cache_dir = '/var/cache/ereshkigal';
+my $run_dir   = '/var/run/ereshkigal';
+my $foreground;
 my $version;
 my $help;
 GetOptions(
-	'version'     => \$version,
-	'v'           => \$version,
-	'help'        => \$help,
-	'h'           => \$help,
-	'ports=s'     => \$ports,
-	'protocols=s' => \$protocols,
-	'cache=s'     => \$cache_dir,
-	'run=s'       => \$run_dir,
-	'name=s'      => \$name,
-	'backend=s'   => \$backend,
-);
+	'version|v'    => \$version,
+	'help|h'       => \$help,
+	'name=s'       => \$name,
+	'backend=s'    => \$backend,
+	'ports=s'      => \$ports,
+	'protocols=s'  => \$protocols,
+	'prefix=s'     => \$prefix,
+	'option=s'     => \@options,
+	'self-heal=i'  => \$self_heal,
+	'ban-time=s'   => \$ban_time,
+	'checkpoint=s' => \$checkpoint,
+	'cache=s'      => \$cache_dir,
+	'run=s'        => \$run_dir,
+	'foreground|f' => \$foreground,
+) || pod2usage( -exitval => 255, -verbose => 1, -output => \*STDERR, );
 
 # print version or help if requested
 if ($help) {
@@ -99,13 +170,38 @@ if ($version) {
 	exit 42;
 }
 
+my %backend_options;
+foreach my $key_value (@options) {
+	my ( $key, $value ) = split( /=/, $key_value, 2 );
+	if ( !defined($value) ) {
+		die( '--option "' . $key_value . '" is not in the form key=value' );
+	}
+	$backend_options{$key} = $value;
+}
+
 my $kur = Ereshkigal::Kur->new(
-	'protocols'      => \$protocols,
-	'ports'          => \$ports,
-	'run_base_dir'   => \$run_dir,
-	'cache_base_dir' => \$cache_dir,
-	'backend'        => \$backend,
-	'name'           => \$name,
+	'name'      => $name,
+	'backend'   => $backend,
+	'ports'     => defined($ports)     ? [ split( /\s*,\s*/, $ports ) ]     : [],
+	'protocols' => defined($protocols) ? [ split( /\s*,\s*/, $protocols ) ] : [],
+	defined($prefix)     ? ( 'prefix'     => $prefix )           : (),
+	%backend_options     ? ( 'options'    => \%backend_options ) : (),
+	defined($self_heal)  ? ( 'self_heal'  => $self_heal )        : (),
+	defined($ban_time)   ? ( 'ban_time'   => $ban_time )         : (),
+	defined($checkpoint) ? ( 'checkpoint' => $checkpoint )       : (),
+	'run_base_dir'   => $run_dir,
+	'cache_base_dir' => $cache_dir,
 );
 
+if ($foreground) {
+	# supervised by ereshkigal or ran by hand, so just write the PID file ourselves
+	open( my $pid_fh, '>', $kur->pid_path ) || die( 'Failed to open the PID file "' . $kur->pid_path . '"... ' . $! );
+	print $pid_fh $$;
+	close($pid_fh);
+} else {
+	daemonize( $>, ( split( /\s+/, $) ) )[0], $kur->pid_path );
+}
+
 $kur->start_server;
+
+unlink( $kur->pid_path ) if -e $kur->pid_path;

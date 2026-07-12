@@ -4,14 +4,10 @@ use 5.006;
 use strict;
 use warnings;
 use base 'Error::Helper';
-use JSON qw( decode_json encode_json );
 use POE;
-use POE::Wheel::SocketFactory    ();
-use POE::Wheel::Run              ();
-use POE::Wheel::ReadWrite        ();
-use Socket                       qw(PF_UNIX);
-use Sys::Syslog                  qw( closelog openlog syslog );
-use Net::Firewall::BlockerHelper ();
+use POE::Component::Server::JSONUnix ();
+use Net::Firewall::BlockerHelper     ();
+use Ereshkigal::LogDrek              qw( log_drek );
 
 =head1 NAME
 
@@ -30,20 +26,63 @@ our $VERSION = '0.0.1';
     use Ereshkigal::Kur;
 
     my $kur = Ereshkigal::Kur->new(
-                  'backend_options' => $backend_options,
-                  'name' => $name,
+                  'name'      => 'sshd',
+                  'backend'   => 'ipfw',
+                  'ports'     => ['22'],
+                  'protocols' => ['tcp'],
               );
+
+    $kur->start_server;
+
+Each Kur instance wraps a single L<Net::Firewall::BlockerHelper> instance and
+serves it up via a L<POE::Component::Server::JSONUnix> server listening on a
+unix socket under C<$run_base_dir/kur/>.
 
 =head1 METHODS
 
 =head2 new
 
-Initiates the object.
+Initiates the object. All errors are considered fatal, meaning if new fails
+it will die.
 
-    - backend_options :: Hashref to pass to Net::Firewall::BlockerHelper. 'name'
-        will will be over written with what ever is passed by name.
+    - name :: Name of this specific instance. Must match /^[a-zA-Z0-9\-]+$/.
+        Default :: undef
 
-    - name :: The name value to pass to Net::Firewall::BlockerHelper.
+    - backend :: The backend to use for Net::Firewall::BlockerHelper.
+        Default :: undef
+
+    - ports :: A array of ports to block, passed to Net::Firewall::BlockerHelper.
+        Default :: []
+
+    - protocols :: A array of protocols to block, passed to Net::Firewall::BlockerHelper.
+        Default :: []
+
+    - prefix :: Prefix to use, passed to Net::Firewall::BlockerHelper.
+        Default :: kur
+
+    - options :: Backend specific options hash, passed to Net::Firewall::BlockerHelper.
+        Default :: {}
+
+    - self_heal :: Self heal setting, passed to Net::Firewall::BlockerHelper.
+        Default :: 1
+
+    - ban_time :: How long bans should last in seconds. 0 means bans never
+          time out. May be overridden per ban request.
+        Default :: 600
+
+    - checkpoint :: Seconds between periodic rewrites of the ban state CSV.
+          0 disables the periodic rewrite... ban/unban, stop, and on demand
+          checkpoints still happen.
+        Default :: 60
+
+    - run_base_dir :: Base dir for run files. The socket and PID for this
+          instance live under C<$run_base_dir/kur/> named for this instance.
+        Default :: /var/run/ereshkigal
+
+    - cache_base_dir :: Base dir for cache files. The ban state for this
+          instance is persisted as a CSV at
+          C<$cache_base_dir/kur.$name.csv>, so timed bans survive a restart.
+        Default :: /var/cache/ereshkigal
 
 =cut
 
@@ -65,15 +104,61 @@ sub new {
 				4 => 'nonRWrunBaseDir',
 				5 => 'NEcacheBaseDir',
 				6 => 'nonRWcacheBaseDir',
+				7 => 'invalidBanTime',
+				8 => 'invalidCheckpoint',
 			},
 			fatal_flags      => {},
 			perror_not_fatal => 0,
 		},
-		run_base_dir   => '/var/run/ereshkigal',
-		cache_base_dir => '/var/cache/ereshkigal',
-		backend_obj    => undef,
+		name            => undef,
+		backend         => undef,
+		ports           => [],
+		protocols       => [],
+		prefix          => undef,
+		options         => undef,
+		self_heal       => undef,
+		ban_time        => 600,
+		checkpoint      => 60,
+		run_base_dir    => '/var/run/ereshkigal',
+		cache_base_dir  => '/var/cache/ereshkigal',
+		backend_obj     => undef,
+		server          => undef,
+		started         => undef,
+		stopping        => 0,
+		bans            => {},
+		last_checkpoint => 0,
+		stats           => {
+			bans    => 0,
+			unbans  => 0,
+			errors  => 0,
+			expired => 0,
+		},
 	};
 	bless $self;
+
+	my @to_merge = (
+		'name',      'backend',  'ports',      'protocols',    'prefix', 'options',
+		'self_heal', 'ban_time', 'checkpoint', 'run_base_dir', 'cache_base_dir'
+	);
+	foreach my $item (@to_merge) {
+		if ( defined( $opts{$item} ) ) {
+			$self->{$item} = $opts{$item};
+		}
+	}
+
+	if ( $self->{ban_time} !~ /^[0-9]+$/ ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 7;
+		$self->{errorString} = 'ban_time, "' . $self->{ban_time} . '", is not a non-negative int of seconds';
+		$self->warn;
+	}
+
+	if ( $self->{checkpoint} !~ /^[0-9]+$/ ) {
+		$self->{perror}      = 1;
+		$self->{error}       = 8;
+		$self->{errorString} = 'checkpoint, "' . $self->{checkpoint} . '", is not a non-negative int of seconds';
+		$self->warn;
+	}
 
 	if ( !defined( $self->{name} ) ) {
 		$self->{perror}      = 1;
@@ -87,23 +172,24 @@ sub new {
 		$self->warn;
 	}
 
-	if ( !-e $self->{run_base_dir} ) {
-		# don't need to check if this worked failed or not here as the next if statement will handle that
-		eval { mkdir( $self->{run_base_dir} ); };
-	}
-	if ( !-d $self->{run_base_dir} ) {
-		$self->{perror}      = 1;
-		$self->{error}       = 1;
-		$self->{errorString} = 'run_base_dir,"' . $self->{run_base_dir} . '", does not exist or is not a directory';
-		$self->warn;
-	}
-	if ( !-r $self->{run_base_dir} || !-w $self->{run_base_dir} ) {
-		$self->{perror} = 1;
-		$self->{error}  = 4;
-		$self->{errorString}
-			= 'run_base_dir,"' . $self->{run_base_dir} . '", is either not writable or readable by the current user';
-		$self->warn;
-	}
+	foreach my $dir ( $self->{run_base_dir}, $self->{run_base_dir} . '/kur' ) {
+		if ( !-e $dir ) {
+			# don't need to check if this worked failed or not here as the next if statement will handle that
+			eval { mkdir($dir); };
+		}
+		if ( !-d $dir ) {
+			$self->{perror}      = 1;
+			$self->{error}       = 1;
+			$self->{errorString} = 'run dir,"' . $dir . '", does not exist or is not a directory';
+			$self->warn;
+		}
+		if ( !-r $dir || !-w $dir ) {
+			$self->{perror}      = 1;
+			$self->{error}       = 4;
+			$self->{errorString} = 'run dir,"' . $dir . '", is either not writable or readable by the current user';
+			$self->warn;
+		}
+	} ## end foreach my $dir ( $self->{run_base_dir}, $self->...)
 
 	if ( !-e $self->{cache_base_dir} ) {
 		# don't need to check if this worked failed or not here as the next if statement will handle that
@@ -117,7 +203,7 @@ sub new {
 	}
 	if ( !-r $self->{cache_base_dir} || !-w $self->{cache_base_dir} ) {
 		$self->{perror} = 1;
-		$self->{error}  = 7;
+		$self->{error}  = 6;
 		$self->{errorString}
 			= 'cache_base_dir,"'
 			. $self->{cache_base_dir}
@@ -131,6 +217,9 @@ sub new {
 			ports     => $self->{ports},
 			protocols => $self->{protocols},
 			name      => $self->{name},
+			defined( $self->{prefix} )    ? ( prefix    => $self->{prefix} )    : (),
+			defined( $self->{options} )   ? ( options   => $self->{options} )   : (),
+			defined( $self->{self_heal} ) ? ( self_heal => $self->{self_heal} ) : (),
 		);
 		$self->{backend_obj}->init_backend;
 	};
@@ -141,200 +230,530 @@ sub new {
 		$self->warn;
 	}
 
+	# bring any persisted ban state back, dropping and unbanning whatever
+	# expired while not running
+	$self->_load_bans;
+
 	return $self;
 } ## end sub new
 
+=head2 socket_path
+
+Returns the path of the unix socket for this instance.
+
+    my $socket_path = $kur->socket_path;
+
+=cut
+
+sub socket_path {
+	my ($self) = @_;
+
+	return $self->{run_base_dir} . '/kur/' . $self->{name} . '.sock';
+}
+
+=head2 pid_path
+
+Returns the path of the PID file for this instance.
+
+    my $pid_path = $kur->pid_path;
+
+=cut
+
+sub pid_path {
+	my ($self) = @_;
+
+	return $self->{run_base_dir} . '/kur/' . $self->{name} . '.pid';
+}
+
+=head2 state_path
+
+Returns the path of the ban state CSV for this instance.
+
+    my $state_path = $kur->state_path;
+
+=cut
+
+sub state_path {
+	my ($self) = @_;
+
+	return $self->{cache_base_dir} . '/kur.' . $self->{name} . '.csv';
+}
+
 =head2 start_server
 
-Starts up server, calling $poe_kernel->run.
+Starts up the L<POE::Component::Server::JSONUnix> server for this instance,
+calling $poe_kernel->run.
 
-This should not be expected to return.
+This should not be expected to return till the server is told to stop.
+
+The socket is chmoded to 0600 given only the manager, running as the same
+user, talks to it.
+
+A ban sweeper is also started, which checks once a second for timed bans
+that have expired and unbans them, and handles the periodic checkpointing
+of the ban state CSV.
+
+The JSON commands handled are as below.
+
+    - ban :: Ban the IPs specified via the array args.ips. args.ban_time,
+          if defined, overrides the instance default for how long the bans
+          should last in seconds, with 0 meaning never time out. Banning a
+          already banned IP just refreshes it's timer.
+
+    - unban :: Check if the IP, args.ip, is banned and if so unban it.
+
+    - banned :: Return a list of banned IPs along with a expires map of
+          when each times out, 0 meaning never.
+
+    - status :: Return instance status info and stats, including ban_time,
+          counts of timed and permanent bans, and the next expiry.
+
+    - flush :: Unban all currently banned IPs.
+
+    - re_init :: Re-init the backend, re-banning everything.
+
+    - checkpoint :: Write the ban state CSV out now.
+
+    - stop :: Checkpoint, teardown the backend, and exit.
 
 =cut
 
 sub start_server {
-	my ( $self, %opts ) = @_;
+	my ($self) = @_;
 
 	$self->errorblank;
 
-	if ( defined( $opts{instance} ) ) {
-		$self->{error}       = 2;
-		$self->{errorString} = 'No value for instance specified';
-		$self->warn;
-		return;
-	}
+	my $ident = 'kur-' . $self->{name};
 
-	POE::Session->create(
-		inline_states => {
-			_start     => \&server_started,
-			got_client => \&server_accepted,
-			got_error  => \&server_error,
+	my $server = POE::Component::Server::JSONUnix->spawn(
+		'socket_path' => $self->socket_path,
+		'socket_mode' => 0600,
+		'alias'       => $ident,
+		'on_error'    => sub {
+			my ( $operation, $errnum, $errstr ) = @_;
+			log_drek( 'err', 'socket error during ' . $operation . '... ' . $errstr . ' (' . $errnum . ')',
+				undef, $ident );
 		},
-		heap => { socket => $self->{socket}, self => $self, instance => $opts{instance}, },
+		'commands' => {
+			'ban' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_ban($request);
+			},
+			'unban' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_unban($request);
+			},
+			'banned' => sub {
+				return $self->_cmd_banned;
+			},
+			'status' => sub {
+				return $self->_cmd_status;
+			},
+			'flush' => sub {
+				return $self->_cmd_flush;
+			},
+			're_init' => sub {
+				return $self->_cmd_re_init;
+			},
+			'checkpoint' => sub {
+				return $self->_cmd_checkpoint;
+			},
+			'stop' => sub {
+				my ( undef, undef, $ctx ) = @_;
+				return $self->_cmd_stop($ctx);
+			},
+		},
 	);
 
-	$poe_kernel->run();
+	$self->{server}  = $server;
+	$self->{started} = time;
+
+	# the ban sweeper... a self-rescheduling one second alarm that expires
+	# timed bans and handles the periodic checkpoint... it stops
+	# rescheduling once stop has been requested so the session ends and the
+	# kernel can exit
+	POE::Session->create(
+		'inline_states' => {
+			'_start' => sub {
+				$_[KERNEL]->delay( 'sweep', 1 );
+			},
+			'sweep' => sub {
+				if ( $self->{stopping} ) {
+					return;
+				}
+				$self->_tick;
+				$_[KERNEL]->delay( 'sweep', 1 );
+			},
+		},
+	);
+
+	log_drek( 'info', 'started... socket=' . $self->socket_path . ' backend=' . $self->{backend}, undef, $ident );
+
+	$poe_kernel->run;
+
+	log_drek( 'info', 'stopped', undef, $ident );
+
+	return;
 } ## end sub start_server
 
-sub server_started {
-	my ( $kernel, $heap ) = @_[ KERNEL, HEAP ];
-	unlink $heap->{socket} if -e $heap->{socket};
-	$heap->{server} = POE::Wheel::SocketFactory->new(
-		'SocketDomain' => PF_UNIX,
-		'BindAddress'  => $heap->{socket},
-		'SuccessEvent' => 'got_client',
-		'FailureEvent' => 'got_error',
-	);
-} ## end sub server_started
+# calls the specified method on the backend object, dieing if it either dies
+# or is left with the error set, as depending on the fatality settings in play
+# Error::Helper may just warn instead of dieing
+sub _backend_do {
+	my ( $self, $method, %args ) = @_;
 
-sub server_error {
-	my ( $heap, $syscall, $errno, $error ) = @_[ HEAP, ARG0 .. ARG2 ];
-	$error = "Normal disconnection." unless $errno;
-	warn "Server socket encountered $syscall error $errno: $error\n";
-	delete $heap->{server};
-}
-
-sub server_accepted {
-	my ( $heap, $client_socket ) = @_[ HEAP, ARG0 ];
-	session_spawn( $client_socket, $heap->{self} );
-}
-
-##
-##
-## for when we get a connection
-##
-##
-
-# spawns the session
-sub session_spawn {
-	my $socket = shift;
-	my $self   = shift;
-	POE::Session->create(
-		inline_states => {
-			_start           => \&server_session_start,
-			got_client_input => \&server_session_input,
-			got_client_error => \&server_session_error,
-		},
-		args => [$socket],
-		heap => { self => $self, processing => 0 },
-	);
-} ## end sub session_spawn
-
-# starts the session and setup handlers referenced in session_spawn
-sub server_session_start {
-	my ( $heap, $socket ) = @_[ HEAP, ARG0 ];
-	$heap->{client} = POE::Wheel::ReadWrite->new(
-		Handle     => $socket,
-		InputEvent => 'got_client_input',
-		ErrorEvent => 'got_client_error',
-	);
-}
-
-# handle line inputs
-sub server_session_input {
-	my ( $heap, $input ) = @_[ HEAP, ARG0 ];
-
-	if ( $input eq 'exit' ) {
-		delete $heap->{client};
-		return;
-	}
-
-	if ( $heap->{processing} ) {
-		my $error = { status => 1, error => 'already processing a request' };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	}
-
-	my $json;
-	eval { $json = decode_json($input); };
+	my @results;
+	eval { @results = $self->{backend_obj}->$method(%args); };
 	if ($@) {
-		my $error = { status => 1, error => $@ };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	} elsif ( !defined($json) ) {
-		my $error = { status => 1, error => 'parsing JSON returned undef' };
-		$heap->{client}->put( encode_json($error) );
-		return;
+		die($@);
+	}
+	if ( $self->{backend_obj}->error ) {
+		die( $self->{backend_obj}->errorString );
 	}
 
-	if ( !defined( $json->{command} ) ) {
-		my $error = { status => 1, error => '$json->{command} is undef' };
-		$heap->{client}->put( encode_json($error) );
-		return;
+	return @results;
+} ## end sub _backend_do
+
+sub _cmd_ban {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || ref( $args->{ips} ) ne 'ARRAY' || !@{ $args->{ips} } ) {
+		die('args.ips must be a array of one or more IPs');
 	}
 
-	my $do_action = 0;
-	if ( !defined( $json->{action} ) ) {
-		my $error = { status => 1, error => '$json->{action} is undef' };
-		$heap->{client}->put( encode_json($error) );
-		return;
-	} elsif ( $json->{action} eq 'ban'
-		|| $json->{action} eq 'unban' )
-	{
-		$do_action = 1;
-	} elsif ( $json->{action} eq 'stats' ) {
-		my $stats = { status => 0, stats => $heap->{self}->{stats} };
-		$heap->{client}->put( encode_json($stats) );
-		return;
+	my $ban_time = $self->{ban_time};
+	if ( defined( $args->{ban_time} ) ) {
+		if ( ref( $args->{ban_time} ) ne '' || $args->{ban_time} !~ /^[0-9]+$/ ) {
+			die('args.ban_time must be a non-negative int of seconds');
+		}
+		$ban_time = $args->{ban_time};
 	}
 
-} ## end sub server_session_input
+	my $ident = 'kur-' . $self->{name};
 
-sub server_session_error {
-	my ( $heap, $syscall, $errno, $error ) = @_[ HEAP, ARG0 .. ARG2 ];
-	$error = "Normal disconnection." unless $errno;
-	warn "Server session encountered $syscall error $errno: $error\n";
-	delete $heap->{client};
+	my $results = {};
+	foreach my $ip ( @{ $args->{ips} } ) {
+		my $expires = $ban_time ? time + $ban_time : 0;
+
+		# already banned, so just refresh it's timer
+		if ( defined( $self->{bans}{$ip} ) ) {
+			$self->{bans}{$ip}{expires} = $expires;
+			$results->{$ip} = { 'status' => 'ok', 'refreshed' => 1 };
+			log_drek( 'info', 'refreshed ban of ' . $ip . ' expires=' . $expires, undef, $ident );
+			next;
+		}
+
+		eval { $self->_backend_do( 'ban', ban => $ip ); };
+		if ($@) {
+			$self->{stats}{errors}++;
+			$results->{$ip} = { 'status' => 'error', 'error' => $@ };
+			log_drek( 'err', 'ban of "' . $ip . '" failed... ' . $@, undef, $ident );
+		} else {
+			$self->{stats}{bans}++;
+			$self->{bans}{$ip} = { 'banned_at' => time, 'expires' => $expires };
+			$results->{$ip} = { 'status' => 'ok' };
+			log_drek( 'info', 'banned ' . $ip . ' expires=' . $expires, undef, $ident );
+		}
+	} ## end foreach my $ip ( @{ $args->{ips} } )
+
+	$self->_checkpoint;
+
+	return { 'ips' => $results };
+} ## end sub _cmd_ban
+
+sub _cmd_unban {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || !defined( $args->{ip} ) || ref( $args->{ip} ) ne '' ) {
+		die('args.ip must be a IP');
+	}
+	my $ip = $args->{ip};
+
+	# check if it is actually present before trying to unban it
+	my @banned  = $self->_backend_do('list');
+	my $present = grep { $_ eq $ip } @banned;
+	if ( !$present ) {
+		# make sure no stale timer is left behind either way
+		if ( defined( delete( $self->{bans}{$ip} ) ) ) {
+			$self->_checkpoint;
+		}
+		return { 'ip' => $ip, 'was_banned' => 0 };
+	}
+
+	$self->_backend_do( 'unban', ban => $ip );
+	$self->{stats}{unbans}++;
+	delete( $self->{bans}{$ip} );
+	$self->_checkpoint;
+	log_drek( 'info', 'unbanned ' . $ip, undef, 'kur-' . $self->{name} );
+
+	return { 'ip' => $ip, 'was_banned' => 1 };
+} ## end sub _cmd_unban
+
+sub _cmd_banned {
+	my ($self) = @_;
+
+	my @banned = $self->_backend_do('list');
+
+	my $expires = {};
+	foreach my $ip ( keys( %{ $self->{bans} } ) ) {
+		$expires->{$ip} = $self->{bans}{$ip}{expires};
+	}
+
+	return { 'banned' => \@banned, 'expires' => $expires };
+} ## end sub _cmd_banned
+
+sub _cmd_status {
+	my ($self) = @_;
+
+	my @banned = $self->_backend_do('list');
+
+	my $timed       = 0;
+	my $permanent   = 0;
+	my $next_expiry = 0;
+	foreach my $ip ( keys( %{ $self->{bans} } ) ) {
+		if ( $self->{bans}{$ip}{expires} ) {
+			$timed++;
+			if ( !$next_expiry || $self->{bans}{$ip}{expires} < $next_expiry ) {
+				$next_expiry = $self->{bans}{$ip}{expires};
+			}
+		} else {
+			$permanent++;
+		}
+	} ## end foreach my $ip ( keys( %{ $self->{bans} } ) )
+
+	return {
+		'name'            => $self->{name},
+		'backend'         => $self->{backend},
+		'ports'           => $self->{ports},
+		'protocols'       => $self->{protocols},
+		'prefix'          => $self->{prefix},
+		'ban_time'        => $self->{ban_time},
+		'checkpoint'      => $self->{checkpoint},
+		'last_checkpoint' => $self->{last_checkpoint},
+		'pid'             => $$,
+		'uptime'          => time - $self->{started},
+		'stats'           => $self->{stats},
+		'banned_count'    => scalar(@banned),
+		'bans_timed'      => $timed,
+		'bans_permanent'  => $permanent,
+		'next_expiry'     => $next_expiry,
+	};
+} ## end sub _cmd_status
+
+sub _cmd_flush {
+	my ($self) = @_;
+
+	$self->_backend_do('flush');
+	$self->{bans} = {};
+	$self->_checkpoint;
+	log_drek( 'info', 'flushed all bans', undef, 'kur-' . $self->{name} );
+
+	return { 'flushed' => 1 };
+} ## end sub _cmd_flush
+
+sub _cmd_re_init {
+	my ($self) = @_;
+
+	$self->_backend_do('re_init');
+	log_drek( 'info', 're_init done', undef, 'kur-' . $self->{name} );
+
+	return { 're_init' => 1 };
 }
 
-=head2 verbose
+sub _cmd_checkpoint {
+	my ($self) = @_;
 
+	$self->_checkpoint;
+	log_drek( 'info', 'checkpointed', undef, 'kur-' . $self->{name} );
 
-    - string :: String to use for verbose. If undef or '', it just returns.
-        Default :: undef
+	return { 'checkpointed' => 1, 'bans' => scalar( keys( %{ $self->{bans} } ) ) };
+}
 
-    - level :: Syslog level to use.
-        Default :: info
+sub _cmd_stop {
+	my ( $self, $ctx ) = @_;
 
-    - print :: The string to stdout.
-        Default :: undef
+	my $ident = 'kur-' . $self->{name};
 
-    - warn :: Use warn to print the message. If print is also true, this
-              takes prescence.
-        Default :: undef
+	log_drek( 'info', 'stop requested, tearing the backend down', undef, $ident );
 
-=cut
+	# keeps the ban sweeper from rescheduling so it's session can end
+	$self->{stopping} = 1;
 
-sub verbose {
-	my ( $blank, %opts ) = @_;
+	# leave a fresh state CSV behind
+	$self->_checkpoint;
 
-	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
-		return;
+	eval { $self->_backend_do('teardown'); };
+	my $teardown_error = $@;
+	if ($teardown_error) {
+		log_drek( 'err', 'teardown failed... ' . $teardown_error, undef, $ident );
 	}
 
-	if ( !defined( $opts{level} ) ) {
-		$opts{level} = 'info';
-	}
+	$ctx->respond_result( { 'stopping' => 1, $teardown_error ? ( 'teardown_error' => $teardown_error ) : () } );
+	$ctx->close;
 
-	openlog( 'ereshkigal', undef, 'daemon' );
-	syslog( $opts{level}, $opts{string} );
-	closelog();
+	# the current session is the JSONUnix server session, so this fires its
+	# shutdown state after the response has had time to flush
+	$poe_kernel->delay( 'shutdown', 1 );
 
-	if ( !defined( $opts{string} ) || $opts{string} eq '' ) {
-		return;
-	}
+	return undef;
+} ## end sub _cmd_stop
 
-	if ( $opts{warn} ) {
-		warn( $opts{string} );
-		return;
-	}
+# ran once a second by the sweeper session... expires timed bans and
+# handles the periodic checkpoint
+sub _tick {
+	my ($self) = @_;
 
-	if ( $opts{print} ) {
-		print( $opts{string} );
+	$self->_sweep_bans;
+
+	if ( $self->{checkpoint} && ( time - $self->{last_checkpoint} ) >= $self->{checkpoint} ) {
+		$self->_checkpoint;
 	}
 
 	return;
-} ## end sub verbose
+} ## end sub _tick
+
+# unbans timed bans that have expired... ran once a second via the sweeper
+# session started by start_server
+sub _sweep_bans {
+	my ($self) = @_;
+
+	my $ident   = 'kur-' . $self->{name};
+	my $now     = time;
+	my $changed = 0;
+
+	foreach my $ip ( keys( %{ $self->{bans} } ) ) {
+		my $entry = $self->{bans}{$ip};
+		if ( !$entry->{expires} || $entry->{expires} > $now ) {
+			next;
+		}
+
+		eval { $self->_backend_do( 'unban', ban => $ip ); };
+		if ($@) {
+			$self->{stats}{errors}++;
+			log_drek( 'err', 'unbanning expired ban of "' . $ip . '" failed... ' . $@, undef, $ident );
+		}
+		delete( $self->{bans}{$ip} );
+		$self->{stats}{expired}++;
+		$changed = 1;
+		log_drek( 'info', 'ban of ' . $ip . ' expired', undef, $ident );
+	} ## end foreach my $ip ( keys( %{ $self->{bans} } ) )
+
+	if ($changed) {
+		$self->_checkpoint;
+	}
+
+	return;
+} ## end sub _sweep_bans
+
+# checkpoints the ban state as a CSV of ip,time,ban_time_left to the state
+# file under the cache dir, atomically via a temp file and rename
+sub _checkpoint {
+	my ($self) = @_;
+
+	my $state_file = $self->state_path;
+	my $now        = time;
+	eval {
+		my $tmp = $state_file . '.tmp';
+		open( my $fh, '>', $tmp ) || die( 'open failed... ' . $! );
+		print $fh "ip,time,ban_time_left\n";
+		foreach my $ip ( sort( keys( %{ $self->{bans} } ) ) ) {
+			my $left = 0;
+			if ( $self->{bans}{$ip}{expires} ) {
+				$left = $self->{bans}{$ip}{expires} - $now;
+				# clamped so a nearly expired ban can't collide with 0 meaning
+				# permanent... anything actually expired is the sweeper's job
+				if ( $left < 1 ) {
+					$left = 1;
+				}
+			}
+			print $fh $ip . ',' . $now . ',' . $left . "\n";
+		} ## end foreach my $ip ( sort( keys( %{ $self->{bans} }...)))
+		close($fh);
+		rename( $tmp, $state_file ) || die( 'rename failed... ' . $! );
+	};
+	if ($@) {
+		log_drek( 'err', 'checkpointing ban state to "' . $state_file . '" failed... ' . $@,
+			undef, 'kur-' . $self->{name} );
+		return;
+	}
+
+	$self->{last_checkpoint} = $now;
+
+	return;
+} ## end sub _checkpoint
+
+# loads the persisted ban state CSV... the time in each row is compared to
+# the current time for figuring out if the ban should be restored or not...
+# entries that expired while not running are unbanned in case the backend
+# still carries the rule, the rest are re-banned so the freshly inited
+# backend carries them again
+sub _load_bans {
+	my ($self) = @_;
+
+	my $state_file = $self->state_path;
+	if ( !-f $state_file ) {
+		return;
+	}
+
+	my $ident = 'kur-' . $self->{name};
+
+	my @lines;
+	eval {
+		open( my $fh, '<', $state_file ) || die( 'open failed... ' . $! );
+		@lines = <$fh>;
+		close($fh);
+	};
+	if ($@) {
+		log_drek( 'err', 'loading ban state from "' . $state_file . '" failed... ' . $@, undef, $ident );
+		return;
+	}
+
+	my $now         = time;
+	my $line_number = 0;
+	foreach my $line (@lines) {
+		$line_number++;
+		chomp($line);
+		if ( $line eq '' ) {
+			next;
+		}
+		if ( $line_number == 1 && $line =~ /^ip,/ ) {
+			# the header
+			next;
+		}
+
+		my @row = split( /,/, $line );
+		if ( @row != 3 || $row[0] eq '' || $row[1] !~ /^[0-9]+$/ || $row[2] !~ /^[0-9]+$/ ) {
+			log_drek( 'err', 'skipping malformed line ' . $line_number . ' in "' . $state_file . '"... "' . $line . '"',
+				undef, $ident );
+			next;
+		}
+		my ( $ip, $written, $left ) = @row;
+
+		my $expires = $left ? $written + $left : 0;
+
+		if ( $expires && $expires <= $now ) {
+			# expired while not running... the backend may still carry the rule
+			eval { $self->{backend_obj}->unban( ban => $ip ); };
+			$self->{stats}{expired}++;
+			log_drek( 'info', 'ban of ' . $ip . ' expired while not running', undef, $ident );
+			next;
+		}
+
+		eval { $self->_backend_do( 'ban', ban => $ip ); };
+		if ($@) {
+			log_drek( 'err', 're-banning "' . $ip . '" from saved state failed... ' . $@, undef, $ident );
+		}
+		# banned_at is not persisted, so the row's time stands in for it
+		$self->{bans}{$ip} = { 'banned_at' => $written, 'expires' => $expires };
+	} ## end foreach my $line (@lines)
+
+	# write a updated one back out so the file reflects what got restored
+	$self->_checkpoint;
+
+	return;
+} ## end sub _load_bans
 
 =head1 ERRORS CODES / ERROR FLAGS
 
@@ -343,7 +762,7 @@ are considered fatal.
 
 =head2 1, NErunBaseDir
 
-The run base dir does not exist or is not a directory.
+The run base dir or the kur dir under it does not exist or is not a directory.
 
 =head2 2, invalidName
 
@@ -353,17 +772,27 @@ Name not defined or does not match /^[a-zA-Z0-9\-]+$/.
 
 Failed to initialize the backend.
 
-=head 4, nonRWrunBaseDir
+=head2 4, nonRWrunBaseDir
 
-The run base dir is not readable or writable by the current user.
+The run base dir or the kur dir under it is not readable or writable by the
+current user.
 
 =head2 5, NEcacheBaseDir
 
 The cache base dir does not exist or is not a directory.
 
-=head 6, nonRWrunBaseDir
+=head2 6, nonRWcacheBaseDir
 
-The cache base dir is not readable or writable by the current user.
+The cache base dir or the kur dir under it is not readable or writable by
+the current user.
+
+=head2 7, invalidBanTime
+
+ban_time is not a non-negative int of seconds.
+
+=head2 8, invalidCheckpoint
+
+checkpoint is not a non-negative int of seconds.
 
 =head1 AUTHOR
 
