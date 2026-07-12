@@ -32,10 +32,6 @@ make test
 make install
 ```
 
-This installs the `ereshkigal` and `kur` bins along with the modules.
-`make test` runs everything against the `dummy` backend, so it needs
-neither root nor a real firewall.
-
 ## FreeBSD
 
 ```shell
@@ -45,8 +41,6 @@ cpanm TOML::Tiny Net::Firewall::BlockerHelper \
     POE::Component::Server::JSONUnix
 ```
 
-...then the from-source steps above.
-
 ## Debian
 
 ```shell
@@ -55,8 +49,6 @@ apt-get install libapp-cmd-perl libjson-maybexs-perl libnet-server-perl \
 cpanm Error::Helper Net::Firewall::BlockerHelper \
     POE::Component::Server::JSONUnix
 ```
-
-...then the from-source steps above.
 
 ## First run
 
@@ -89,10 +81,10 @@ cp rc/freebsd/ereshkigal /usr/local/etc/rc.d/ereshkigal
 chmod 555 /usr/local/etc/rc.d/ereshkigal
 sysrc ereshkigal_enable=YES
 service ereshkigal start
-```
 
-It honors `ereshkigal_config` in rc.conf for a non-default config
-path.
+# set it to the config file for it to something else other than the default
+sysrc ereshkigal_config=/usr/local/etc/foo.toml
+```
 
 ### Debian systemd
 
