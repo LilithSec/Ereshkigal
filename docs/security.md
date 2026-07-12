@@ -111,11 +111,11 @@ readable only by root.
 
 ## Ban-time footguns
 
-- `ban_time = 0` is eternal residence — the IP stays banned until
+- `ban_time = 0` is eternal residence — the IP stays banished until
   someone explicitly releases it, across restarts, forever. Make sure
   automation feeding a `ban_time = 0` kur is something you trust.
-- `self_heal` (default on) re-establishes the firewall *scaffolding*
-  (the anchor/table/chain) if something outside removed it, before
+- `self_heal` (default on) re-establishes the firewall scaffolding
+  (the anchor/table/chain/etc) if something outside removed it, before
   each ban or unban. It does not resurrect individual rules removed
   by hand behind the kur's back — the kur's book and the tablets are
   the source of truth, and `re_init` (or a kur restart) will re-ban
