@@ -46,12 +46,14 @@ sub usage_desc { return '%c add %o <kur>'; }
 
 sub opt_spec {
 	return (
-		[ 'backend=s',   'the Net::Firewall::BlockerHelper backend to use' ],
-		[ 'ports=s',     'comma seperated list of ports to block' ],
-		[ 'protocols=s', 'comma seperated list of protocols to block' ],
-		[ 'prefix=s',    'the prefix to use' ],
-		[ 'option=s@',   'a backend specific option, key=value, may be given multiple times' ],
-		[ 'self-heal=i', 'if the firewall setup should be checked and re-inited before each ban/unban' ],
+		[ 'backend=s',    'the Net::Firewall::BlockerHelper backend to use' ],
+		[ 'ports=s',      'comma seperated list of ports to block' ],
+		[ 'protocols=s',  'comma seperated list of protocols to block' ],
+		[ 'prefix=s',     'the prefix to use' ],
+		[ 'option=s@',    'a backend specific option, key=value, may be given multiple times' ],
+		[ 'self-heal=i',  'if the firewall setup should be checked and re-inited before each ban/unban' ],
+		[ 'ban-time=i',   'seconds bans should last for this kur, 0 meaning never time out' ],
+		[ 'checkpoint=i', 'seconds between ban state CSV rewrites for this kur' ],
 	);
 } ## end sub opt_spec
 
@@ -84,6 +86,12 @@ sub execute {
 	}
 	if ( defined( $opt->self_heal ) ) {
 		$opts->{self_heal} = $opt->self_heal;
+	}
+	if ( defined( $opt->ban_time ) ) {
+		$opts->{ban_time} = $opt->ban_time;
+	}
+	if ( defined( $opt->checkpoint ) ) {
+		$opts->{checkpoint} = $opt->checkpoint;
 	}
 	if ( defined( $opt->option ) ) {
 		my %backend_options;

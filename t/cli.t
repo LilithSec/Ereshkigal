@@ -157,6 +157,7 @@ SKIP: {
 		'Ereshkigal::App' => [
 			@s, 'add', 'dns', '--backend', 'dummy', '--ports', '53,5353', '--protocols', 'udp',
 			'--option', 'a=1', '--option', 'b=2', '--self-heal', '0', '--prefix', 'foo',
+			'--ban-time', '300', '--checkpoint', '30',
 		]
 	);
 	$decoded = decode_json( $result->stdout );
@@ -165,12 +166,14 @@ SKIP: {
 	is_deeply(
 		$decoded->{args}{opts},
 		{
-			'backend'   => 'dummy',
-			'ports'     => [ '53', '5353' ],
-			'protocols' => ['udp'],
-			'options'   => { 'a' => '1', 'b' => '2' },
-			'self_heal' => 0,
-			'prefix'    => 'foo',
+			'backend'    => 'dummy',
+			'ports'      => [ '53', '5353' ],
+			'protocols'  => ['udp'],
+			'options'    => { 'a' => '1', 'b' => '2' },
+			'self_heal'  => 0,
+			'prefix'     => 'foo',
+			'ban_time'   => 300,
+			'checkpoint' => 30,
 		},
 		'add passes the full def through'
 	);
