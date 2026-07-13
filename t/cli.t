@@ -28,22 +28,31 @@ sub usage_error_ok {
 # usage errors, no server needed
 #
 
-usage_error_ok( [ 'start', 'extra' ],  qr/does not take any args/, 'start with stray args' );
-usage_error_ok( [ 'stop', 'extra' ],   qr/does not take any args/, 'stop with stray args' );
+usage_error_ok( [ 'start',  'extra' ], qr/does not take any args/, 'start with stray args' );
+usage_error_ok( [ 'stop',   'extra' ], qr/does not take any args/, 'stop with stray args' );
 usage_error_ok( [ 'banned', 'extra' ], qr/does not take any args/, 'banned with stray args' );
 
-usage_error_ok( [ 'status', 'a', 'b' ], qr/at most one/, 'status with two args' );
+usage_error_ok( [ 'status', 'a',     'b' ],    qr/at most one/,              'status with two args' );
 usage_error_ok( [ 'status', '--all', 'sshd' ], qr/may not be used together/, 'status --all with a kur name' );
 
 usage_error_ok( ['ban'], qr/at least one IP/, 'ban with no IPs' );
 
 usage_error_ok( ['unban'], qr/either --all or a single IP/, 'unban with no args' );
-usage_error_ok( [ 'unban', '--all', '1.2.3.4' ], qr/may not be used together/, 'unban --all with a IP' );
+usage_error_ok( [ 'unban', '--all',   '1.2.3.4' ], qr/may not be used together/,    'unban --all with a IP' );
 usage_error_ok( [ 'unban', '1.2.3.4', '5.6.7.8' ], qr/either --all or a single IP/, 'unban with two IPs' );
 
-usage_error_ok( ['add'], qr/single kur instance name/, 'add with no name' );
+usage_error_ok( ['add'],             qr/single kur instance name/, 'add with no name' );
 usage_error_ok( [ 'add', 'a', 'b' ], qr/single kur instance name/, 'add with two names' );
-usage_error_ok( [ 'add', 'sshd' ], qr/--backend must be specified/, 'add with out --backend' );
+usage_error_ok(
+	[ 'add', 'sshd' ],
+	qr/either --backend or --fan-out must be specified/,
+	'add with out --backend or --fan-out'
+);
+usage_error_ok(
+	[ 'add', 'gate', '--backend', 'dummy', '--fan-out', 'sshd' ],
+	qr/may not be used together/,
+	'add with both --backend and --fan-out'
+);
 usage_error_ok(
 	[ 'add', 'sshd', '--backend', 'dummy', '--option', 'bad-format' ],
 	qr/not in the form key=value/,
@@ -58,11 +67,7 @@ usage_error_ok( ['bogus'], qr/bogus/i, 'unknown subcommand' );
 
 # -s reaches the client for every client command
 foreach my $command ( 'stop', 'status', 'banned' ) {
-	usage_error_ok(
-		[ '-s', $dir . '/nothere.sock', $command ],
-		qr/Failed to connect/,
-		$command . ' honors -s'
-	);
+	usage_error_ok( [ '-s', $dir . '/nothere.sock', $command ], qr/Failed to connect/, $command . ' honors -s' );
 }
 usage_error_ok( [ '-s', $dir . '/nothere.sock', 'ban',    '1.2.3.4' ], qr/Failed to connect/, 'ban honors -s' );
 usage_error_ok( [ '-s', $dir . '/nothere.sock', 'unban',  '--all' ],   qr/Failed to connect/, 'unban honors -s' );
@@ -79,8 +84,8 @@ usage_error_ok(
 #
 
 SKIP: {
-	skip 'temp dir path too long for a unix socket', 27 if !socket_path_ok($dir);
-	skip 'unix sockets and fork required',           27 if $^O eq 'MSWin32';
+	skip 'temp dir path too long for a unix socket', 29 if !socket_path_ok($dir);
+	skip 'unix sockets and fork required',           29 if $^O eq 'MSWin32';
 
 	my $socket = $dir . '/mock.sock';
 	my $echo   = sub {
@@ -107,8 +112,11 @@ SKIP: {
 
 	my $result = test_app( 'Ereshkigal::App' => [ @s, 'status' ] );
 	is( $result->exit_code, 0, 'status exit 0' );
-	is_deeply( decode_json( $result->stdout ), { 'pid' => 42, 'uptime' => 1, 'kurs' => {} },
-		'status prints the result as JSON' );
+	is_deeply(
+		decode_json( $result->stdout ),
+		{ 'pid' => 42, 'uptime' => 1, 'kurs' => {} },
+		'status prints the result as JSON'
+	);
 
 	$result = test_app( 'Ereshkigal::App' => [ @s, 'status', '--all' ] );
 	is_deeply( decode_json( $result->stdout ), { 'all' => 1 }, 'status --all calls status_all' );
@@ -155,9 +163,10 @@ SKIP: {
 
 	$result = test_app(
 		'Ereshkigal::App' => [
-			@s, 'add', 'dns', '--backend', 'dummy', '--ports', '53,5353', '--protocols', 'udp',
-			'--option', 'a=1', '--option', 'b=2', '--self-heal', '0', '--prefix', 'foo',
-			'--ban-time', '300', '--checkpoint', '30',
+			@s,        'add',          'dns', '--backend', 'dummy', '--ports',
+			'53,5353', '--protocols',  'udp', '--option',  'a=1',   '--option',
+			'b=2',     '--self-heal',  '0',   '--prefix',  'foo',   '--ban-time',
+			'300',     '--checkpoint', '30',
 		]
 	);
 	$decoded = decode_json( $result->stdout );
@@ -177,6 +186,11 @@ SKIP: {
 		},
 		'add passes the full def through'
 	);
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 'add', 'gate', '--fan-out', 'sshd,smtp' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{args}{name}, 'gate', 'add --fan-out passes the name' );
+	is_deeply( $decoded->{args}{opts}, { 'fan_out' => [ 'sshd', 'smtp' ] }, 'add --fan-out passes the member list' );
 
 	$result = test_app( 'Ereshkigal::App' => [ @s, 'remove', 'sshd' ] );
 	isnt( $result->exit_code, 0, 'a error response exits nonzero' );

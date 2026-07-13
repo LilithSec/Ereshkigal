@@ -22,11 +22,16 @@ our $VERSION = '0.0.1';
 =head1 SYNOPSIS
 
     ereshkigal add sshd --backend ipfw --ports 22 --protocols tcp
+    ereshkigal add baphomet --fan-out sshd,smtp
 
 =head1 DESCRIPTION
 
 Defines and starts a new kur instance in the running manager. Does not
 rewrite the config file... to make it permanent, add it to the config.
+
+With C<--fan-out> in place of C<--backend> the new kur is a manager side
+fan out kur... no process of it's own, with commands targeted at it
+fanning out to the listed member kurs.
 
 =head1 METHODS
 
@@ -47,6 +52,7 @@ sub usage_desc { return '%c add %o <kur>'; }
 sub opt_spec {
 	return (
 		[ 'backend=s',    'the Net::Firewall::BlockerHelper backend to use' ],
+		[ 'fan-out=s',    'comma seperated list of kurs to fan out to, in place of --backend' ],
 		[ 'ports=s',      'comma seperated list of ports to block' ],
 		[ 'protocols=s',  'comma seperated list of protocols to block' ],
 		[ 'prefix=s',     'the prefix to use' ],
@@ -63,8 +69,11 @@ sub validate_args {
 	if ( @{$args} != 1 ) {
 		$self->usage_error('a single kur instance name must be specified');
 	}
-	if ( !defined( $opt->backend ) ) {
-		$self->usage_error('--backend must be specified');
+	if ( !defined( $opt->backend ) && !defined( $opt->fan_out ) ) {
+		$self->usage_error('either --backend or --fan-out must be specified');
+	}
+	if ( defined( $opt->backend ) && defined( $opt->fan_out ) ) {
+		$self->usage_error('--backend and --fan-out may not be used together');
 	}
 
 	return;
@@ -73,8 +82,14 @@ sub validate_args {
 sub execute {
 	my ( $self, $opt, $args ) = @_;
 
-	my $opts = { 'backend' => $opt->backend };
+	my $opts = {};
 
+	if ( defined( $opt->backend ) ) {
+		$opts->{backend} = $opt->backend;
+	}
+	if ( defined( $opt->fan_out ) ) {
+		$opts->{fan_out} = [ split( /\s*,\s*/, $opt->fan_out ) ];
+	}
 	if ( defined( $opt->ports ) ) {
 		$opts->{ports} = [ split( /\s*,\s*/, $opt->ports ) ];
 	}

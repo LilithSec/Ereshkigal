@@ -6,8 +6,7 @@ use Test::More;
 use Test::Exception;
 use IO::Socket::UNIX ();
 use lib 't/lib';
-use EreshkigalTest
-	qw( test_dir socket_path_ok wait_for_socket wait_for_gone wait_for_exit spawn_manager write_config );
+use EreshkigalTest qw( test_dir socket_path_ok wait_for_socket wait_for_gone wait_for_exit spawn_manager write_config );
 
 use Ereshkigal;
 use Ereshkigal::Client;
@@ -38,15 +37,21 @@ my $primary_group = getgrgid( ( split( /\s+/, $( ) )[0] );
 #
 
 open( my $cfg_fh, '>', $dir . '/auth.toml' ) || die($!);
-print $cfg_fh 'run_base_dir   = "' . $dir . '/run"' . "\n"
-	. 'cache_base_dir = "' . $dir . '/cache"' . "\n"
+print $cfg_fh 'run_base_dir   = "'
+	. $dir . '/run"' . "\n"
+	. 'cache_base_dir = "'
+	. $dir
+	. '/cache"' . "\n"
 	. 'enable_auth    = true' . "\n"
 	. 'authed_users   = [ "globaluser" ]' . "\n\n"
 	. '[kur.sshd]' . "\n"
 	. 'backend      = "dummy"' . "\n"
 	. 'authed_users = [ "scopeduser" ]' . "\n\n"
 	. '[kur.smtp]' . "\n"
-	. 'backend = "dummy"' . "\n";
+	. 'backend = "dummy"' . "\n\n"
+	. '[kur.gate]' . "\n"
+	. 'fan_out      = [ "sshd", "smtp" ]' . "\n"
+	. 'authed_users = [ "gateuser" ]' . "\n";
 close($cfg_fh);
 
 my $ereshkigal = Ereshkigal->new( 'config' => $dir . '/auth.toml' );
@@ -66,8 +71,7 @@ my $scoped = ctx( 'uid' => 12346, 'username' => 'scopeduser' );
 lives_ok { $ereshkigal->_authorize( $scoped, 'sshd' ) } 'scoped user their kur';
 throws_ok { $ereshkigal->_authorize( $scoped, 'smtp' ) } qr/not authorized for the kur "smtp"/,
 	'scoped user other kur denied';
-throws_ok { $ereshkigal->_authorize($scoped) } qr/not authorized for manager level/,
-	'scoped user manager level denied';
+throws_ok { $ereshkigal->_authorize($scoped) } qr/not authorized for manager level/, 'scoped user manager level denied';
 throws_ok { $ereshkigal->_authorize( $scoped, 'sshd', 'smtp' ) } qr/not authorized for the kur "smtp"/,
 	'scoped user denied when any touched kur is not theirs';
 
@@ -75,6 +79,15 @@ throws_ok { $ereshkigal->_authorize( $scoped, 'sshd', 'smtp' ) } qr/not authoriz
 my $nobody = ctx( 'uid' => 12347, 'username' => 'nobodyuser' );
 throws_ok { $ereshkigal->_authorize($nobody) } qr/not authorized/, 'unknown user manager level denied';
 throws_ok { $ereshkigal->_authorize( $nobody, 'sshd' ) } qr/not authorized/, 'unknown user kur denied';
+
+# a gateway scoped user... authorization for a command targeted at a
+# fan_out kur is checked against the gateway's own lists, not it's
+# members', that being what makes one usable as a single point of contact
+my $gateuser = ctx( 'uid' => 12348, 'username' => 'gateuser' );
+lives_ok { $ereshkigal->_authorize( $gateuser, 'gate' ) } 'gateway user their gateway';
+throws_ok { $ereshkigal->_authorize( $gateuser, 'sshd' ) } qr/not authorized/,
+	'gateway user denied the members directly';
+throws_ok { $ereshkigal->_authorize($gateuser) } qr/not authorized/, 'gateway user denied manager level';
 
 # group via the user's own primary group
 $ereshkigal->{authed_users}  = [];
@@ -119,16 +132,16 @@ lives_ok { $ereshkigal->_authorize( $nobody, 'sshd', 'smtp' ) } 'enable_auth off
 #
 
 SKIP: {
-	skip 'unix sockets and fork required', 27 if $^O eq 'MSWin32';
-	skip 'temp dir path too long for a unix socket', 27 if !socket_path_ok($dir);
-	skip 'perms are meaningless when running as root', 27 if $> == 0;
+	skip 'unix sockets and fork required',             29 if $^O eq 'MSWin32';
+	skip 'temp dir path too long for a unix socket',   29 if !socket_path_ok($dir);
+	skip 'perms are meaningless when running as root', 29 if $> == 0;
 
 	#
 	# scenario one... the current user in the global lists via their group
 	#
 
 	my $global_dir = test_dir();
-	skip 'temp dir path too long for a unix socket', 27 if !socket_path_ok($global_dir);
+	skip 'temp dir path too long for a unix socket', 29 if !socket_path_ok($global_dir);
 	my $config = write_config( $global_dir,
 		'settings_toml' => qq(enable_auth   = true\nauthed_groups = [ "$primary_group" ]\n) );
 	my $manager_pid    = spawn_manager($config);
@@ -169,7 +182,7 @@ SKIP: {
 	#
 
 	my $scoped_dir = test_dir();
-	skip 'temp dir path too long for a unix socket', 16 if !socket_path_ok($scoped_dir);
+	skip 'temp dir path too long for a unix socket', 18 if !socket_path_ok($scoped_dir);
 	$config = write_config(
 		$scoped_dir,
 		'settings_toml' => qq(enable_auth = true\n),
@@ -183,6 +196,10 @@ authed_users = [ "$username" ]
 backend   = "dummy"
 ports     = [ "25" ]
 protocols = [ "tcp" ]
+
+[kur.gate]
+fan_out      = [ "sshd", "smtp" ]
+authed_users = [ "$username" ]
 ),
 	);
 	$manager_pid    = spawn_manager($config);
@@ -202,14 +219,21 @@ protocols = [ "tcp" ]
 	$result = $client->call_ok( 'checkpoint', { 'kur' => 'sshd' } );
 	is( $result->{kurs}{sshd}{checkpointed}, 1, 'scoped user may checkpoint their kur' );
 
+	# the gateway grant... the user is NOT in smtp's lists, but being in the
+	# gate's lists is what authorizes a command targeted at the gate, so the
+	# fanned ban lands on both members
+	$result = $client->call_ok( 'ban', { 'ips' => ['4.5.6.7'], 'kur' => 'gate' } );
+	is( $result->{kurs}{sshd}{ips}{'4.5.6.7'}{status}, 'ok', 'gateway ban lands on sshd' );
+	is( $result->{kurs}{smtp}{ips}{'4.5.6.7'}{status}, 'ok', 'gateway grant covers members the user is not listed on' );
+
 	my $denied = qr/not authorized/;
-	throws_ok { $client->call_ok('status') } $denied, 'scoped user denied status';
+	throws_ok { $client->call_ok('status') } $denied,     'scoped user denied status';
 	throws_ok { $client->call_ok('status_all') } $denied, 'scoped user denied status_all';
 	throws_ok { $client->call_ok( 'status_kur', { 'name' => 'smtp' } ) } $denied,
 		'scoped user denied status_kur of the other kur';
 	throws_ok { $client->call_ok( 'ban', { 'ips' => ['5.6.7.8'] } ) } $denied, 'scoped user denied fan-out ban';
 	throws_ok { $client->call_ok( 'unban', { 'ip' => '1.2.3.4' } ) } $denied, 'scoped user denied unban';
-	throws_ok { $client->call_ok('banned') } $denied, 'scoped user denied banned';
+	throws_ok { $client->call_ok('banned') } $denied,     'scoped user denied banned';
 	throws_ok { $client->call_ok('checkpoint') } $denied, 'scoped user denied fan-out checkpoint';
 	throws_ok { $client->call_ok( 'add_kur', { 'name' => 'dns', 'opts' => { 'backend' => 'dummy' } } ) } $denied,
 		'scoped user denied add_kur';

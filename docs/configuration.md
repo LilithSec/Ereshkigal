@@ -32,7 +32,8 @@ Inside a `[kur.<name>]` hash...
 
 | key             | what                                                                     |
 |-----------------|--------------------------------------------------------------------------|
-| `backend`       | required; the Net::Firewall::BlockerHelper backend (`pf`, `ipfw`, `iptables`, `shell`, `dummy`) |
+| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend (`pf`, `ipfw`, `iptables`, `shell`, `dummy`) |
+| `fan_out`       | array of other kur names, in place of `backend`; makes this a gate (see below) |
 | `ports`         | array of ports to block for; all if unset                                |
 | `protocols`     | array of protocols to block for; all if unset                            |
 | `prefix`        | rule/table/chain name prefix, default `kur`                              |
@@ -42,6 +43,32 @@ Inside a `[kur.<name>]` hash...
 | `options`       | a table of backend specific options, passed through                      |
 | `authed_users`  | users granted access to this kur, expanding the global list              |
 | `authed_groups` | groups granted access to this kur, expanding the global list             |
+
+## Gates — fan_out kurs
+
+A kur hash may carry `fan_out`, an array of other kur names, in place
+of `backend`:
+
+```toml
+[kur.baphomet]
+fan_out      = [ "sshd", "smtp" ]
+authed_users = [ "baphomet" ]
+```
+
+Such a kur is a gate — one name that opens onto several underworlds.
+It has no process and no socket of its own; commands targeted at it
+(`ban --kur`, `checkpoint <name>`, `status <name>`) fan out to its
+members instead, with results reported per member. With `enable_auth`
+on, authorization for a command aimed at a gate is checked against the
+gate's own lists, not its members' — which is the point: an outside
+integration (a log watcher, IDS glue) can be granted just the gate and
+drive a whole set of kurs through a single point of contact, without
+being listed on — or knowing about — any member.
+
+Members must be real kurs (gates may not nest), and untargeted
+commands (`ban` with no `--kur`, `unban`, `banned`, bare `checkpoint`)
+never touch gates, only real kurs. In `status`, a gate shows its
+member list and counts as running when every member is.
 
 ## How ban_time layers
 

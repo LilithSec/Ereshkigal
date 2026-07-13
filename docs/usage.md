@@ -38,6 +38,8 @@ ereshkigal banned           # the rolls... every banned IP per kur, with the epo
 ```shell
 ereshkigal ban 1.2.3.4 5.6.7.8        # consign to EVERY kur
 ereshkigal ban --kur sshd 1.2.3.4     # just the sshd underworld
+ereshkigal ban --kur gate 1.2.3.4     # a gate (fan_out kur) sends it to
+                                      # every member underworld
 ereshkigal ban --ban-time 3600 1.2.3.4  # a one hour sentence
 ereshkigal ban --ban-time 0 1.2.3.4     # eternal residence
 
@@ -57,6 +59,8 @@ own — no cron jobs needed.
 ```shell
 ereshkigal add dns --backend pf --ports 53 --protocols tcp,udp \
     --option kill=1 --ban-time 300     # raise a new kur, now
+ereshkigal add gate --fan-out sshd,smtp  # raise a gate onto existing kurs
+                                         # (see configuration.md)
 ereshkigal remove dns                  # stop it, tear down its firewall state,
                                        # and deregister it
 ```
@@ -85,6 +89,10 @@ one back.
 ```
 {"command":"ban","args":{"ips":["1.2.3.4"],"kur":"sshd","ban_time":3600}}
 ```
+
+If `kur` names a gate (a `fan_out` kur), the ban fans out to its
+members — handy for pointing an integration at one stable name and
+managing which underworlds it reaches from the config side.
 
 A shell one-liner...
 

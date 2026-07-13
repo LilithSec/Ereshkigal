@@ -209,6 +209,82 @@ like( $cmd_str, qr/--ban-time 30/,   'the kur ban_time overrides the manager wid
 like( $cmd_str, qr/--checkpoint 15/, 'the kur checkpoint overrides the manager wide one' );
 
 #
+# fan_out kurs
+#
+
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq([kur.gate]\nbackend = "dummy"\nfan_out = [ "sshd" ]\n)) )
+}
+qr/both a backend and a fan_out/, 'dies on a kur with both a backend and a fan_out';
+
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq([kur.gate]\nfan_out = "sshd"\n)) )
+}
+qr/not a array of one or more/, 'dies on a non-array fan_out';
+
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq([kur.gate]\nfan_out = [ ]\n)) )
+}
+qr/not a array of one or more/, 'dies on a empty fan_out';
+
+throws_ok {
+	Ereshkigal->new( 'config' => write_cfg(qq([kur.gate]\nfan_out = [ "bad.name" ]\n)) )
+}
+qr/contains a invalid kur name/, 'dies on a fan_out with a invalid member name';
+
+throws_ok {
+	Ereshkigal->new(
+		'config' => write_cfg( qq([kur.sshd]\nbackend = "dummy"\n\n) . qq([kur.gate]\nfan_out = [ "nosuch" ]\n) ) )
+}
+qr/contains a unknown kur/, 'dies on a fan_out with a unknown member';
+
+throws_ok {
+	Ereshkigal->new(
+		'config' => write_cfg(
+				  qq([kur.sshd]\nbackend = "dummy"\n\n)
+				. qq([kur.gate]\nfan_out = [ "sshd" ]\n\n)
+				. qq([kur.gate2]\nfan_out = [ "gate" ]\n)
+		)
+	)
+}
+qr/may not nest/, 'dies on a nested fan_out kur';
+
+my $gateway_cfg
+	= write_cfg( 'run_base_dir = "'
+		. $dir
+		. '/gwrun"' . "\n"
+		. qq([kur.sshd]\nbackend = "dummy"\n\n)
+		. qq([kur.smtp]\nbackend = "dummy"\n\n)
+		. qq([kur.gate]\nfan_out = [ "sshd", "smtp" ]\n) );
+lives_ok { $ereshkigal = Ereshkigal->new( 'config' => $gateway_cfg ) } 'new lives with a fan_out kur';
+ok( defined( $ereshkigal->{kurs}{gate} ), 'the fan_out kur registered' );
+
+is_deeply( [ $ereshkigal->_real_kur_names ],             [ 'smtp', 'sshd' ], 'fan_out kurs are not real kurs' );
+is_deeply( [ $ereshkigal->_expand_kur_targets('gate') ], [ 'sshd', 'smtp' ], 'a fan_out kur expands to it\'s members' );
+is_deeply( [ $ereshkigal->_expand_kur_targets('sshd') ], ['sshd'], 'a plain kur expands to it\'s self' );
+
+my $summary = $ereshkigal->_kur_summary;
+is_deeply(
+	$summary->{gate},
+	{ 'fan_out' => [ 'sshd', 'smtp' ], 'running' => 0, 'enabled' => 1 },
+	'the summary row for a fan_out kur carries it\'s members'
+);
+
+# nothing was spawned, so a ban targeted at the gateway answers not running
+# per member... proving the expansion with out a server
+is_deeply(
+	$ereshkigal->_cmd_ban( { 'args' => { 'ips' => ['1.2.3.4'], 'kur' => 'gate' } }, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } } },
+	'a ban targeted at a fan_out kur expands to it\'s members'
+);
+
+ok( !defined( $ereshkigal->_cmd_banned->{kurs}{gate} ), 'banned has no row for the fan_out kur' );
+
+my $gate_status = $ereshkigal->_cmd_status_kur( { 'args' => { 'name' => 'gate' } }, undef );
+is_deeply( $gate_status->{fan_out}, [ 'sshd', 'smtp' ], 'status_kur of a fan_out kur lists it\'s members' );
+ok( defined( $gate_status->{kurs}{sshd} ), 'status_kur of a fan_out kur carries per member results' );
+
+#
 # _fan_out
 #
 

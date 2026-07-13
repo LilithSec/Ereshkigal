@@ -148,6 +148,50 @@ $response = $client->call( 'remove_kur', { 'name' => 'nope' } );
 is( $response->{status}, 'error', 'remove_kur of a unknown kur errors' );
 
 #
+# fan_out kurs... a gateway with no process of it's own that expands to
+# it's members when targeted
+#
+
+$result = $client->call_ok( 'add_kur', { 'name' => 'gate', 'opts' => { 'fan_out' => [ 'sshd', 'smtp' ] } } );
+is( $result->{added}, 'gate', 'added a fan_out kur' );
+
+$status = $client->call_ok('status');
+is_deeply( $status->{kurs}{gate}{fan_out}, [ 'sshd', 'smtp' ], 'status shows the members' );
+is( $status->{kurs}{gate}{running}, 1, 'the fan_out kur counts as running when every member is' );
+ok( !-e $dir . '/run/kur/gate.sock', 'no socket for the fan_out kur' );
+
+$result = $client->call_ok( 'ban', { 'ips' => ['7.7.7.7'], 'kur' => 'gate' } );
+is( $result->{kurs}{sshd}{ips}{'7.7.7.7'}{status}, 'ok', 'gateway ban applied on sshd' );
+is( $result->{kurs}{smtp}{ips}{'7.7.7.7'}{status}, 'ok', 'gateway ban applied on smtp' );
+ok( !defined( $result->{kurs}{gate} ), 'the response is keyed per member, no gate row' );
+
+$result = $client->call_ok( 'checkpoint', { 'kur' => 'gate' } );
+is( $result->{kurs}{sshd}{checkpointed}, 1, 'gateway checkpoint hit sshd' );
+is( $result->{kurs}{smtp}{checkpointed}, 1, 'gateway checkpoint hit smtp' );
+
+$result = $client->call_ok( 'status_kur', { 'name' => 'gate' } );
+is_deeply( $result->{fan_out}, [ 'sshd', 'smtp' ], 'status_kur of the gateway lists members' );
+is( $result->{kurs}{sshd}{name}, 'sshd', 'status_kur of the gateway carries member statuses' );
+
+$result = $client->call_ok('banned');
+ok( !defined( $result->{kurs}{gate} ),                               'banned has no gate row' );
+ok( ( grep { $_ eq '7.7.7.7' } @{ $result->{kurs}{sshd}{banned} } ), 'the gateway ban shows on the member rolls' );
+
+$response = $client->call( 'add_kur', { 'name' => 'gate2', 'opts' => { 'fan_out' => ['nosuch'] } } );
+is( $response->{status}, 'error', 'add_kur with a unknown member errors' );
+$response = $client->call( 'add_kur', { 'name' => 'gate2', 'opts' => { 'fan_out' => ['gate'] } } );
+is( $response->{status}, 'error', 'fan_out kurs may not nest' );
+$response
+	= $client->call( 'add_kur', { 'name' => 'gate2', 'opts' => { 'backend' => 'dummy', 'fan_out' => ['sshd'] } } );
+is( $response->{status}, 'error', 'backend and fan_out are mutually exclusive' );
+
+$result = $client->call_ok( 'remove_kur', { 'name' => 'gate' } );
+is( $result->{removed}, 'gate', 'the fan_out kur removed' );
+$status = $client->call_ok('status');
+ok( !defined( $status->{kurs}{gate} ), 'gate gone from status after remove' );
+is( $status->{kurs}{sshd}{running}, 1, 'members unaffected by removing the gateway' );
+
+#
 # checkpoint... all kurs, one kur, unknown kur
 #
 

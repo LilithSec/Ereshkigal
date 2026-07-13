@@ -98,6 +98,23 @@ Top level keys are manager settings.
           passed through to L<POE::Component::Server::JSONUnix>.
         Default :: undef
 
+A kur hash may instead carry C<fan_out>, a array of other kur names, in
+place of C<backend>. Such a kur is manager side only... no process and no
+socket of it's own. Commands targeted at it (C<ban> with args.kur,
+C<checkpoint> with args.kur, C<status_kur>) fan out to it's members
+instead, making it usable as a single point of contact for driving a whole
+set of kurs. With enable_auth on, authorization for a command targeted at
+a fan_out kur is checked against the fan_out kur's own lists rather than
+it's members', so a integration may be granted just the gateway with out
+being listed on any member. Members must be defined non fan_out kurs...
+fan_out kurs may not nest. Untargeted commands (C<ban> with out args.kur,
+C<unban>, C<banned>, C<checkpoint> with out args.kur) touch only real
+kurs, never fan_out ones.
+
+    [kur.baphomet]
+    fan_out      = [ "sshd", "smtp" ]
+    authed_users = [ "baphomet" ]
+
 Each kur hash may also carry it's own C<authed_users>/C<authed_groups>,
 which expand upon the global ones for that kur... the effective lists for
 a kur are the global ones plus it's own. A command must be authorized for
@@ -281,6 +298,12 @@ sub new {
 				'spawned'  => undef,
 			};
 		} ## end foreach my $name ( keys( %{ $config->{kur} } ) )
+		# member validation has to wait till every kur is registered
+		foreach my $name ( keys( %{ $config->{kur} } ) ) {
+			if ( defined( $config->{kur}{$name}{fan_out} ) ) {
+				$self->_check_fan_out_members( $name, $config->{kur}{$name}, 1 );
+			}
+		}
 	} ## end if ( defined( $config->{kur} ) )
 
 	# create these here rather than in start_server as the PID file gets
@@ -361,12 +384,14 @@ The JSON commands handled are as below.
 
     - status_all :: The above plus each kur's full status block.
 
-    - status_kur :: Full status of the kur instance args.name.
+    - status_kur :: Full status of the kur instance args.name. For a
+          fan_out kur this is it's member list plus each member's status.
 
     - banned :: Banned IPs, grouped per kur, along with when each expires.
 
     - ban :: Ban the IPs args.ips on the kur args.kur, or on all kurs if
-          args.kur is not specified. args.ban_time, if defined, is forwarded
+          args.kur is not specified. If args.kur is a fan_out kur it expands
+          to it's members. args.ban_time, if defined, is forwarded
           to the kurs, overriding their default for how long the bans should
           last in seconds, with 0 meaning never time out.
 
@@ -380,7 +405,8 @@ The JSON commands handled are as below.
           not rewrite the config file.
 
     - checkpoint :: Force the kur args.kur, or all kurs if args.kur is not
-          specified, to write their ban state CSV out now.
+          specified, to write their ban state CSV out now. If args.kur is a
+          fan_out kur it expands to it's members.
 
     - stop :: Stop all kur instances and then the manager.
 
@@ -433,7 +459,7 @@ sub start_server {
 			},
 			'banned' => sub {
 				my ( undef, undef, $ctx ) = @_;
-				$self->_authorize( $ctx, sort( keys( %{ $self->{kurs} } ) ) );
+				$self->_authorize( $ctx, $self->_real_kur_names );
 				return $self->_cmd_banned;
 			},
 			'ban' => sub {
@@ -442,7 +468,7 @@ sub start_server {
 			},
 			'unban' => sub {
 				my ( undef, $request, $ctx ) = @_;
-				$self->_authorize( $ctx, sort( keys( %{ $self->{kurs} } ) ) );
+				$self->_authorize( $ctx, $self->_real_kur_names );
 				return $self->_cmd_unban($request);
 			},
 			'add_kur' => sub {
@@ -498,8 +524,16 @@ sub _check_kur_def {
 		$error = 'The kur name, "' . ( defined($name) ? $name : 'undef' ) . '", does not match /^[a-zA-Z0-9\-]+$/';
 	} elsif ( ref($def) ne 'HASH' ) {
 		$error = 'The def for the kur "' . $name . '" is not a hash';
-	} elsif ( !defined( $def->{backend} ) ) {
-		$error = 'The def for the kur "' . $name . '" lacks a backend';
+	} elsif ( defined( $def->{backend} ) && defined( $def->{fan_out} ) ) {
+		$error = 'The def for the kur "' . $name . '" has both a backend and a fan_out';
+	} elsif ( !defined( $def->{backend} ) && !defined( $def->{fan_out} ) ) {
+		$error = 'The def for the kur "' . $name . '" lacks a backend or a fan_out';
+	} elsif ( defined( $def->{fan_out} ) && ( ref( $def->{fan_out} ) ne 'ARRAY' || !@{ $def->{fan_out} } ) ) {
+		$error = 'The fan_out for the kur "' . $name . '" is not a array of one or more kur names';
+	} elsif ( defined( $def->{fan_out} )
+		&& grep { !defined($_) || ref($_) ne '' || $_ !~ /^[a-zA-Z0-9\-]+$/ } @{ $def->{fan_out} } )
+	{
+		$error = 'The fan_out for the kur "' . $name . '" contains a invalid kur name';
 	} elsif ( defined( $def->{ban_time} ) && $def->{ban_time} !~ /^[0-9]+$/ ) {
 		$error
 			= 'The ban_time for the kur "'
@@ -530,6 +564,42 @@ sub _check_kur_def {
 
 	return;
 } ## end sub _check_kur_def
+
+# validates every member of a fan_out kur is a defined non fan_out kur...
+# separate from _check_kur_def as it needs the kur registry, meaning at
+# config load it can only happen once every kur is registered
+sub _check_fan_out_members {
+	my ( $self, $name, $def, $perror ) = @_;
+
+	my $error;
+	foreach my $member ( @{ $def->{fan_out} } ) {
+		if ( !defined( $self->{kurs}{$member} ) ) {
+			$error = 'The fan_out for the kur "' . $name . '" contains a unknown kur, "' . $member . '"';
+			last;
+		}
+		if ( defined( $self->{kurs}{$member}{opts}{fan_out} ) ) {
+			$error
+				= 'The fan_out for the kur "'
+				. $name
+				. '" contains the fan_out kur "'
+				. $member
+				. '"... fan_out kurs may not nest';
+			last;
+		}
+	} ## end foreach my $member ( @{ $def->{fan_out} } )
+
+	if ( defined($error) ) {
+		if ($perror) {
+			$self->{perror}      = 1;
+			$self->{error}       = 3;
+			$self->{errorString} = $error;
+			$self->warn;
+		}
+		die($error);
+	}
+
+	return;
+} ## end sub _check_fan_out_members
 
 # returns a error string if the passed value is not a array of strings,
 # undef otherwise
@@ -637,6 +707,28 @@ sub _kur_client {
 	);
 }
 
+# the names of the kurs that are actual processes, sorted... fan_out kurs
+# are manager side only and get excluded everywhere a untargeted command
+# resolves it's targets
+sub _real_kur_names {
+	my ($self) = @_;
+
+	return grep { !defined( $self->{kurs}{$_}{opts}{fan_out} ) } sort( keys( %{ $self->{kurs} } ) );
+}
+
+# expands a targeted kur name into fan out targets... a fan_out kur becomes
+# it's members while a plain kur is just it's self
+sub _expand_kur_targets {
+	my ( $self, $name ) = @_;
+
+	my $entry = $self->{kurs}{$name};
+	if ( defined($entry) && defined( $entry->{opts}{fan_out} ) ) {
+		return @{ $entry->{opts}{fan_out} };
+	}
+
+	return ($name);
+} ## end sub _expand_kur_targets
+
 # fans one command out to the passed kur instances concurrently via
 # Ereshkigal::Client->call_many, returning the hash the handlers use as the
 # kurs value of their responses... each name maps to the result hash on
@@ -737,6 +829,11 @@ sub _poe_spawn_kur {
 
 	my $entry = $self->{kurs}{$name};
 	if ( !defined($entry) || !$entry->{enabled} || defined( $entry->{wheel} ) || $self->{shutting_down} ) {
+		return;
+	}
+
+	# fan_out kurs are manager side only... nothing to spawn
+	if ( defined( $entry->{opts}{fan_out} ) ) {
 		return;
 	}
 
@@ -890,13 +987,30 @@ sub _kur_summary {
 	my $kurs = {};
 	foreach my $name ( keys( %{ $self->{kurs} } ) ) {
 		my $entry = $self->{kurs}{$name};
+		# a fan_out kur has no process of it's own... it counts as running
+		# when every member is
+		if ( defined( $entry->{opts}{fan_out} ) ) {
+			my $running = 1;
+			foreach my $member ( @{ $entry->{opts}{fan_out} } ) {
+				if ( !defined( $self->{kurs}{$member} ) || !defined( $self->{kurs}{$member}{pid} ) ) {
+					$running = 0;
+					last;
+				}
+			}
+			$kurs->{$name} = {
+				'fan_out' => $entry->{opts}{fan_out},
+				'running' => $running,
+				'enabled' => $entry->{enabled} ? 1 : 0,
+			};
+			next;
+		} ## end if ( defined( $entry->{opts}{fan_out} ) )
 		$kurs->{$name} = {
 			'running'  => defined( $entry->{pid} ) ? 1 : 0,
 			'pid'      => $entry->{pid},
 			'restarts' => $entry->{restarts},
 			'enabled'  => $entry->{enabled} ? 1 : 0,
 		};
-	}
+	} ## end foreach my $name ( keys( %{ $self->{kurs} } ) )
 
 	return $kurs;
 } ## end sub _kur_summary
@@ -918,8 +1032,10 @@ sub _cmd_status_all {
 
 	my $status = $self->_cmd_status;
 
-	# only the running ones... a not running kur stays a bare summary row
-	my @running = grep { $status->{kurs}{$_}{running} } sort( keys( %{ $status->{kurs} } ) );
+	# only the running real ones... a not running kur stays a bare summary
+	# row and a fan_out kur has no socket to ask
+	my @running = grep { $status->{kurs}{$_}{running} && !defined( $status->{kurs}{$_}{fan_out} ) }
+		sort( keys( %{ $status->{kurs} } ) );
 	my $answers = $self->_fan_out( \@running, 'status' );
 	foreach my $name (@running) {
 		if ( defined( $answers->{$name}{error} ) ) {
@@ -948,6 +1064,17 @@ sub _cmd_status_kur {
 
 	$self->_authorize( $ctx, $name );
 
+	# a fan_out kur has no process of it's own, so it's status is it's
+	# member list plus each member's status
+	if ( defined( $entry->{opts}{fan_out} ) ) {
+		return {
+			'name'    => $name,
+			'fan_out' => $entry->{opts}{fan_out},
+			'enabled' => $entry->{enabled} ? 1 : 0,
+			'kurs'    => $self->_fan_out( $entry->{opts}{fan_out}, 'status' ),
+		};
+	}
+
 	my $status = {
 		'name'     => $name,
 		'running'  => defined( $entry->{pid} ) ? 1 : 0,
@@ -966,7 +1093,7 @@ sub _cmd_status_kur {
 sub _cmd_banned {
 	my ($self) = @_;
 
-	my $kurs = $self->_fan_out( [ sort( keys( %{ $self->{kurs} } ) ) ], 'banned' );
+	my $kurs = $self->_fan_out( [ $self->_real_kur_names ], 'banned' );
 	foreach my $name ( keys( %{$kurs} ) ) {
 		if ( !defined( $kurs->{$name}{error} ) ) {
 			$kurs->{$name} = { 'banned' => $kurs->{$name}{banned}, 'expires' => $kurs->{$name}{expires} };
@@ -989,15 +1116,18 @@ sub _cmd_ban {
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
 			die( 'No such kur instance, "' . $args->{kur} . '"' );
 		}
-		@targets = ( $args->{kur} );
+		# authorization is checked against the requested name... for a
+		# fan_out kur being authorized for the gateway is the grant, which
+		# is what makes one usable as a single point of contact
+		$self->_authorize( $ctx, $args->{kur} );
+		@targets = $self->_expand_kur_targets( $args->{kur} );
 	} else {
-		@targets = sort( keys( %{ $self->{kurs} } ) );
+		@targets = $self->_real_kur_names;
+		if ( !@targets ) {
+			die('No kur instances');
+		}
+		$self->_authorize( $ctx, @targets );
 	}
-	if ( !@targets ) {
-		die('No kur instances');
-	}
-
-	$self->_authorize( $ctx, @targets );
 
 	my $kur_args = { 'ips' => $args->{ips} };
 	if ( defined( $args->{ban_time} ) ) {
@@ -1015,7 +1145,7 @@ sub _cmd_unban {
 		die('Either args.all must be true or args.ip must be a IP');
 	}
 
-	my @all = sort( keys( %{ $self->{kurs} } ) );
+	my @all = $self->_real_kur_names;
 	my $kurs;
 	if ( $args->{all} ) {
 		$kurs = $self->_fan_out( \@all, 'flush' );
@@ -1038,12 +1168,14 @@ sub _cmd_checkpoint {
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
 			die( 'No such kur instance, "' . $args->{kur} . '"' );
 		}
-		@targets = ( $args->{kur} );
+		# like ban, authorization is against the requested name, so a
+		# fan_out kur grant covers the fanned command
+		$self->_authorize( $ctx, $args->{kur} );
+		@targets = $self->_expand_kur_targets( $args->{kur} );
 	} else {
-		@targets = sort( keys( %{ $self->{kurs} } ) );
+		@targets = $self->_real_kur_names;
+		$self->_authorize( $ctx, @targets );
 	}
-
-	$self->_authorize( $ctx, @targets );
 
 	return { 'kurs' => $self->_fan_out( \@targets, 'checkpoint' ) };
 } ## end sub _cmd_checkpoint
@@ -1062,6 +1194,9 @@ sub _cmd_add_kur {
 	}
 
 	$self->_check_kur_def( $name, $args->{opts}, 0 );
+	if ( defined( $args->{opts}{fan_out} ) ) {
+		$self->_check_fan_out_members( $name, $args->{opts}, 0 );
+	}
 
 	$self->{kurs}{$name} = {
 		'opts'     => $args->{opts},
@@ -1118,8 +1253,9 @@ Failed to parse the config file as TOML.
 
 =head2 3, invalidKurDef
 
-A kur def in the config is invalid... bad name, not a hash, or lacking a
-backend.
+A kur def in the config is invalid... bad name, not a hash, lacking a
+backend or a fan_out, having both, or a invalid fan_out (not a array of
+kur names, a unknown member, or a nested fan_out kur).
 
 =head2 4, runBaseDirError
 
