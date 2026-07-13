@@ -872,6 +872,7 @@ sub _poe_kur_stdout {
 
 	my $name = $self->{wheel_to_kur}{$wheel_id};
 	$name = 'unknown' if !defined($name);
+	chomp($line);
 	log_drek( 'info', 'kur "' . $name . '" stdout... ' . $line );
 
 	return;
@@ -882,6 +883,7 @@ sub _poe_kur_stderr {
 
 	my $name = $self->{wheel_to_kur}{$wheel_id};
 	$name = 'unknown' if !defined($name);
+	chomp($line);
 	log_drek( 'err', 'kur "' . $name . '" stderr... ' . $line );
 
 	return;

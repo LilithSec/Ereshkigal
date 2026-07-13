@@ -68,6 +68,7 @@ sub log_drek {
 	if ( !defined($message) ) {
 		$message = '';
 	}
+	chomp($message);
 
 	if ( defined($tracking_int) ) {
 		$message = $tracking_int . ' : ' . $message;
