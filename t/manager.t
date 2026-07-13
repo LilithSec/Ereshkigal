@@ -21,12 +21,12 @@ my $config      = write_config($dir);
 my $manager_pid = spawn_manager($config);
 
 my $manager_socket = $dir . '/run/socket';
-ok( wait_for_socket($manager_socket),                'manager socket came up' ) || BAIL_OUT('manager never came up');
-ok( wait_for_socket( $dir . '/run/kur/sshd.sock' ),  'sshd kur socket came up' );
-ok( wait_for_socket( $dir . '/run/kur/smtp.sock' ),  'smtp kur socket came up' );
+ok( wait_for_socket($manager_socket),               'manager socket came up' ) || BAIL_OUT('manager never came up');
+ok( wait_for_socket( $dir . '/run/kur/sshd.sock' ), 'sshd kur socket came up' );
+ok( wait_for_socket( $dir . '/run/kur/smtp.sock' ), 'smtp kur socket came up' );
 
-is( ( stat($manager_socket) )[2] & 07777, 0660, 'manager socket mode is 0660' );
-is( ( stat($manager_socket) )[5], ( split( /\s+/, $( ) )[0], 'manager socket group is the configured one' );
+is( ( stat($manager_socket) )[2] & 07777, 0660,                      'manager socket mode is 0660' );
+is( ( stat($manager_socket) )[5],         ( split( /\s+/, $( ) )[0], 'manager socket group is the configured one' );
 
 my $client = Ereshkigal::Client->new( 'socket' => $manager_socket, 'timeout' => 15 );
 
@@ -104,8 +104,8 @@ is( $response->{status}, 'error', 'unban with out args errors' );
 #
 
 $result = $client->call_ok( 'status_kur', { 'name' => 'sshd' } );
-is( $result->{running},           1,       'status_kur running' );
-is( $result->{status}{backend},   'dummy', 'status_kur nested kur status' );
+is( $result->{running},         1,       'status_kur running' );
+is( $result->{status}{backend}, 'dummy', 'status_kur nested kur status' );
 $response = $client->call( 'status_kur', { 'name' => 'nope' } );
 is( $response->{status}, 'error', 'status_kur of a unknown kur errors' );
 
@@ -165,6 +165,31 @@ $response = $client->call( 'checkpoint', { 'kur' => 'nope' } );
 is( $response->{status}, 'error', 'checkpoint of a unknown kur errors' );
 
 #
+# fan out with a down kur... a kur who's backend can never init lives in
+# restart backoff, and fan out commands must answer a error for it with out
+# the live kurs being disturbed
+#
+
+$result = $client->call_ok( 'add_kur', { 'name' => 'down', 'opts' => { 'backend' => 'nosuchbackendzzz' } } );
+is( $result->{added}, 'down', 'added a kur that can never start' );
+
+$result = $client->call_ok( 'ban', { 'ips' => ['3.3.3.3'] } );
+ok( defined( $result->{kurs}{down}{error} ), 'fan out ban answers a error for the down kur' );
+is( $result->{kurs}{sshd}{ips}{'3.3.3.3'}{status}, 'ok', 'fan out ban still applied on sshd' );
+is( $result->{kurs}{smtp}{ips}{'3.3.3.3'}{status}, 'ok', 'fan out ban still applied on smtp' );
+
+$result = $client->call_ok('banned');
+ok( defined( $result->{kurs}{down}{error} ),                         'banned answers a error for the down kur' );
+ok( ( grep { $_ eq '3.3.3.3' } @{ $result->{kurs}{sshd}{banned} } ), 'banned still reports the live kurs' );
+
+$result = $client->call_ok( 'unban', { 'ip' => '3.3.3.3' } );
+ok( defined( $result->{kurs}{down}{error} ), 'unban answers a error for the down kur' );
+is( $result->{kurs}{sshd}{was_banned}, 1, 'unban still removed it from sshd' );
+
+$result = $client->call_ok( 'remove_kur', { 'name' => 'down' } );
+is( $result->{removed}, 'down', 'the down kur removed again' );
+
+#
 # supervision... kill a kur and it should come back
 #
 
@@ -215,10 +240,10 @@ is( $result->{kurs}{sshd}{ips}{'6.6.6.6'}{status}, 'ok', 'bans work on the respa
 
 $result = $client->call_ok('stop');
 is( $result->{stopping}, 1, 'stop response' );
-ok( wait_for_gone($manager_socket),                 'manager socket gone' );
-ok( wait_for_gone( $dir . '/run/kur/sshd.sock' ),   'sshd socket gone' );
-ok( wait_for_gone( $dir . '/run/kur/smtp.sock' ),   'smtp socket gone' );
-ok( wait_for_gone( $dir . '/run/pid' ),             'manager pid file gone' );
+ok( wait_for_gone($manager_socket),               'manager socket gone' );
+ok( wait_for_gone( $dir . '/run/kur/sshd.sock' ), 'sshd socket gone' );
+ok( wait_for_gone( $dir . '/run/kur/smtp.sock' ), 'smtp socket gone' );
+ok( wait_for_gone( $dir . '/run/pid' ),           'manager pid file gone' );
 is( wait_for_exit( $manager_pid, 20 ), 0, 'manager exited 0' );
 
 done_testing;

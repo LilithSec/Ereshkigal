@@ -101,8 +101,7 @@ qr/authed_groups for the kur/, 'dies on a non-array kur authed_groups';
 
 # run_base_dir has to be set as new creates the run dirs, which will not
 # work for the default of /var/run/ereshkigal when unprivileged
-my $minimal
-	= write_cfg( 'run_base_dir = "' . $dir . '/defrun"' . "\n" . qq([kur.sshd]\nbackend = "dummy"\n) );
+my $minimal = write_cfg( 'run_base_dir = "' . $dir . '/defrun"' . "\n" . qq([kur.sshd]\nbackend = "dummy"\n) );
 my $ereshkigal;
 lives_ok { $ereshkigal = Ereshkigal->new( 'config' => $minimal ) } 'new lives on a minimal config';
 is( $ereshkigal->{socket_mode}, 0660,  'socket_mode defaults to 0660' );
@@ -122,9 +121,14 @@ ok( -d $dir . '/defrun/kur', 'new created the run dirs' );
 
 my $group = getgrgid( ( split( /\s+/, $( ) )[0] );
 
-my $full = write_cfg( 'run_base_dir   = "' . $dir . '/run"' . "\n"
-		. 'cache_base_dir = "' . $dir . '/cache"' . "\n"
-		. 'socket_group   = "' . $group . '"' . "\n"
+my $full
+	= write_cfg( 'run_base_dir   = "'
+		. $dir . '/run"' . "\n"
+		. 'cache_base_dir = "'
+		. $dir
+		. '/cache"' . "\n"
+		. 'socket_group   = "'
+		. $group . '"' . "\n"
 		. 'socket_mode    = "0640"' . "\n"
 		. 'kur_bin        = "/somewhere/kur"' . "\n"
 		. 'timeout        = 5' . "\n"
@@ -133,7 +137,8 @@ my $full = write_cfg( 'run_base_dir   = "' . $dir . '/run"' . "\n"
 		. 'enable_auth    = true' . "\n"
 		. 'auth_temp_dir  = "/tmp"' . "\n"
 		. 'authed_users   = [ "zane" ]' . "\n"
-		. 'authed_groups  = [ "' . $group . '" ]' . "\n\n"
+		. 'authed_groups  = [ "'
+		. $group . '" ]' . "\n\n"
 		. '[kur.sshd]' . "\n"
 		. 'backend   = "dummy"' . "\n"
 		. 'ports     = [ "22", "80" ]' . "\n"
@@ -147,7 +152,8 @@ my $full = write_cfg( 'run_base_dir   = "' . $dir . '/run"' . "\n"
 		. 'backend    = "dummy"' . "\n"
 		. 'ban_time   = 30' . "\n"
 		. 'checkpoint = 15' . "\n"
-		. 'ports      = [ "25" ]' . "\n" );
+		. 'ports      = [ "25" ]'
+		. "\n" );
 
 lives_ok { $ereshkigal = Ereshkigal->new( 'config' => $full ) } 'new lives on a full config';
 is( $ereshkigal->{run_base_dir},   $dir . '/run',    'run_base_dir merged' );
@@ -160,8 +166,8 @@ ok( $ereshkigal->{enable_auth}, 'enable_auth merged' );
 is( $ereshkigal->{auth_temp_dir}, '/tmp', 'auth_temp_dir merged' );
 is_deeply( $ereshkigal->{authed_users},  ['zane'], 'authed_users merged' );
 is_deeply( $ereshkigal->{authed_groups}, [$group], 'authed_groups merged' );
-is( $ereshkigal->{socket_mode},    0640,             'socket_mode processed via oct' );
-is( $ereshkigal->{socket_gid}, ( split( /\s+/, $( ) )[0], 'socket_group resolved to our GID' );
+is( $ereshkigal->{socket_mode}, 0640,                      'socket_mode processed via oct' );
+is( $ereshkigal->{socket_gid},  ( split( /\s+/, $( ) )[0], 'socket_group resolved to our GID' );
 
 is( scalar( keys( %{ $ereshkigal->{kurs} } ) ), 2, 'both kur instances parsed' );
 foreach my $name ( 'sshd', 'smtp' ) {
@@ -172,8 +178,8 @@ foreach my $name ( 'sshd', 'smtp' ) {
 	is( $entry->{delay},    1, $name . ' delay 1' );
 }
 
-is( $ereshkigal->socket_path, $dir . '/run/socket', 'socket_path' );
-is( $ereshkigal->pid_path,    $dir . '/run/pid',    'pid_path' );
+is( $ereshkigal->socket_path,             $dir . '/run/socket',        'socket_path' );
+is( $ereshkigal->pid_path,                $dir . '/run/pid',           'pid_path' );
 is( $ereshkigal->kur_socket_path('sshd'), $dir . '/run/kur/sshd.sock', 'kur_socket_path' );
 
 #
@@ -183,23 +189,40 @@ is( $ereshkigal->kur_socket_path('sshd'), $dir . '/run/kur/sshd.sock', 'kur_sock
 my @cmd     = $ereshkigal->_build_kur_cmd('sshd');
 my $cmd_str = join( ' ', @cmd );
 is( $cmd[0], '/somewhere/kur', 'cmd starts with kur_bin' );
-like( $cmd_str, qr/--foreground/,                       'cmd has --foreground' );
-like( $cmd_str, qr/--name sshd/,                        'cmd has --name' );
-like( $cmd_str, qr/--backend dummy/,                    'cmd has --backend' );
-like( $cmd_str, qr/--ports 22,80/,                      'cmd joins ports' );
-like( $cmd_str, qr/--protocols tcp/,                    'cmd has protocols' );
-like( $cmd_str, qr/--prefix foo/,                       'cmd has prefix' );
-like( $cmd_str, qr/--self-heal 1/,                      'cmd has self-heal' );
-like( $cmd_str, qr/--option a=1 --option b=2/,          'cmd has sorted options' );
-like( $cmd_str, qr/--ban-time 120/,                     'cmd has the manager wide ban_time' );
-like( $cmd_str, qr/--checkpoint 90/,                    'cmd has the manager wide checkpoint' );
-like( $cmd_str, qr/--run \Q$dir\E\/run/,                'cmd has the run dir' );
-like( $cmd_str, qr/--cache \Q$dir\E\/cache/,            'cmd has the cache dir' );
+like( $cmd_str, qr/--foreground/,              'cmd has --foreground' );
+like( $cmd_str, qr/--name sshd/,               'cmd has --name' );
+like( $cmd_str, qr/--backend dummy/,           'cmd has --backend' );
+like( $cmd_str, qr/--ports 22,80/,             'cmd joins ports' );
+like( $cmd_str, qr/--protocols tcp/,           'cmd has protocols' );
+like( $cmd_str, qr/--prefix foo/,              'cmd has prefix' );
+like( $cmd_str, qr/--self-heal 1/,             'cmd has self-heal' );
+like( $cmd_str, qr/--option a=1 --option b=2/, 'cmd has sorted options' );
+like( $cmd_str, qr/--ban-time 120/,            'cmd has the manager wide ban_time' );
+like( $cmd_str, qr/--checkpoint 90/,           'cmd has the manager wide checkpoint' );
+like( $cmd_str, qr/--run \Q$dir\E\/run/,       'cmd has the run dir' );
+like( $cmd_str, qr/--cache \Q$dir\E\/cache/,   'cmd has the cache dir' );
 
 @cmd     = $ereshkigal->_build_kur_cmd('smtp');
 $cmd_str = join( ' ', @cmd );
 unlike( $cmd_str, qr/--prefix|--self-heal|--option|--protocols/, 'unset options not passed for smtp' );
 like( $cmd_str, qr/--ban-time 30/,   'the kur ban_time overrides the manager wide one' );
 like( $cmd_str, qr/--checkpoint 15/, 'the kur checkpoint overrides the manager wide one' );
+
+#
+# _fan_out
+#
+
+# nothing was ever spawned, so every kur lacks a pid and must be answered
+# with not running with out a connect ever being attempted... were one
+# attempted the error would read Failed to connect instead
+my $fanned = $ereshkigal->_fan_out( [ 'sshd', 'smtp' ], 'ping' );
+is_deeply(
+	$fanned,
+	{ 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } },
+	'_fan_out answers not running kurs with out connecting'
+);
+
+$fanned = $ereshkigal->_fan_out( ['nosuch'], 'ping' );
+is_deeply( $fanned, { 'nosuch' => { 'error' => 'not running' } }, '_fan_out treats a unknown kur as not running' );
 
 done_testing;

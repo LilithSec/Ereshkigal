@@ -67,7 +67,9 @@ Top level keys are manager settings.
     - kur_bin :: The kur bin to spawn instances with.
         Default :: kur
 
-    - timeout :: Timeout in seconds used when talking to kur sockets.
+    - timeout :: Timeout in seconds used when talking to kur sockets. For
+          commands touching multiple kurs this bounds the whole fan out
+          rather than each kur individually.
         Default :: 30
 
     - ban_time :: How long bans should last in seconds. 0 means bans never
@@ -635,6 +637,44 @@ sub _kur_client {
 	);
 }
 
+# fans one command out to the passed kur instances concurrently via
+# Ereshkigal::Client->call_many, returning the hash the handlers use as the
+# kurs value of their responses... each name maps to the result hash on
+# success or { error => ... } otherwise, with kurs that are not running
+# answered with a not running error with out a connect ever being attempted
+sub _fan_out {
+	my ( $self, $targets, $command, $args ) = @_;
+
+	my $kurs    = {};
+	my $sockets = {};
+	foreach my $name ( @{$targets} ) {
+		my $entry = $self->{kurs}{$name};
+		if ( !defined($entry) || !defined( $entry->{pid} ) ) {
+			$kurs->{$name} = { 'error' => 'not running' };
+			next;
+		}
+		$sockets->{$name} = $self->kur_socket_path($name);
+	}
+
+	if ( %{$sockets} ) {
+		my $answers = Ereshkigal::Client->call_many(
+			'sockets' => $sockets,
+			'command' => $command,
+			defined($args) ? ( 'args' => $args ) : (),
+			'timeout' => $self->{timeout},
+		);
+		foreach my $name ( keys( %{$answers} ) ) {
+			if ( defined( $answers->{$name}{error} ) ) {
+				$kurs->{$name} = { 'error' => $answers->{$name}{error} };
+			} else {
+				$kurs->{$name} = $answers->{$name}{result};
+			}
+		}
+	} ## end if ( %{$sockets} )
+
+	return $kurs;
+} ## end sub _fan_out
+
 sub _build_kur_cmd {
 	my ( $self, $name ) = @_;
 
@@ -878,17 +918,16 @@ sub _cmd_status_all {
 
 	my $status = $self->_cmd_status;
 
-	foreach my $name ( keys( %{ $status->{kurs} } ) ) {
-		if ( $status->{kurs}{$name}{running} ) {
-			my $kur_status;
-			eval { $kur_status = $self->_kur_client($name)->call_ok('status'); };
-			if ($@) {
-				$status->{kurs}{$name}{error} = $@;
-			} else {
-				$status->{kurs}{$name}{status} = $kur_status;
-			}
+	# only the running ones... a not running kur stays a bare summary row
+	my @running = grep { $status->{kurs}{$_}{running} } sort( keys( %{ $status->{kurs} } ) );
+	my $answers = $self->_fan_out( \@running, 'status' );
+	foreach my $name (@running) {
+		if ( defined( $answers->{$name}{error} ) ) {
+			$status->{kurs}{$name}{error} = $answers->{$name}{error};
+		} else {
+			$status->{kurs}{$name}{status} = $answers->{$name};
 		}
-	} ## end foreach my $name ( keys( %{ $status->{kurs} } ))
+	}
 
 	return $status;
 } ## end sub _cmd_status_all
@@ -927,20 +966,12 @@ sub _cmd_status_kur {
 sub _cmd_banned {
 	my ($self) = @_;
 
-	my $kurs = {};
-	foreach my $name ( keys( %{ $self->{kurs} } ) ) {
-		if ( !defined( $self->{kurs}{$name}{pid} ) ) {
-			$kurs->{$name} = { 'error' => 'not running' };
-			next;
+	my $kurs = $self->_fan_out( [ sort( keys( %{ $self->{kurs} } ) ) ], 'banned' );
+	foreach my $name ( keys( %{$kurs} ) ) {
+		if ( !defined( $kurs->{$name}{error} ) ) {
+			$kurs->{$name} = { 'banned' => $kurs->{$name}{banned}, 'expires' => $kurs->{$name}{expires} };
 		}
-		my $result;
-		eval { $result = $self->_kur_client($name)->call_ok('banned'); };
-		if ($@) {
-			$kurs->{$name} = { 'error' => $@ };
-		} else {
-			$kurs->{$name} = { 'banned' => $result->{banned}, 'expires' => $result->{expires} };
-		}
-	} ## end foreach my $name ( keys( %{ $self->{kurs} } ) )
+	}
 
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_banned
@@ -973,18 +1004,7 @@ sub _cmd_ban {
 		$kur_args->{ban_time} = $args->{ban_time};
 	}
 
-	my $kurs = {};
-	foreach my $name (@targets) {
-		my $result;
-		eval { $result = $self->_kur_client($name)->call_ok( 'ban', $kur_args ); };
-		if ($@) {
-			$kurs->{$name} = { 'error' => $@ };
-		} else {
-			$kurs->{$name} = $result;
-		}
-	}
-
-	return { 'kurs' => $kurs };
+	return { 'kurs' => $self->_fan_out( \@targets, 'ban', $kur_args ) };
 } ## end sub _cmd_ban
 
 sub _cmd_unban {
@@ -995,22 +1015,15 @@ sub _cmd_unban {
 		die('Either args.all must be true or args.ip must be a IP');
 	}
 
-	my $kurs = {};
-	foreach my $name ( sort( keys( %{ $self->{kurs} } ) ) ) {
-		my $result;
-		if ( $args->{all} ) {
-			eval { $result = $self->_kur_client($name)->call_ok('flush'); };
-		} else {
-			# the kur checks if the IP is present and only unbans it if it is,
-			# reporting back via was_banned
-			eval { $result = $self->_kur_client($name)->call_ok( 'unban', { 'ip' => $args->{ip} } ); };
-		}
-		if ($@) {
-			$kurs->{$name} = { 'error' => $@ };
-		} else {
-			$kurs->{$name} = $result;
-		}
-	} ## end foreach my $name ( sort( keys( %{ $self->{kurs}...})))
+	my @all = sort( keys( %{ $self->{kurs} } ) );
+	my $kurs;
+	if ( $args->{all} ) {
+		$kurs = $self->_fan_out( \@all, 'flush' );
+	} else {
+		# the kur checks if the IP is present and only unbans it if it is,
+		# reporting back via was_banned
+		$kurs = $self->_fan_out( \@all, 'unban', { 'ip' => $args->{ip} } );
+	}
 
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_unban
@@ -1032,18 +1045,7 @@ sub _cmd_checkpoint {
 
 	$self->_authorize( $ctx, @targets );
 
-	my $kurs = {};
-	foreach my $name (@targets) {
-		my $result;
-		eval { $result = $self->_kur_client($name)->call_ok('checkpoint'); };
-		if ($@) {
-			$kurs->{$name} = { 'error' => $@ };
-		} else {
-			$kurs->{$name} = $result;
-		}
-	}
-
-	return { 'kurs' => $kurs };
+	return { 'kurs' => $self->_fan_out( \@targets, 'checkpoint' ) };
 } ## end sub _cmd_checkpoint
 
 sub _cmd_add_kur {

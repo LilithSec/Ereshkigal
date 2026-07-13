@@ -37,8 +37,8 @@ mock_server(
 throws_ok { Ereshkigal::Client->new } qr/No socket specified/, 'new dies with out a socket';
 
 my $client = Ereshkigal::Client->new( 'socket' => $socket );
-is( $client->{timeout}, 30, 'timeout defaults to 30' );
-is( Ereshkigal::Client->new( 'socket' => $socket, 'timeout' => 5 )->{timeout}, 5, 'timeout override honored' );
+is( $client->{timeout},                                                        30, 'timeout defaults to 30' );
+is( Ereshkigal::Client->new( 'socket' => $socket, 'timeout' => 5 )->{timeout}, 5,  'timeout override honored' );
 
 #
 # call / call_ok
@@ -115,8 +115,11 @@ mock_server(
 );
 
 my $auth_client = Ereshkigal::Client->new( 'socket' => $auth_socket );
-is_deeply( $auth_client->call_ok('secured'), { 'secret' => 42 },
-	'the challenge is completed transparently and the command resent' );
+is_deeply(
+	$auth_client->call_ok('secured'),
+	{ 'secret' => 42 },
+	'the challenge is completed transparently and the command resent'
+);
 opendir( my $cookie_dh, $cookie_dir ) || die($!);
 my @leftover = grep { $_ ne '.' && $_ ne '..' } readdir($cookie_dh);
 closedir($cookie_dh);
@@ -147,6 +150,113 @@ opendir( $cookie_dh, $cookie_dir ) || die($!);
 @leftover = grep { $_ ne '.' && $_ ne '..' } readdir($cookie_dh);
 closedir($cookie_dh);
 is_deeply( \@leftover, [], 'the cookie file was cleaned up after the rejection too' );
+
+#
+# call_many
+#
+
+throws_ok { Ereshkigal::Client->call_many( 'command' => 'ping' ) } qr/sockets must be a hash/,
+	'call_many dies with out sockets';
+throws_ok { Ereshkigal::Client->call_many( 'sockets' => {} ) } qr/No command specified/,
+	'call_many dies with out a command';
+
+is_deeply( Ereshkigal::Client->call_many( 'sockets' => {}, 'command' => 'ping' ),
+	{}, 'a empty sockets hash returns a empty hash' );
+
+my $cm_a_socket = $dir . '/cm-a.sock';
+my $cm_b_socket = $dir . '/cm-b.sock';
+mock_server(
+	$cm_a_socket,
+	{
+		'ping'  => { 'status' => 'ok', 'result' => { 'pong' => 'a' } },
+		'mixed' => { 'status' => 'ok', 'result' => { 'fine' => 1 } },
+		'echo'  => sub {
+			my ($request) = @_;
+			return {
+				'status' => 'ok',
+				'result' => { 'args' => $request->{args}, 'has_args' => exists( $request->{args} ) ? 1 : 0 }
+			};
+		},
+		'garbage'   => 'this is not json',
+		'slowcheck' => { 'status' => 'ok', 'result' => { 'quick' => 1 } },
+	}
+);
+mock_server(
+	$cm_b_socket,
+	{
+		'ping'  => { 'status' => 'ok',    'result' => { 'pong' => 'b' } },
+		'mixed' => { 'status' => 'error', 'error'  => 'nope b' },
+	}
+);
+
+my $per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'a' => $cm_a_socket, 'b' => $cm_b_socket },
+	'command' => 'ping',
+);
+is_deeply(
+	$per_name,
+	{ 'a' => { 'result' => { 'pong' => 'a' } }, 'b' => { 'result' => { 'pong' => 'b' } } },
+	'call_many returns per name results'
+);
+
+$per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'a' => $cm_a_socket, 'b' => $cm_b_socket },
+	'command' => 'mixed',
+);
+is_deeply( $per_name->{a}, { 'result' => { 'fine' => 1 } }, 'a error on one socket does not disturb the others' );
+is_deeply( $per_name->{b}, { 'error'  => 'nope b' },        'a error status response lands as that name\'s error' );
+
+$per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'a' => $cm_a_socket, 'ghost' => $dir . '/nothere.sock' },
+	'command' => 'ping',
+);
+is_deeply( $per_name->{a}, { 'result' => { 'pong' => 'a' } }, 'the live socket still answered' );
+like( $per_name->{ghost}{error}, qr/Failed to connect/, 'a nonexistent socket is a connect error for just that name' );
+
+$per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'a' => $cm_a_socket, 'b' => $cm_b_socket },
+	'command' => 'garbage',
+);
+like( $per_name->{a}{error}, qr/Undecodable response/, 'a undecodable response is a error for that name' );
+is( $per_name->{b}{error}, 'unknown command: garbage', 'the other socket still got it\'s answer' );
+
+$per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'a' => $cm_a_socket },
+	'command' => 'echo',
+	'args'    => { 'foo' => 'bar' },
+);
+is_deeply( $per_name->{a}{result}{args}, { 'foo' => 'bar' }, 'call_many passes args through verbatim' );
+
+$per_name = Ereshkigal::Client->call_many( 'sockets' => { 'a' => $cm_a_socket }, 'command' => 'echo' );
+is( $per_name->{a}{result}{has_args}, 0, 'no args means no args key on the wire' );
+
+# a stalled socket must not keep a answered one from returning... this is
+# the concurrency assertion that matters
+my $cm_stall_socket = $dir . '/cm-stall.sock';
+mock_server( $cm_stall_socket, { 'slowcheck' => { '__no_reply__' => 1 }, 'ping' => { '__no_reply__' => 1 } } );
+$per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'ok' => $cm_a_socket, 'stall' => $cm_stall_socket },
+	'command' => 'slowcheck',
+	'timeout' => 1,
+);
+is_deeply( $per_name->{ok}, { 'result' => { 'quick' => 1 } }, 'the answering socket returned it\'s result' );
+like( $per_name->{stall}{error}, qr/timed out/, 'the stalled one is a timeout error' );
+
+# the deadline is shared... two stalled sockets take about one timeout,
+# not the sum, with generous slop as the point is not-the-sum rather than
+# precision timing
+my $cm_stall2_socket = $dir . '/cm-stall2.sock';
+mock_server( $cm_stall2_socket, { 'ping' => { '__no_reply__' => 1 } } );
+my $started = time;
+$per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'one' => $cm_stall_socket, 'two' => $cm_stall2_socket },
+	'command' => 'ping',
+	'timeout' => 2,
+);
+my $elapsed = time - $started;
+like( $per_name->{one}{error}, qr/timed out/, 'the first stalled socket timed out' );
+like( $per_name->{two}{error}, qr/timed out/, 'the second stalled socket timed out' );
+cmp_ok( $elapsed, '<=', 3, 'the deadline is shared... about one timeout, not the sum' );
 
 # this one last as the mock will be stuck sleeping afterwards
 throws_ok { Ereshkigal::Client->new( 'socket' => $socket, 'timeout' => 1 )->call('sleepy') }
