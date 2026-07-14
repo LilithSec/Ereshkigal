@@ -43,6 +43,7 @@ option gives finer control.
 - The `ip_set` kernel module (loaded on demand by ipset on any normal
   kernel). `kill = 1` additionally needs `conntrack` (the
   conntrack-tools package) and connection tracking enabled.
+- `type = "tarpit"` / `"delude"` additionally need xtables-addons.
 - Works with both iptables-legacy and iptables-nft, as it only ever
   talks through the `iptables`/`ip6tables` frontends.
 
@@ -60,16 +61,42 @@ option gives finer control.
 
 ## Options
 
-| option | default | what                                                        |
-|--------|---------|--------------------------------------------------------------|
-| `type` | `drop`  | `drop` silently drops; `reject` sends ICMP port-unreachable |
-| `kill` | `0`     | drop existing conntrack entries for a banned IP             |
+| option        | default  | what                                                        |
+|---------------|----------|--------------------------------------------------------------|
+| `type`        | `drop`   | `drop`, `reject`, `tarpit`, or `delude` — see below         |
+| `tarpit_mode` | `tarpit` | TARPIT mode when `type = "tarpit"`: `tarpit`, `honeypot`, `reset` |
+| `kill`        | `0`      | drop existing conntrack entries for a banned IP             |
 
 ### `type`
 
 `reject` uses `-j REJECT --reject-with icmp-port-unreachable` on
 IPv4 and `--reject-with icmp6-port-unreachable` on IPv6; `drop` is a
 plain `-j DROP`.
+
+`tarpit` and `delude` are the cruel options, backed by the
+xtables-addons TARPIT and DELUDE targets. `tarpit` accepts the TCP
+connection and holds it (zero window), tying the attacker's
+resources up in the underworld rather than turning them away;
+`tarpit_mode` picks the flavor (`tarpit` hold, `honeypot` accept
+then hold, `reset` immediate RST). `delude` answers the SYN with a
+SYN/ACK and everything after with RST — the port looks open to a
+scanner but no session ever exists.
+
+Both are **TCP only**: the generated rules always say `-p tcp`, and
+non-tcp protocols (and the implicit udp when only ports are
+configured) are skipped rather than emitted. Both also require the
+crafted replies to escape connection tracking, so with these types
+the backend additionally builds a chain in the **raw table**, jumped
+from `PREROUTING`, holding `-j CT --notrack` rules that mirror the
+block rules — set up at init, verified by `check`, torn down with
+the rest. Without the notrack exemption the kernel stack would fight
+the crafted packets and pin an INVALID conntrack entry per attacker
+packet; the backend handles it, this is just why the raw table
+suddenly has your prefix in it.
+
+Requires xtables-addons installed (the `xt_TARPIT`/`xt_DELUDE`
+modules); init fails cleanly if the target is missing. `kill = 1`
+pairs well — sever the existing states, tarpit the reconnects.
 
 ### `kill`
 

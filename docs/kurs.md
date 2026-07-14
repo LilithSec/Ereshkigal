@@ -19,12 +19,15 @@ interacts with it, and its particular footguns.
   and the authorization model that is its reason to exist
 - [dummy.md](kurs/dummy.md) — an underworld of pure imagination, for
   testing
+
+Local packet filters...
+
 - [pf.md](kurs/pf.md) — pf on FreeBSD/OpenBSD; table in an anchor,
   and the `anchor "kur/*"` line pf.conf must carry
 - [ipfw.md](kurs/ipfw.md) — ipfw on FreeBSD; table plus a rule
   number, and why that number must be unique per kur
 - [iptables.md](kurs/iptables.md) — Linux iptables/ip6tables plus
-  ipset
+  ipset; also carries the `tarpit`/`delude` types via xtables-addons
 - [nftables.md](kurs/nftables.md) — Linux nft; everything in one
   dedicated table
 - [firewalld.md](kurs/firewalld.md) — Linux hosts firewalld manages;
@@ -32,17 +35,48 @@ interacts with it, and its particular footguns.
   does to them
 - [ufw.md](kurs/ufw.md) — Ubuntu's uncomplicated firewall; per-IP
   prepended rules
+- [shorewall.md](kurs/shorewall.md) — Shorewall's dynamic blacklist
 - [npf.md](kurs/npf.md) — npf on NetBSD; the table and rule npf.conf
   must declare
 - [route.md](kurs/route.md) — null routes via iproute2; no firewall
   needed at all
-- [shell.md](kurs/shell.md) — commands you specify; the escape hatch
-- [cloudflare.md](kurs/cloudflare.md) — IP access rules at the
-  Cloudflare edge
+- [xdp.md](kurs/xdp.md) — XDP/eBPF drops before the network stack,
+  via xdp-filter
+- [hosts_deny.md](kurs/hosts_deny.md) — TCP wrappers; a marked
+  region in /etc/hosts.deny
+
+Network gear and appliances...
+
+- [routeros.md](kurs/routeros.md) — MikroTik RouterOS over ssh;
+  creates its own address-lists and rules
+- [routeros_api.md](kurs/routeros_api.md) — MikroTik RouterOS over
+  REST (7.1+); membership in your address-lists
+- [opnsense.md](kurs/opnsense.md) — an OPNsense firewall alias via
+  its REST API
+- [panos.md](kurs/panos.md) — Palo Alto PAN-OS; tag registrations
+  feeding a Dynamic Address Group, no commit needed
+- [fortigate.md](kurs/fortigate.md) — Fortinet FortiGate; address
+  objects and group membership via the FortiOS REST API
 - [netscaler.md](kurs/netscaler.md) — policy dataset bindings on a
   Citrix NetScaler/ADC
+- [bgp_rtbh.md](kurs/bgp_rtbh.md) — BGP Remote Triggered Black Hole;
+  announce host routes with the RFC 7999 blackhole community
+
+Remote services...
+
+- [cloudflare.md](kurs/cloudflare.md) — IP access rules at the
+  Cloudflare edge
 - [nsupdate.md](kurs/nsupdate.md) — an RBL-style DNS blocklist in a
   BIND zone
+- [abuseipdb.md](kurs/abuseipdb.md) — report the banished to
+  AbuseIPDB; reporting only, pairs with a blocker inside a gate
+
+Generic...
+
+- [file_reload.md](kurs/file_reload.md) — render the ban list to a
+  file, run a reload hook; web servers, RPZ zones, EDLs, ipset
+  restore files
+- [shell.md](kurs/shell.md) — commands you specify; the escape hatch
 
 The authoritative reference for any backend remains its POD —
 `perldoc Net::Firewall::BlockerHelper::backends::<backend>`.
@@ -79,30 +113,45 @@ Notes that apply across the board...
   table) swept it away. It costs one probe per ban/unban; leave it on
   unless that matters to you. What `check` actually probes — and
   where it can probe nothing — varies per backend; see each page.
-- Several backends take no `ports`/`protocols` at all — they block
-  the whole IP or operate somewhere ports have no meaning (`npf`,
-  `route`, `cloudflare`, `netscaler`, `nsupdate`). Specifying either
-  there is an error and the kur will fail to start.
+- Many backends take no `ports`/`protocols` at all — they block the
+  whole IP or operate somewhere ports have no meaning. The strict
+  ones (`npf`, `route`, `cloudflare`, `netscaler`, `nsupdate`,
+  `routeros_api`, `panos`, `fortigate`, `abuseipdb`) treat
+  specifying either as a fatal error; the lenient ones (`shorewall`,
+  `hosts_deny`, `file_reload`, `xdp`, `routeros`, `opnsense`,
+  `shell`) accept and silently ignore them — so on those, a
+  configured `ports` list scopes nothing. Each page says which.
 - IPv6 addresses are lowercased everywhere, so case variants of one
   IP cannot become two bans.
 
 ## Picking one
 
-| backend      | platform / where           | granularity        | kill support        |
-|--------------|----------------------------|--------------------|----------------------|
-| `pf`         | FreeBSD, OpenBSD, etc      | ports/protocols    | yes (states)        |
-| `ipfw`       | FreeBSD                    | ports/protocols    | TCP only (tcpdrop)  |
-| `iptables`   | Linux                      | ports/protocols    | yes (conntrack)     |
-| `nftables`   | Linux                      | ports/protocols    | yes (conntrack)     |
-| `firewalld`  | Linux with firewalld       | ports/protocols    | yes (conntrack)     |
-| `ufw`        | Linux with ufw             | ports/protocols    | yes (ss/conntrack)  |
-| `npf`        | NetBSD                     | whole IP (rule in npf.conf) | no          |
-| `route`      | Linux (iproute2)           | whole IP           | no                  |
-| `shell`      | anywhere                   | whatever you script | whatever you script |
-| `cloudflare` | Cloudflare edge            | whole IP           | n/a (remote)        |
-| `netscaler`  | Citrix NetScaler/ADC       | via responder policies | n/a (remote)    |
-| `nsupdate`   | BIND zone (DNS RBL)        | whole IP, IPv4 only | n/a (remote)       |
-| `dummy`      | the imagination            | none               | n/a                 |
+| backend        | platform / where           | granularity        | kill support        |
+|----------------|----------------------------|--------------------|----------------------|
+| `pf`           | FreeBSD, OpenBSD, etc      | ports/protocols    | yes (states)        |
+| `ipfw`         | FreeBSD                    | ports/protocols    | TCP only (tcpdrop)  |
+| `iptables`     | Linux (+ tarpit/delude)    | ports/protocols    | yes (conntrack)     |
+| `nftables`     | Linux                      | ports/protocols    | yes (conntrack)     |
+| `firewalld`    | Linux with firewalld       | ports/protocols    | yes (conntrack)     |
+| `ufw`          | Linux with ufw             | ports/protocols    | yes (ss/conntrack)  |
+| `shorewall`    | Linux with Shorewall       | whole IP           | no                  |
+| `npf`          | NetBSD                     | whole IP (rule in npf.conf) | no          |
+| `route`        | Linux (iproute2)           | whole IP           | no                  |
+| `xdp`          | Linux, NIC-level           | whole IP           | unneeded (all packets die) |
+| `hosts_deny`   | anywhere with libwrap      | per daemon         | no                  |
+| `routeros`     | MikroTik (ssh)             | whole IP (rules it creates) | no          |
+| `routeros_api` | MikroTik (REST, 7.1+)      | via your rules     | no                  |
+| `opnsense`     | OPNsense                   | via your rules     | no                  |
+| `panos`        | Palo Alto PAN-OS           | via your policies  | no                  |
+| `fortigate`    | Fortinet FortiGate         | via your policies  | no                  |
+| `netscaler`    | Citrix NetScaler/ADC       | via responder policies | n/a (remote)    |
+| `bgp_rtbh`     | your BGP edge              | whole IP (network-wide) | no             |
+| `cloudflare`   | Cloudflare edge            | whole IP           | n/a (remote)        |
+| `nsupdate`     | BIND zone (DNS RBL)        | whole IP, IPv4 only | n/a (remote)       |
+| `abuseipdb`    | AbuseIPDB (reporting)      | reports only       | n/a                 |
+| `file_reload`  | anywhere                   | whatever consumes the file | no           |
+| `shell`        | anywhere                   | whatever you script | whatever you script |
+| `dummy`        | the imagination            | none               | n/a                 |
 
 On "kill support": a firewall rule only stops **new** connections;
 `kill` severs the established ones too. For ban-on-abuse you almost

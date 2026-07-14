@@ -32,7 +32,7 @@ Inside a `[kur.<name>]` hash...
 
 | key             | what                                                                     |
 |-----------------|--------------------------------------------------------------------------|
-| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend (`pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `npf`, `route`, `shell`, `cloudflare`, `netscaler`, `nsupdate`, `dummy`) — see [kurs.md](kurs.md) |
+| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `panos`, `fortigate`, `netscaler`, `bgp_rtbh`, `cloudflare`, `nsupdate`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs.md](kurs.md) |
 | `fan_out`       | array of other kur names, in place of `backend`; makes this a gate (see below) |
 | `ports`         | array of ports to block for; all if unset                                |
 | `protocols`     | array of protocols to block for; all if unset                            |
@@ -90,22 +90,43 @@ option and the host setup each needs; the short version...
 - **ipfw** — `rule` (rule number, unique per kur), `type`
   (`deny`/`unreach`/`unreach6`), `unreach`/`unreach6` (the reject
   codes), `kill` (tcpdrop existing TCP connections).
-- **iptables** — `type` (`drop`/`reject`), `kill` (drop existing
-  conntrack state).
+- **iptables** — `type` (`drop`/`reject`/`tarpit`/`delude`),
+  `tarpit_mode`, `kill` (drop existing conntrack state).
 - **nftables** — `type` (`drop`/`reject`), `priority` (base chain
   priority), `kill` (conntrack).
 - **firewalld** — `type` (`drop`/`reject`), `chain` (direct interface
   chain), `kill` (conntrack).
 - **ufw** — `type` (`deny`/`reject`), `kill` (`''`/`ss`/`conntrack`).
+- **shorewall** — `type` (`drop`/`reject`), `shorewall_cmd`,
+  `shorewall6_cmd`.
 - **npf** — `table` (the npf table, pre-declared in npf.conf).
 - **route** — `blocktype` (`blackhole`/`unreachable`/`prohibit`).
-- **shell** — `init`, `teardown`, `ban`, `unban` (required commands),
-  `check`, `flush` (optional).
-- **cloudflare** — `token` or `email`+`key`, `zone`, `mode`, `notes`,
-  `timeout`.
+- **xdp** — `interfaces` (required), `mode` (`src`/`dst`),
+  `xdp_mode`, `xdp_filter_cmd`.
+- **hosts_deny** — `file`, `daemon`.
+- **routeros** — `host` (required), `user`, `ssh_cmd`, `ssh_port`,
+  `identity`, `list4`/`list6`, `action`.
+- **routeros_api** — `host`+`user`+`password` (required), `scheme`,
+  `insecure`, `list4`/`list6`, `timeout`.
+- **opnsense** — `host`+`key`+`secret` (required), `alias`,
+  `scheme`, `insecure`, `curl_cmd`.
+- **panos** — `host`+`key` (required), `tag`, `vsys`, `scheme`,
+  `insecure`, `timeout`.
+- **fortigate** — `host`+`token` (required), `group4`/`group6`,
+  `vdom`, `scheme`, `insecure`, `timeout`.
 - **netscaler** — `host`, `user`+`pass` or `auth`, `dataset`,
   `scheme`, `ssl_verify`, `timeout`.
+- **bgp_rtbh** — `driver` (`exabgp`/`gobgp`), `community`,
+  `next_hop`/`next_hop6`, `mask4`/`mask6`, `extra`.
+- **cloudflare** — `token` or `email`+`key`, `zone`, `mode`, `notes`,
+  `timeout`.
 - **nsupdate** — `domain`, `keyfile`, `ttl`, `rdata`, `nsupdate`.
+- **abuseipdb** — `key` (required), `categories`, `comment`,
+  `timeout`; reporting only, blocks nothing itself.
+- **file_reload** — `file` (required), `format`, `header`, `footer`,
+  `reload`, `check`, `remove_on_teardown`.
+- **shell** — `init`, `teardown`, `ban`, `unban` (required commands),
+  `check`, `flush` (optional).
 - **dummy** — takes none; an underworld of pure imagination that just
   remembers what it was told, for testing.
 
