@@ -53,21 +53,51 @@ Network gear and appliances...
   REST (7.1+); membership in your address-lists
 - [opnsense.md](kurs/opnsense.md) — an OPNsense firewall alias via
   its REST API
+- [pfsense.md](kurs/pfsense.md) — a pfSense firewall alias via the
+  pfSense-API package
+- [vyos.md](kurs/vyos.md) — VyOS firewall address-groups via its
+  HTTP API
 - [panos.md](kurs/panos.md) — Palo Alto PAN-OS; tag registrations
   feeding a Dynamic Address Group, no commit needed
 - [fortigate.md](kurs/fortigate.md) — Fortinet FortiGate; address
   objects and group membership via the FortiOS REST API
+- [cisco_fmc.md](kurs/cisco_fmc.md) — Cisco Firepower network group
+  literals via the FMC REST API; mind the deployment caveat
+- [checkpoint.md](kurs/checkpoint.md) — Check Point host objects and
+  a group via the Management API; mind the install-policy caveat
+- [juniper_srx.md](kurs/juniper_srx.md) — Juniper SRX address-book
+  and address-set via the Junos REST API, committed live
+- [f5_bigip.md](kurs/f5_bigip.md) — an F5 BIG-IP AFM address-list
+  via iControl REST
 - [netscaler.md](kurs/netscaler.md) — policy dataset bindings on a
   Citrix NetScaler/ADC
-- [bgp_rtbh.md](kurs/bgp_rtbh.md) — BGP Remote Triggered Black Hole;
-  announce host routes with the RFC 7999 blackhole community
+- [bgp_rtbh.md](kurs/bgp_rtbh.md) — BGP Remote Triggered Black Hole
+  (or FlowSpec); host routes with the RFC 7999 blackhole community
+  via ExaBGP, GoBGP, or FRR
 
-Remote services...
+Cloud and edge services...
 
 - [cloudflare.md](kurs/cloudflare.md) — IP access rules at the
   Cloudflare edge
+- [fastly.md](kurs/fastly.md) — Fastly Edge ACL entries
+- [akamai.md](kurs/akamai.md) — Akamai network lists; mind the
+  activation caveat
+- [aws_wafv2.md](kurs/aws_wafv2.md) — AWS WAFv2 IP sets via the aws
+  CLI
+- [cloud_armor.md](kurs/cloud_armor.md) — a GCP Cloud Armor rule via
+  gcloud; mind the 10-range limit
+- [azure.md](kurs/azure.md) — an Azure NSG deny rule's source
+  prefixes via the az CLI
+
+DNS...
+
 - [nsupdate.md](kurs/nsupdate.md) — an RBL-style DNS blocklist in a
-  BIND zone
+  BIND zone (IPv4 only)
+- [dns_rpz.md](kurs/dns_rpz.md) — Response Policy Zone triggers;
+  block clients from resolving, or answers from resolving to them
+
+Reporting...
+
 - [abuseipdb.md](kurs/abuseipdb.md) — report the banished to
   AbuseIPDB; reporting only, pairs with a blocker inside a gate
 
@@ -113,14 +143,17 @@ Notes that apply across the board...
   table) swept it away. It costs one probe per ban/unban; leave it on
   unless that matters to you. What `check` actually probes — and
   where it can probe nothing — varies per backend; see each page.
-- Many backends take no `ports`/`protocols` at all — they block the
+- Most backends take no `ports`/`protocols` at all — they block the
   whole IP or operate somewhere ports have no meaning. The strict
   ones (`npf`, `route`, `cloudflare`, `netscaler`, `nsupdate`,
-  `routeros_api`, `panos`, `fortigate`, `abuseipdb`) treat
-  specifying either as a fatal error; the lenient ones (`shorewall`,
-  `hosts_deny`, `file_reload`, `xdp`, `routeros`, `opnsense`,
-  `shell`) accept and silently ignore them — so on those, a
-  configured `ports` list scopes nothing. Each page says which.
+  `routeros_api`, `panos`, `fortigate`, `abuseipdb`, `pfsense`,
+  `vyos`, `f5_bigip`, `fastly`, `akamai`, `dns_rpz`, `cisco_fmc`,
+  `checkpoint`, `juniper_srx`) treat specifying either as a fatal
+  error; the lenient ones (`shorewall`, `hosts_deny`, `file_reload`,
+  `xdp`, `routeros`, `opnsense`, `aws_wafv2`, `azure`,
+  `cloud_armor`, `shell`) accept and silently ignore them — so on
+  those, a configured `ports` list scopes nothing. Each page says
+  which.
 - IPv6 addresses are lowercased everywhere, so case variants of one
   IP cannot become two bans.
 
@@ -142,12 +175,24 @@ Notes that apply across the board...
 | `routeros`     | MikroTik (ssh)             | whole IP (rules it creates) | no          |
 | `routeros_api` | MikroTik (REST, 7.1+)      | via your rules     | no                  |
 | `opnsense`     | OPNsense                   | via your rules     | no                  |
+| `pfsense`      | pfSense (pfSense-API pkg)  | via your rules     | no                  |
+| `vyos`         | VyOS (HTTP API)            | via your rules     | no                  |
 | `panos`        | Palo Alto PAN-OS           | via your policies  | no                  |
 | `fortigate`    | Fortinet FortiGate         | via your policies  | no                  |
+| `cisco_fmc`    | Cisco Firepower (needs deploy) | via your policies | no                |
+| `checkpoint`   | Check Point (needs install-policy) | via your policies | no            |
+| `juniper_srx`  | Juniper SRX (commits live) | via your policies  | no                  |
+| `f5_bigip`     | F5 BIG-IP AFM              | via your policies  | no                  |
 | `netscaler`    | Citrix NetScaler/ADC       | via responder policies | n/a (remote)    |
 | `bgp_rtbh`     | your BGP edge              | whole IP (network-wide) | no             |
 | `cloudflare`   | Cloudflare edge            | whole IP           | n/a (remote)        |
+| `fastly`       | Fastly edge                | via your VCL       | n/a (remote)        |
+| `akamai`       | Akamai edge (needs activation) | via your policies | n/a (remote)     |
+| `aws_wafv2`    | AWS WAF                    | via your WebACL    | n/a (remote)        |
+| `cloud_armor`  | GCP edge (max 10 IPs)      | via the rule       | n/a (remote)        |
+| `azure`        | Azure NSGs                 | via the rule       | n/a (remote)        |
 | `nsupdate`     | BIND zone (DNS RBL)        | whole IP, IPv4 only | n/a (remote)       |
+| `dns_rpz`      | BIND RPZ (resolver)        | resolution, not packets | n/a (remote)   |
 | `abuseipdb`    | AbuseIPDB (reporting)      | reports only       | n/a                 |
 | `file_reload`  | anywhere                   | whatever consumes the file | no           |
 | `shell`        | anywhere                   | whatever you script | whatever you script |

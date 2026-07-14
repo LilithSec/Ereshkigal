@@ -32,7 +32,7 @@ Inside a `[kur.<name>]` hash...
 
 | key             | what                                                                     |
 |-----------------|--------------------------------------------------------------------------|
-| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `panos`, `fortigate`, `netscaler`, `bgp_rtbh`, `cloudflare`, `nsupdate`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs.md](kurs.md) |
+| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `pfsense`, `vyos`, `panos`, `fortigate`, `cisco_fmc`, `checkpoint`, `juniper_srx`, `f5_bigip`, `netscaler`, `bgp_rtbh`, `cloudflare`, `fastly`, `akamai`, `aws_wafv2`, `cloud_armor`, `azure`, `nsupdate`, `dns_rpz`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs.md](kurs.md) |
 | `fan_out`       | array of other kur names, in place of `backend`; makes this a gate (see below) |
 | `ports`         | array of ports to block for; all if unset                                |
 | `protocols`     | array of protocols to block for; all if unset                            |
@@ -110,17 +110,44 @@ option and the host setup each needs; the short version...
   `insecure`, `list4`/`list6`, `timeout`.
 - **opnsense** — `host`+`key`+`secret` (required), `alias`,
   `scheme`, `insecure`, `curl_cmd`.
+- **pfsense** — `host`+`key` (required), `alias`, `timeout`,
+  `insecure`.
+- **vyos** — `host`+`key` (required), `group`, `timeout`,
+  `insecure`.
 - **panos** — `host`+`key` (required), `tag`, `vsys`, `scheme`,
   `insecure`, `timeout`.
 - **fortigate** — `host`+`token` (required), `group4`/`group6`,
   `vdom`, `scheme`, `insecure`, `timeout`.
+- **cisco_fmc** — `host`+`user`+`password`+`group_id` (required),
+  `group_name`, `domain`, `timeout`, `insecure`; changes need an FMC
+  deployment to enforce.
+- **checkpoint** — `host`+`user`+`password` (required), `group`,
+  `timeout`, `insecure`; publishes but does not install-policy.
+- **juniper_srx** — `host`+`user`+`password` (required),
+  `address_set`, `timeout`, `insecure`; commits per change.
+- **f5_bigip** — `host`+`user`+`password` (required), `name`,
+  `partition`, `timeout`, `insecure`.
 - **netscaler** — `host`, `user`+`pass` or `auth`, `dataset`,
   `scheme`, `ssl_verify`, `timeout`.
-- **bgp_rtbh** — `driver` (`exabgp`/`gobgp`), `community`,
-  `next_hop`/`next_hop6`, `mask4`/`mask6`, `extra`.
+- **bgp_rtbh** — `driver` (`exabgp`/`gobgp`/`frr`), `announce_type`
+  (`rtbh`/`flowspec`), `community`, `next_hop`/`next_hop6`,
+  `mask4`/`mask6`, `extra`, `vtysh_cmd`.
 - **cloudflare** — `token` or `email`+`key`, `zone`, `mode`, `notes`,
   `timeout`.
+- **fastly** — `token`+`service`+`acl` (required), `timeout`,
+  `insecure`.
+- **akamai** — `host`+`client_token`+`client_secret`+`access_token`+
+  `network_list_id` (required), `timeout`, `insecure`; does not
+  activate the list.
+- **aws_wafv2** — `name4`+`id4` and/or `name6`+`id6`, `scope`,
+  `region`, `aws_cmd`.
+- **cloud_armor** — `policy` (required), `priority`, `project`,
+  `gcloud_cmd`; max 10 banned IPs per rule.
+- **azure** — `resource_group`+`nsg`+`rule` (required),
+  `subscription`, `az_cmd`.
 - **nsupdate** — `domain`, `keyfile`, `ttl`, `rdata`, `nsupdate`.
+- **dns_rpz** — `zone`+`keyfile` (required), `trigger`
+  (`client-ip`/`ip`), `server`, `ttl`, `nsupdate`.
 - **abuseipdb** — `key` (required), `categories`, `comment`,
   `timeout`; reporting only, blocks nothing itself.
 - **file_reload** — `file` (required), `format`, `header`, `footer`,
