@@ -77,7 +77,7 @@ The manager commands are `status`, `status_all`, `status_kur`,
 `stop`. The kur commands are `ban`, `unban`, `banned`, `status`,
 `flush`, `re_init`, `checkpoint`, and `stop`. The kur sockets are
 0600 and only Ereshkigal is expected to speak to them. See
-[usage.md](usage.md) for driving the socket from your own
+[usage](usage) for driving the socket from your own
 integrations.
 
 ## Sentences and the sweeper

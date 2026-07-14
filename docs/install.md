@@ -52,7 +52,7 @@ cpanm Error::Helper Net::Firewall::BlockerHelper \
 
 ## First run
 
-Write a config (see [configuration.md](configuration.md) — the
+Write a config (see [configuration](configuration) — the
 `dummy` backend is good for a first try), then...
 
 ```shell
@@ -62,7 +62,7 @@ ereshkigal status
 
 `start` reads `/usr/local/etc/ereshkigal.toml`, daemonizes, and raises
 the underworlds. The firewall backends need root; see
-[security.md](security.md) for what that implies.
+[security](security) for what that implies.
 
 ## Running at boot
 

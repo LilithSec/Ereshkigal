@@ -121,7 +121,7 @@ printf '%s\n' \
 ```
 
 From perl, use `Ereshkigal::Client` — it also handles the
-`enable_auth` gate transparently (see [usage.md](usage.md)).
+`enable_auth` gate transparently (see [usage](usage)).
 
 ## A monitoring user Neti admits to only one kur
 
@@ -142,7 +142,7 @@ kill = 1
 The `sshd-mon` user can `ereshkigal status sshd` and
 `ereshkigal ban --kur sshd ...`, but `status`, a bare `ban`, `stop`,
 and anything touching other kurs is refused at the gate. See
-[security.md](security.md) for the full trust model.
+[security](security) for the full trust model.
 
 ## An underworld of pure imagination
 

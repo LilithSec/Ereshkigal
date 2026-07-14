@@ -84,6 +84,5 @@ until `re_init`.
 - Fastly rate-limits API writes account-wide; pace chatty ban
   sources.
 - Errors carry Error::Helper flags (`serviceNotDefined`,
-  `tokenNotDefined`, `aclNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::fastly` has the full
+  `tokenNotDefined`, `aclNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::fastly`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::fastly) has the full
   table.

@@ -61,5 +61,5 @@ backend, so `2001:DB8::1` and `2001:db8::1` are one ban.
 
 Only the shared validation errors apply (bad port, bad protocol, bad
 prefix/name, options not a hash); the operations themselves cannot
-fail. See `perldoc Net::Firewall::BlockerHelper::backends::dummy` for
+fail. See [`Net::Firewall::BlockerHelper::backends::dummy`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::dummy) for
 the flag list.

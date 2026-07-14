@@ -120,6 +120,5 @@ own retry/timeout behavior — the kur imposes no timeout of its own).
 - Zone transfers/replication mean secondaries lag by NOTIFY/refresh;
   consumers querying a secondary see bans slightly late.
 - Errors carry Error::Helper flags (`optionInvalid`,
-  `ipv6NotSupported`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::nsupdate` has the full
+  `ipv6NotSupported`, …) — [`Net::Firewall::BlockerHelper::backends::nsupdate`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::nsupdate) has the full
   table.

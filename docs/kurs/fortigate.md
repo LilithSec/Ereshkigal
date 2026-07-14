@@ -90,13 +90,12 @@ gone until `re_init`.
 - This is the chattiest of the API backends: two calls per ban, two
   per unban, four per timed ban's lifetime. For high-churn bans,
   something set-based suits FortiGate better (an external EDL via
-  [file_reload](file_reload.md), for instance — FortiGates can poll
+  [file_reload](file_reload), for instance — FortiGates can poll
   those as External Connectors).
 - Removing a group member the group doesn't have errors (it is not
   tolerated the way whole-object hand-removal is elsewhere); after
   hand-cleanup on the FortiGate, expect some unban errors until the
   books agree — `re_init` squares them.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `tokenNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::fortigate` has the full
+  `tokenNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::fortigate`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::fortigate) has the full
   table.

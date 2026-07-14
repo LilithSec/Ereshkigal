@@ -5,7 +5,7 @@ Not a blocker at all: reports banned IPs to
 equivalent of the fail2ban abuseipdb action. A ban files a report;
 nothing is ever blocked by this kur itself.
 
-Its natural home is inside a [gate](gate.md), next to a real
+Its natural home is inside a [gate](gate), next to a real
 blocker — one command through the gate blocks locally *and* reports
 upstream:
 
@@ -112,6 +112,5 @@ publish.
   the daily quota unless you are very chatty — set `self_heal = 0`
   on this kur if it matters, there is nothing to heal anyway.
 - Errors carry Error::Helper flags (`keyNotDefined`,
-  `categoriesInvalid`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::abuseipdb` has the full
+  `categoriesInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::abuseipdb`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::abuseipdb) has the full
   table.

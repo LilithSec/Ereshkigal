@@ -91,7 +91,7 @@ that any policy enforces them. Two consequences worth knowing:
   User-ID cache clear) silently drops them while `check` stays
   green — pair such events with a `re_init`.
 - A missing or mis-matched DAG means registrations succeed and
-  nothing is blocked; as with [npf](npf.md), the kur cannot see
+  nothing is blocked; as with [npf](npf), the kur cannot see
   whether anything consumes its work.
 
 ## Gotchas
@@ -104,5 +104,4 @@ that any policy enforces them. Two consequences worth knowing:
 - `insecure = 1` disables certificate verification; the API key
   rides in every request body, so prefer a real certificate.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `keyNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::panos` has the full table.
+  `keyNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::panos`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::panos) has the full table.

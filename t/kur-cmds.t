@@ -46,7 +46,7 @@ is( $kur->{stats}{errors},             1,    'stats errors bumped' );
 is( $kur->{stats}{bans},               3,    'stats bans now 3' );
 
 throws_ok { $kur->_cmd_ban( {} ) } qr/args\.ips/, 'dies with out args';
-throws_ok { $kur->_cmd_ban( { 'args' => { 'ips' => [] } } ) } qr/args\.ips/,  'dies on empty ips';
+throws_ok { $kur->_cmd_ban( { 'args' => { 'ips' => [] } } ) } qr/args\.ips/, 'dies on empty ips';
 throws_ok { $kur->_cmd_ban( { 'args' => { 'ips' => 'x' } } ) } qr/args\.ips/, 'dies on non-array ips';
 
 #
@@ -54,9 +54,9 @@ throws_ok { $kur->_cmd_ban( { 'args' => { 'ips' => 'x' } } ) } qr/args\.ips/, 'd
 #
 
 $result = $kur->_cmd_unban( { 'args' => { 'ip' => '1.2.3.4' } } );
-is( $result->{was_banned},  1,         'unban of a present IP reports was_banned 1' );
-is( $result->{ip},          '1.2.3.4', 'unban reports the IP back' );
-is( $kur->{stats}{unbans},  1,         'stats unbans is 1' );
+is( $result->{was_banned}, 1,         'unban of a present IP reports was_banned 1' );
+is( $result->{ip},         '1.2.3.4', 'unban reports the IP back' );
+is( $kur->{stats}{unbans}, 1,         'stats unbans is 1' );
 
 $result = $kur->_cmd_banned;
 is( ( grep { $_ eq '1.2.3.4' } @{ $result->{banned} } ), 0, 'unbanned IP gone from the banned list' );
@@ -69,6 +69,37 @@ throws_ok { $kur->_cmd_unban( {} ) } qr/args\.ip/, 'dies with out args';
 throws_ok { $kur->_cmd_unban( { 'args' => { 'ip' => ['1.2.3.4'] } } ) } qr/args\.ip/, 'dies on a ref for ip';
 
 #
+# IPv6 normalization... long form, short form, and case variants of the
+# same IP must all land on the same ban entry
+#
+
+$result = $kur->_cmd_ban( { 'args' => { 'ips' => ['2001:0DB8:0000:0000:0000:0000:0000:0001'] } } );
+is( $result->{ips}{'2001:db8::1'}{status}, 'ok', 'long form IPv6 banned under its short form' );
+is( $kur->{stats}{bans},                   4,    'stats bans bumped for the IPv6 ban' );
+
+$result = $kur->_cmd_banned;
+is( ( grep { $_ eq '2001:db8::1' } @{ $result->{banned} } ), 1, 'banned lists the IPv6 IP in short form' );
+
+$result = $kur->_cmd_ban( { 'args' => { 'ips' => ['2001:db8:0:0::1'] } } );
+is( $result->{ips}{'2001:db8::1'}{refreshed}, 1, 'differently spelled rebans just refresh the existing ban' );
+is( $kur->{stats}{bans},                      4, 'stats bans unchanged for the refresh' );
+
+$result = $kur->_cmd_unban( { 'args' => { 'ip' => '2001:0db8::0001' } } );
+is( $result->{was_banned}, 1,             'unban via a variant spelling finds the ban' );
+is( $result->{ip},         '2001:db8::1', 'unban reports the IP back in short form' );
+
+$result = $kur->_cmd_banned;
+is( ( grep { $_ eq '2001:db8::1' } @{ $result->{banned} } ), 0, 'IPv6 IP gone from the banned list' );
+
+# leading zero octet IPv4 is ambiguous, octal vs decimal wise, so it is
+# refused here rather than reaching the backend, which would accept it
+$result = $kur->_cmd_ban( { 'args' => { 'ips' => ['010.0.0.1'] } } );
+is( $result->{ips}{'010.0.0.1'}{status}, 'error', 'leading zero octet IPv4 refused' );
+
+throws_ok { $kur->_cmd_unban( { 'args' => { 'ip' => 'not-an-ip' } } ) } qr/does not appear to be a IPv4 or IPv6 IP/,
+	'unban of a invalid IP dies';
+
+#
 # status
 #
 
@@ -78,9 +109,9 @@ is( $result->{backend}, 'dummy', 'status backend' );
 is( $result->{pid},     $$,      'status pid' );
 ok( $result->{uptime} >= 0, 'status uptime' );
 is( $result->{banned_count}, 2, 'status banned_count tracks bans/unbans' );
-is_deeply( $result->{stats}, $kur->{stats}, 'status stats' );
-is_deeply( $result->{ports},     ['22'],  'status ports' );
-is_deeply( $result->{protocols}, ['tcp'], 'status protocols' );
+is_deeply( $result->{stats},     $kur->{stats}, 'status stats' );
+is_deeply( $result->{ports},     ['22'],        'status ports' );
+is_deeply( $result->{protocols}, ['tcp'],       'status protocols' );
 
 #
 # flush

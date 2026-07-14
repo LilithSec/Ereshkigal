@@ -89,5 +89,4 @@ automatically.
 - `xdp-filter port` filtering exists upstream but is not exposed
   here; this kur is whole-IP.
 - Errors carry Error::Helper flags (`interfacesInvalid`,
-  `modeInvalid`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::xdp` has the full table.
+  `modeInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::xdp`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::xdp) has the full table.

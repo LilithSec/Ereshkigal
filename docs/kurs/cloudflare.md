@@ -121,6 +121,5 @@ already-unbanned, not an error.
   only to that zone. Pick deliberately via `zone`.
 - IPv6 IPs are lowercased before use.
 - Errors carry Error::Helper flags (`modeInvalid`, `optionInvalid`,
-  …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::cloudflare` has the full
+  …) — [`Net::Firewall::BlockerHelper::backends::cloudflare`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::cloudflare) has the full
   table.

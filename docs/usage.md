@@ -129,5 +129,5 @@ optional), `unban` (`{"ip":...}` or `{"all":true}`), `add_kur`
 `{"status":"ok","result":...}` or `{"status":"error","error":"..."}`.
 
 Note that with `enable_auth` on, a raw `nc` integration must complete
-the auth challenge itself (see [security.md](security.md)) — using
+the auth challenge itself (see [security](security)) — using
 Ereshkigal::Client is much less bother.

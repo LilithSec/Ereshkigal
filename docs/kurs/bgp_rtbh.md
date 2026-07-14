@@ -6,7 +6,7 @@ or, with `announce_type = "flowspec"`, as a BGP FlowSpec rule
 discarding traffic from the source. Routers that honor the
 announcement drop the traffic — at your edge, or with a transit
 provider that accepts them, before it ever reaches your link. The
-[route](route.md) backend scaled from one host to the whole network.
+[route](route) backend scaled from one host to the whole network.
 
 ```toml
 [kur.ddos]
@@ -131,6 +131,5 @@ this kur.
   peer and `ban_time` short before trusting automation with it.
 - Sentences ending means withdraws; a mass expiry is a burst of
   `exabgpcli` invocations. BGP handles it; your logging might blink.
-- Errors carry Error::Helper flags (`driverInvalid`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::bgp_rtbh` has the full
+- Errors carry Error::Helper flags (`driverInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::bgp_rtbh`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::bgp_rtbh) has the full
   table.

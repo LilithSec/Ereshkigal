@@ -4,7 +4,7 @@ Blocks on a MikroTik router by driving its CLI over ssh: two
 address-lists (IPv4 and IPv6) plus the input-chain filter rules
 referencing them, all created by the kur itself. For the REST flavor
 that manages only list membership, see
-[routeros_api](routeros_api.md); this ssh one also works on RouterOS
+[routeros_api](routeros_api); this ssh one also works on RouterOS
 6, which has no REST API.
 
 ```toml
@@ -100,6 +100,5 @@ entries removed by hand stay gone until re_init.
   same list name will be removed with them.
 - RouterOS address-list entries can carry their own timeouts; the
   kur does not use them — sentences are the kur sweeper's job.
-- Errors carry Error::Helper flags (`hostNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::routeros` has the full
+- Errors carry Error::Helper flags (`hostNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::routeros`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::routeros) has the full
   table.

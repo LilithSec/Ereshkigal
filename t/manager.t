@@ -57,8 +57,25 @@ is( $response->{status}, 'error', 'ban to a unknown kur errors' );
 like( $response->{error}, qr/No such kur instance/, 'unknown kur error message' );
 
 $result = $client->call_ok( 'ban', { 'ips' => [ 'not-an-ip', '2.2.2.2' ] } );
-is( $result->{kurs}{sshd}{ips}{'not-an-ip'}{status}, 'error', 'invalid IP errors per kur per IP' );
-is( $result->{kurs}{sshd}{ips}{'2.2.2.2'}{status},   'ok',    'valid IP in the same request applied' );
+is( $result->{rejected}{'not-an-ip'}{status}, 'error', 'invalid IP rejected by the manager' );
+like( $result->{rejected}{'not-an-ip'}{error}, qr/does not appear to be a IPv4 or IPv6 IP/, 'rejected error message' );
+ok( !defined( $result->{kurs}{sshd}{ips}{'not-an-ip'} ), 'rejected IP not fanned out to the kurs' );
+is( $result->{kurs}{sshd}{ips}{'2.2.2.2'}{status}, 'ok', 'valid IP in the same request applied' );
+ok( !defined( $result->{rejected}{'2.2.2.2'} ), 'valid IP not in rejected' );
+
+$response = $client->call( 'ban', { 'ips' => [ 'not-an-ip', '010.0.0.1' ] } );
+is( $response->{status}, 'error', 'ban with nothing but invalid IPs errors' );
+
+# variant spellings normalize to one canonical form before the fan out
+$result = $client->call_ok( 'ban', { 'ips' => [ '2001:0DB8:0000:0000:0000:0000:0000:0001', '2001:db8:0:0::1' ] } );
+is( $result->{kurs}{sshd}{ips}{'2001:db8::1'}{status}, 'ok', 'IPv6 fanned out in canonical form' );
+ok( !defined( $result->{kurs}{sshd}{ips}{'2001:0DB8:0000:0000:0000:0000:0000:0001'} ),
+	'long form not fanned out as its own IP' );
+$result = $client->call_ok( 'unban', { 'ip' => '2001:DB8::1' } );
+is( $result->{kurs}{sshd}{was_banned}, 1, 'unban via a variant spelling finds the ban' );
+
+$response = $client->call( 'unban', { 'ip' => 'not-an-ip' } );
+is( $response->{status}, 'error', 'unban of a invalid IP errors' );
 
 $result = $client->call_ok( 'ban', { 'ips' => ['5.5.5.5'], 'ban_time' => 3600, 'kur' => 'smtp' } );
 is( $result->{kurs}{smtp}{ips}{'5.5.5.5'}{status}, 'ok', 'ban with a ban_time ok' );

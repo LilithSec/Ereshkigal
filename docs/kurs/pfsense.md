@@ -84,6 +84,5 @@ self-correcting in a way the per-entry backends are not.
 - `insecure = 1` disables certificate verification — pfSense ships
   self-signed; give it a real cert if the path matters.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `keyNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::pfsense` has the full
+  `keyNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::pfsense`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::pfsense) has the full
   table.

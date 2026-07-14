@@ -101,5 +101,4 @@ procedure.
   prefixes), since npf allows them.
 - IPv6 addresses are lowercased on ban.
 - Errors carry Error::Helper flags (`tableInvalid`,
-  `portsNotSupported`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::npf` has the full table.
+  `portsNotSupported`, …) — [`Net::Firewall::BlockerHelper::backends::npf`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::npf) has the full table.

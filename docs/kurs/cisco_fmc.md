@@ -95,5 +95,5 @@ fresh token — so token expiry is, unusually, self-healing here.
   else editing the same group gets overwritten.
 - Errors carry Error::Helper flags (`hostNotDefined`,
   `userNotDefined`, `passwordNotDefined`, `groupIdNotDefined`, …) —
-  `perldoc Net::Firewall::BlockerHelper::backends::cisco_fmc` has
+  [`Net::Firewall::BlockerHelper::backends::cisco_fmc`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::cisco_fmc) has
   the full table.

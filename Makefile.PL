@@ -27,6 +27,8 @@ my %WriteMakefileArgs = (
 		'Net::Server::Daemonize'           => '0',
 		'POE'                              => '0',
 		'POE::Component::Server::JSONUnix' => '0',
+		'Regexp::IPv4'                     => '0',
+		'Regexp::IPv6'                     => '0',
 		'TOML::Tiny'                       => '0',
 	},
 	dist       => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },

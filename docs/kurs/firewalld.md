@@ -69,7 +69,7 @@ are protecting.
 
 ### `type` / `kill`
 
-Same semantics as the [iptables](iptables.md) backend — `reject` is
+Same semantics as the [iptables](iptables) backend — `reject` is
 `REJECT --reject-with icmp-port-unreachable` / `icmp6-port-unreachable`
 per family, and `kill` runs the same protocol-scoped
 `conntrack -D -s <ip>` commands, exit codes ignored.
@@ -115,6 +115,5 @@ closes it on demand.
   fixed.
 - IPv6 addresses are lowercased on ban.
 - Errors carry Error::Helper flags (`chainInvalid`, `typeInvalid`,
-  `nameTooLong`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::firewalld` has the full
+  `nameTooLong`, …) — [`Net::Firewall::BlockerHelper::backends::firewalld`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::firewalld) has the full
   table.

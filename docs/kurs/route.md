@@ -105,5 +105,4 @@ external wipe should not error.
   hosts, firewalld hosts, hosts with no firewall at all.
 - IPv6 addresses are lowercased on ban.
 - Errors carry Error::Helper flags (`blocktypeInvalid`,
-  `portsNotSupported`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::route` has the full table.
+  `portsNotSupported`, …) — [`Net::Firewall::BlockerHelper::backends::route`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::route) has the full table.

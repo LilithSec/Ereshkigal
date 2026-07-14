@@ -113,6 +113,5 @@ file   = "/usr/local/www/edl/banned.txt"
 - Without a real `check` command, self_heal only notices the file
   vanishing, not a consumer that stopped consuming.
 - Errors carry Error::Helper flags (`fileNotDefined`,
-  `fileWriteFailed`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::file_reload` has the full
+  `fileWriteFailed`, …) — [`Net::Firewall::BlockerHelper::backends::file_reload`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::file_reload) has the full
   table.

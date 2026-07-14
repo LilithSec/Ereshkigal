@@ -74,6 +74,5 @@ routine, pair them with a `re_init`.
   dynamic blacklist; letting both Shorewall and the kur restore bans
   is harmless (re-drop of a dropped IP succeeds) but the kur's book
   is the authority on when sentences end.
-- Errors carry Error::Helper flags (`typeInvalid`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::shorewall` has the full
+- Errors carry Error::Helper flags (`typeInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::shorewall`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::shorewall) has the full
   table.

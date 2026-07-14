@@ -86,5 +86,4 @@ rendering being self-correcting as usual.
 - `az` sessions/service principal tokens can expire under a
   long-running kur; auth errors on ban mean credentials, not code.
 - Errors carry Error::Helper flags (`resourceGroupNotDefined`,
-  `nsgNotDefined`, `ruleNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::azure` has the full table.
+  `nsgNotDefined`, `ruleNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::azure`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::azure) has the full table.

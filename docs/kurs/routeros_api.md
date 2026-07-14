@@ -5,7 +5,7 @@ Blocks on a MikroTik router via the RouterOS REST API (RouterOS
 raw) rules that consume the lists are yours to build — the
 npf/netscaler "membership only" model. If you want the rules created
 for you, or are on RouterOS 6, use the ssh driven
-[routeros](routeros.md) backend instead.
+[routeros](routeros) backend instead.
 
 ```toml
 [kur.sshd]
@@ -82,7 +82,7 @@ unbanned, not an error.
 
 `check`/init probe only the IPv4 list endpoint — reachability and
 credentials, not list contents, not the IPv6 side, and never whether
-any rule consumes the lists. As with [npf](npf.md), the kur will
+any rule consumes the lists. As with [npf](npf), the kur will
 happily manage a list nothing reads; if bans don't bite, check the
 rules first.
 
@@ -95,6 +95,5 @@ rules first.
   double the expiry-time traffic. Fine for a router's management
   plane at normal rates.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `userNotDefined`, `passwordNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::routeros_api` has the full
+  `userNotDefined`, `passwordNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::routeros_api`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::routeros_api) has the full
   table.

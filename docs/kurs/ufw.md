@@ -65,7 +65,7 @@ identity.
 ### `kill`
 
 A ufw rule only stops **new** connections (see
-[security.md](../security.md)). The two kill flavors, both scoped to
+[security](../security)). The two kill flavors, both scoped to
 the configured protocols and both covering IPv4 and IPv6:
 
 - `"ss"` — `ss -K -tu dst "[<ip>]"`, with `-t`/`-u`/`-tu` chosen from
@@ -99,14 +99,14 @@ individual per-IP rules still exist. `ufw disable`/`enable` cycles
 are caught; a hand-deleted rule is not, and self_heal won't resurrect
 it (that is true of every backend — the kur's book and `re_init` are
 the recovery path, see the ban-time footnotes in
-[security.md](../security.md)).
+[security](../security)).
 
 ## Gotchas
 
 - Rules scale per IP × per protocol: banning 1000 IPs over tcp+udp
   means 2000 ufw rules. ufw is fine with that but `ufw status
   numbered` gets long; for very large ban volumes a set-based backend
-  (or [route](route.md)) stays tidier.
+  (or [route](route)) stays tidier.
 - `ufw prepend` puts ban rules ahead of allow rules — that ordering
   is the point, and also means the bans show at the top of `ufw
   status`.
@@ -115,5 +115,5 @@ the recovery path, see the ban-time footnotes in
   at startup (teardown+init+re-ban), so duplicates do not accumulate.
 - IPv6 addresses are lowercased on ban.
 - Errors carry Error::Helper flags (`typeInvalid`, `killInvalid`, …)
-  — `perldoc Net::Firewall::BlockerHelper::backends::ufw` has the
+  — [`Net::Firewall::BlockerHelper::backends::ufw`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::ufw) has the
   full table.

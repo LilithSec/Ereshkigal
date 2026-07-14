@@ -84,6 +84,5 @@ by hand stay removed until `re_init`.
   to local `ps` — on a multi-user box, weigh that; the kur host is
   usually single-purpose enough not to care.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `apiKeyNotDefined`, `apiSecretNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::opnsense` has the full
+  `apiKeyNotDefined`, `apiSecretNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::opnsense`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::opnsense) has the full
   table.

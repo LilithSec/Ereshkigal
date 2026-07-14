@@ -91,9 +91,8 @@ backends, hand-edits are overwritten at the next mutation.
   with other writers.
 - Every mutation shells out to the `aws` CLI twice; slow (a second
   or two each) but WAF IP sets hold 10,000 entries, so this scales
-  in volume where [cloud_armor](cloud_armor.md) can't.
+  in volume where [cloud_armor](cloud_armor) can't.
 - WAF changes propagate in seconds but not instantly.
 - Errors carry Error::Helper flags (`scopeInvalid`,
-  `ipsetNotConfigured`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::aws_wafv2` has the full
+  `ipsetNotConfigured`, …) — [`Net::Firewall::BlockerHelper::backends::aws_wafv2`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::aws_wafv2) has the full
   table.

@@ -90,6 +90,5 @@ nothing to verify and check always passes.
   like `kill` exists (established sessions are untouched).
 - Best regarded as a belt-and-suspenders or last-resort backend on
   systems where you cannot touch the packet filter.
-- Errors carry Error::Helper flags (`fileWriteFailed`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::hosts_deny` has the full
+- Errors carry Error::Helper flags (`fileWriteFailed`, …) — [`Net::Firewall::BlockerHelper::backends::hosts_deny`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::hosts_deny) has the full
   table.

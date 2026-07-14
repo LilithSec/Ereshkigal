@@ -126,6 +126,5 @@ cloudflare backend, unbanning an already-missing binding is an error
 - Both IPv4 and IPv6 values are accepted and passed through; make
   sure the dataset's type (and the policies) match what you feed it.
 - IPv6 IPs are lowercased before use.
-- Errors carry Error::Helper flags (`optionInvalid`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::netscaler` has the full
+- Errors carry Error::Helper flags (`optionInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::netscaler`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::netscaler) has the full
   table.

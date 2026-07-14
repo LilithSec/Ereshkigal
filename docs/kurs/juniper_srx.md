@@ -99,6 +99,5 @@ idempotent, Junos being Junos).
 - Failed commits leave the kur's book ahead of the device until the
   next successful mutation or `re_init`.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `userNotDefined`, `passwordNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::juniper_srx` has the full
+  `userNotDefined`, `passwordNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::juniper_srx`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::juniper_srx) has the full
   table.

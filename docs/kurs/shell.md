@@ -29,7 +29,7 @@ The IP is validated against strict IPv4/IPv6 regexes before it goes
 anywhere near your template, so the substitution cannot smuggle shell
 metacharacters — but the templates themselves run verbatim as root
 (usually), so treat the config file accordingly (it already is code
-execution as root — see [security.md](../security.md)).
+execution as root — see [security](../security)).
 
 ## Requirements
 
@@ -100,5 +100,5 @@ everything your commands created).
 - The kur's ban book (and tablet) is the only state — the backend
   never queries your system for what is currently blocked.
 - Errors carry Error::Helper flags (`initInvalid`, `banInvalid`, …) —
-  `perldoc Net::Firewall::BlockerHelper::backends::shell` has the
+  [`Net::Firewall::BlockerHelper::backends::shell`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::shell) has the
   full table.

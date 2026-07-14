@@ -74,7 +74,7 @@ agreed.
 ## self_heal
 
 `check` verifies auth and the list's existence — not its contents or
-the policy. As with [pfsense](pfsense.md), wholesale rendering is
+the policy. As with [pfsense](pfsense), wholesale rendering is
 self-correcting: any hand-edit to the list is overwritten at the
 next mutation.
 
@@ -89,6 +89,5 @@ next mutation.
 - `insecure = 1` disables certificate verification; BIG-IP
   management certs are commonly self-signed.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `userNotDefined`, `passwordNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::f5_bigip` has the full
+  `userNotDefined`, `passwordNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::f5_bigip`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::f5_bigip) has the full
   table.

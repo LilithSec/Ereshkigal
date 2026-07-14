@@ -92,5 +92,4 @@ router by hand stay gone until `re_init`.
   kur then has to reconcile.
 - `insecure = 1` disables certificate verification.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `keyNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::vyos` has the full table.
+  `keyNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::vyos`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::vyos) has the full table.

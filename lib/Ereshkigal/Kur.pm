@@ -8,6 +8,7 @@ use POE;
 use POE::Component::Server::JSONUnix ();
 use Net::Firewall::BlockerHelper     ();
 use Ereshkigal::LogDrek              qw( log_drek );
+use Ereshkigal::IP                   qw( normalize_ip );
 
 =head1 NAME
 
@@ -293,6 +294,12 @@ A ban sweeper is also started, which checks once a second for timed bans
 that have expired and unbans them, and handles the periodic checkpointing
 of the ban state CSV.
 
+IPs passed to ban and unban are validated and normalized to their canonical
+string form, so variant spellings of the same IP, most notably IPv6 long
+form vs short form as well as case, are all treated as the same IP. For ban
+anything failing to validate errors per IP with out disturbing the rest of
+the request, while for unban it is fatal to the request.
+
 The JSON commands handled are as below.
 
     - ban :: Ban the IPs specified via the array args.ips. args.ban_time,
@@ -433,7 +440,18 @@ sub _cmd_ban {
 	my $ident = 'kur-' . $self->{name};
 
 	my $results = {};
-	foreach my $ip ( @{ $args->{ips} } ) {
+	foreach my $raw_ip ( @{ $args->{ips} } ) {
+		# bounced here rather than left for the backend to judge, given the
+		# backend accepts ambiguous stuff like leading zero octet IPv4
+		my $ip = normalize_ip($raw_ip);
+		if ( !defined($ip) ) {
+			my $key = defined($raw_ip) ? $raw_ip : '';
+			$self->{stats}{errors}++;
+			$results->{$key}
+				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 IP' };
+			log_drek( 'err', 'ban of "' . $key . '" failed... does not appear to be a IPv4 or IPv6 IP', undef, $ident );
+			next;
+		}
 		my $expires = $ban_time ? time + $ban_time : 0;
 
 		# already banned, so just refresh it's timer
@@ -455,7 +473,7 @@ sub _cmd_ban {
 			$results->{$ip} = { 'status' => 'ok' };
 			log_drek( 'info', 'banned ' . $ip . ' expires=' . $expires, undef, $ident );
 		}
-	} ## end foreach my $ip ( @{ $args->{ips} } )
+	} ## end foreach my $raw_ip ( @{ $args->{ips} } )
 
 	$self->_checkpoint;
 
@@ -469,7 +487,10 @@ sub _cmd_unban {
 	if ( !defined($args) || !defined( $args->{ip} ) || ref( $args->{ip} ) ne '' ) {
 		die('args.ip must be a IP');
 	}
-	my $ip = $args->{ip};
+	my $ip = normalize_ip( $args->{ip} );
+	if ( !defined($ip) ) {
+		die( 'args.ip, "' . $args->{ip} . '", does not appear to be a IPv4 or IPv6 IP' );
+	}
 
 	# check if it is actually present before trying to unban it
 	my @banned  = $self->_backend_do('list');
@@ -730,6 +751,12 @@ sub _load_bans {
 			next;
 		}
 		my ( $ip, $written, $left ) = @row;
+		# state files written before normalization existed may carry
+		# non-canonical forms
+		my $normalized = normalize_ip($ip);
+		if ( defined($normalized) ) {
+			$ip = $normalized;
+		}
 
 		my $expires = $left ? $written + $left : 0;
 

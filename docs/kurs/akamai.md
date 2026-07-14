@@ -94,6 +94,5 @@ activation state.
 - Akamai rate-limits the API; pace chatty ban sources.
 - Errors carry Error::Helper flags (`hostNotDefined`,
   `clientTokenNotDefined`, `clientSecretNotDefined`,
-  `accessTokenNotDefined`, `networkListIdNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::akamai` has the full
+  `accessTokenNotDefined`, `networkListIdNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::akamai`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::akamai) has the full
   table.

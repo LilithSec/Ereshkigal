@@ -101,6 +101,5 @@ keepalive also conveniently keeps the session alive.
 - Hand-deleted host objects make later unbans error (deleting a
   missing object fails); `re_init` squares the books.
 - Errors carry Error::Helper flags (`hostNotDefined`,
-  `userNotDefined`, `passwordNotDefined`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::checkpoint` has the full
+  `userNotDefined`, `passwordNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::checkpoint`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::checkpoint) has the full
   table.

@@ -31,7 +31,7 @@ nft 'add rule inet kur_sshd kur_sshd tcp dport { 22 } ip6 saddr @kur_sshd_6 drop
 Because the whole setup is its own table with its own input hook, it
 composes with whatever other nftables tables exist (including
 firewalld's, on hosts where firewalld uses the nftables backend —
-though the [firewalld](firewalld.md) backend is still the politer
+though the [firewalld](firewalld) backend is still the politer
 choice there) — nftables runs every base chain hooked to input, in
 priority order.
 
@@ -75,7 +75,7 @@ lower it to slot the kur relative to whatever else hooks input.
 
 ### `kill`
 
-Identical mechanism and scoping to the [iptables](iptables.md)
+Identical mechanism and scoping to the [iptables](iptables)
 backend: `conntrack -D -s <ip>` (`-f ipv6` for IPv6), scoped via `-p`
 to the blocked protocols, everything dropped when nothing is
 configured. Exit codes ignored.
@@ -113,6 +113,5 @@ restart that clobbers the table is noticed by the next ban/unban with
   job, deliberately, so the tablet stays the single source of truth.
 - IPv6 addresses are lowercased on ban.
 - Errors carry Error::Helper flags (`typeInvalid`,
-  `priorityInvalid`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::nftables` has the full
+  `priorityInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::nftables`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::nftables) has the full
   table.

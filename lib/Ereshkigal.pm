@@ -8,6 +8,7 @@ use POE                              qw( Wheel::Run );
 use POE::Component::Server::JSONUnix ();
 use TOML::Tiny                       qw( from_toml );
 use Ereshkigal::Client               ();
+use Ereshkigal::IP                   qw( normalize_ip );
 use Ereshkigal::LogDrek              qw( log_drek );
 
 =head1 NAME
@@ -393,10 +394,15 @@ The JSON commands handled are as below.
           args.kur is not specified. If args.kur is a fan_out kur it expands
           to it's members. args.ban_time, if defined, is forwarded
           to the kurs, overriding their default for how long the bans should
-          last in seconds, with 0 meaning never time out.
+          last in seconds, with 0 meaning never time out. IPs are validated
+          and normalized to their canonical form before being fanned out,
+          with anything failing to validate reported back per IP under
+          rejected rather than being sent to the kurs. If nothing validates
+          the request as a whole errors.
 
-    - unban :: If args.all is true, flush every kur. Otherwise check each kur
-          for args.ip and unban it from each kur it is present on.
+    - unban :: If args.all is true, flush every kur. Otherwise validate and
+          normalize args.ip, erroring if it fails to validate, then check
+          each kur for it and unban it from each kur it is present on.
 
     - add_kur :: Define and start a new kur instance, args.name and
           args.opts. Does not rewrite the config file.
@@ -876,7 +882,7 @@ sub _poe_kur_stdout {
 	log_drek( 'info', 'kur "' . $name . '" stdout... ' . $line );
 
 	return;
-}
+} ## end sub _poe_kur_stdout
 
 sub _poe_kur_stderr {
 	my ( $self, $line, $wheel_id ) = @_[ OBJECT, ARG0, ARG1 ];
@@ -887,7 +893,7 @@ sub _poe_kur_stderr {
 	log_drek( 'err', 'kur "' . $name . '" stderr... ' . $line );
 
 	return;
-}
+} ## end sub _poe_kur_stderr
 
 sub _poe_kur_reaped {
 	my ( $self, $kernel, $pid, $exit ) = @_[ OBJECT, KERNEL, ARG1, ARG2 ];
@@ -1113,6 +1119,29 @@ sub _cmd_ban {
 		die('args.ips must be a array of one or more IPs');
 	}
 
+	# pre-flight the IPs so garbage is bounced here instead of being fanned
+	# out just for every kur to bounce it, and so what is fanned out is the
+	# canonical form... variant spellings of the same IP also dedupe here
+	my @ips;
+	my %seen;
+	my $rejected = {};
+	foreach my $raw_ip ( @{ $args->{ips} } ) {
+		my $ip = normalize_ip($raw_ip);
+		if ( !defined($ip) ) {
+			my $key = defined($raw_ip) ? $raw_ip : '';
+			$rejected->{$key}
+				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 IP' };
+			next;
+		}
+		if ( !$seen{$ip} ) {
+			$seen{$ip} = 1;
+			push( @ips, $ip );
+		}
+	} ## end foreach my $raw_ip ( @{ $args->{ips} } )
+	if ( !@ips ) {
+		die('None of the IPs in args.ips appear to be a IPv4 or IPv6 IP');
+	}
+
 	my @targets;
 	if ( defined( $args->{kur} ) ) {
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
@@ -1131,12 +1160,17 @@ sub _cmd_ban {
 		$self->_authorize( $ctx, @targets );
 	}
 
-	my $kur_args = { 'ips' => $args->{ips} };
+	my $kur_args = { 'ips' => \@ips };
 	if ( defined( $args->{ban_time} ) ) {
 		$kur_args->{ban_time} = $args->{ban_time};
 	}
 
-	return { 'kurs' => $self->_fan_out( \@targets, 'ban', $kur_args ) };
+	my $response = { 'kurs' => $self->_fan_out( \@targets, 'ban', $kur_args ) };
+	if ( %{$rejected} ) {
+		$response->{rejected} = $rejected;
+	}
+
+	return $response;
 } ## end sub _cmd_ban
 
 sub _cmd_unban {
@@ -1152,10 +1186,17 @@ sub _cmd_unban {
 	if ( $args->{all} ) {
 		$kurs = $self->_fan_out( \@all, 'flush' );
 	} else {
+		# bounce garbage here instead of fanning it out just for every kur
+		# to report it absent, and fan out the canonical form so variant
+		# spellings of the same IP all find the ban
+		my $ip = normalize_ip( $args->{ip} );
+		if ( !defined($ip) ) {
+			die( '"' . $args->{ip} . '" does not appear to be a IPv4 or IPv6 IP' );
+		}
 		# the kur checks if the IP is present and only unbans it if it is,
 		# reporting back via was_banned
-		$kurs = $self->_fan_out( \@all, 'unban', { 'ip' => $args->{ip} } );
-	}
+		$kurs = $self->_fan_out( \@all, 'unban', { 'ip' => $ip } );
+	} ## end else [ if ( $args->{all} ) ]
 
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_unban

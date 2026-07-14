@@ -18,13 +18,13 @@ named for the hash — the hash at `kur.sshd` is the kur instance
 | `timeout`       | `30`                          | seconds the manager waits on a kur socket                   |
 | `ban_time`      | `600`                         | seconds a ban lasts; `0` = eternal residence                |
 | `checkpoint`    | `60`                          | seconds between tablet recopies; `0` = mutations/stop only  |
-| `enable_auth`   | `false`                       | Neti at the gate — see [security.md](security.md)           |
+| `enable_auth`   | `false`                       | Neti at the gate — see [security](security)           |
 | `authed_users`  | `[]`                          | users with global access (with enable_auth)                 |
 | `authed_groups` | `[]`                          | groups with global access (with enable_auth)                |
 | `auth_temp_dir` | system tmpdir                 | where the auth challenge cookie files go                    |
 
 Kur sockets are always mode 0600 — that is not configurable, and
-[security.md](security.md) explains why it must stay that way.
+[security](security) explains why it must stay that way.
 
 ## Kur settings
 
@@ -32,7 +32,7 @@ Inside a `[kur.<name>]` hash...
 
 | key             | what                                                                     |
 |-----------------|--------------------------------------------------------------------------|
-| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `pfsense`, `vyos`, `panos`, `fortigate`, `cisco_fmc`, `checkpoint`, `juniper_srx`, `f5_bigip`, `netscaler`, `bgp_rtbh`, `cloudflare`, `fastly`, `akamai`, `aws_wafv2`, `cloud_armor`, `azure`, `nsupdate`, `dns_rpz`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs.md](kurs.md) |
+| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `pfsense`, `vyos`, `panos`, `fortigate`, `cisco_fmc`, `checkpoint`, `juniper_srx`, `f5_bigip`, `netscaler`, `bgp_rtbh`, `cloudflare`, `fastly`, `akamai`, `aws_wafv2`, `cloud_armor`, `azure`, `nsupdate`, `dns_rpz`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs](kurs) |
 | `fan_out`       | array of other kur names, in place of `backend`; makes this a gate (see below) |
 | `ports`         | array of ports to block for; all if unset                                |
 | `protocols`     | array of protocols to block for; all if unset                            |
@@ -82,11 +82,11 @@ same way, minus the per-request level.
 ## Backend options
 
 The `[kur.<name>.options]` table is handed to the backend unchecked.
-[kurs.md](kurs.md) links a detail page per backend covering every
+[kurs](kurs) links a detail page per backend covering every
 option and the host setup each needs; the short version...
 
 - **pf** — `kill` (kill existing states for a banned IP; see
-  [security.md](security.md), you almost certainly want this on).
+  [security](security), you almost certainly want this on).
 - **ipfw** — `rule` (rule number, unique per kur), `type`
   (`deny`/`unreach`/`unreach6`), `unreach`/`unreach6` (the reject
   codes), `kill` (tcpdrop existing TCP connections).

@@ -22,6 +22,7 @@ lib/Ereshkigal/App/Command/status.pm
 lib/Ereshkigal/App/Command/stop.pm
 lib/Ereshkigal/App/Command/unban.pm
 lib/Ereshkigal/Client.pm
+lib/Ereshkigal/IP.pm
 lib/Ereshkigal/Kur.pm
 lib/Ereshkigal/LogDrek.pm
 Makefile.PL
@@ -32,8 +33,10 @@ t/01-load-Ereshkigal-Kur.t
 t/02-load-Ereshkigal-LogDrek.t
 t/03-load-Ereshkigal-Client.t
 t/04-load-Ereshkigal-App.t
+t/05-load-Ereshkigal-IP.t
 t/cli.t
 t/client.t
+t/ip.t
 t/kur-ban-time.t
 t/kur-bin.t
 t/kur-checkpoint.t

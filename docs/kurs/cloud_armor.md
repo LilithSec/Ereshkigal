@@ -93,5 +93,5 @@ next mutation, since every update ships the whole book.
   long-running kur; a failed ban with an auth error means
   re-activating credentials, not a kur bug.
 - Errors carry Error::Helper flags (`policyNotDefined`, …) —
-  `perldoc Net::Firewall::BlockerHelper::backends::cloud_armor` has
+  [`Net::Firewall::BlockerHelper::backends::cloud_armor`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::cloud_armor) has
   the full table.

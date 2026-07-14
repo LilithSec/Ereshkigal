@@ -126,5 +126,4 @@ and re-bans from the kur's book.
   and lets teardown be a single delete.
 - IPv6 addresses are lowercased on ban.
 - Errors carry Error::Helper flags (`ruleInvalid`, `typeInvalid`,
-  `unreachInvalid`, `nameTooLong`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::ipfw` has the full table.
+  `unreachInvalid`, `nameTooLong`, …) — [`Net::Firewall::BlockerHelper::backends::ipfw`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::ipfw) has the full table.

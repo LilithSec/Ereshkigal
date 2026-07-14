@@ -72,7 +72,7 @@ tcp/udp/sctp. Protocols that cannot take ports get one portless rule.
 
 Consigning an IP to the table only stops **new** connections —
 established states keep talking (see
-[security.md](../security.md); for ban-on-abuse you almost certainly
+[security](../security); for ban-on-abuse you almost certainly
 want `kill = 1`).
 
 With it on, each ban also severs live states, scoped to what the kur
@@ -128,5 +128,4 @@ Requirements.
 - IPv6 addresses are lowercased on ban so case variants can't
   duplicate.
 - Errors carry Error::Helper flags (`banFailed`, `initFailed`,
-  `nameTooLong`, …) — `perldoc
-  Net::Firewall::BlockerHelper::backends::pf` has the full table.
+  `nameTooLong`, …) — [`Net::Firewall::BlockerHelper::backends::pf`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::pf) has the full table.
