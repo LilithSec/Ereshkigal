@@ -32,7 +32,7 @@ Inside a `[kur.<name>]` hash...
 
 | key             | what                                                                     |
 |-----------------|--------------------------------------------------------------------------|
-| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend (`pf`, `ipfw`, `iptables`, `shell`, `dummy`) |
+| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend (`pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `npf`, `route`, `shell`, `cloudflare`, `netscaler`, `nsupdate`, `dummy`) — see [kurs.md](kurs.md) |
 | `fan_out`       | array of other kur names, in place of `backend`; makes this a gate (see below) |
 | `ports`         | array of ports to block for; all if unset                                |
 | `protocols`     | array of protocols to block for; all if unset                            |
@@ -82,17 +82,30 @@ same way, minus the per-request level.
 ## Backend options
 
 The `[kur.<name>.options]` table is handed to the backend unchecked.
-What each accepts (see the `Net::Firewall::BlockerHelper::backends::*`
-POD for the full story)...
+[kurs.md](kurs.md) links a detail page per backend covering every
+option and the host setup each needs; the short version...
 
 - **pf** — `kill` (kill existing states for a banned IP; see
   [security.md](security.md), you almost certainly want this on).
-- **ipfw** — `rule` (rule number), `type` (`deny`/`unreach`/
-  `unreachable6`), `unreach` (the unreach code), `kill` (tcpdrop
-  existing TCP connections).
+- **ipfw** — `rule` (rule number, unique per kur), `type`
+  (`deny`/`unreach`/`unreach6`), `unreach`/`unreach6` (the reject
+  codes), `kill` (tcpdrop existing TCP connections).
 - **iptables** — `type` (`drop`/`reject`), `kill` (drop existing
   conntrack state).
-- **shell** — runs commands you specify; see its POD.
+- **nftables** — `type` (`drop`/`reject`), `priority` (base chain
+  priority), `kill` (conntrack).
+- **firewalld** — `type` (`drop`/`reject`), `chain` (direct interface
+  chain), `kill` (conntrack).
+- **ufw** — `type` (`deny`/`reject`), `kill` (`''`/`ss`/`conntrack`).
+- **npf** — `table` (the npf table, pre-declared in npf.conf).
+- **route** — `blocktype` (`blackhole`/`unreachable`/`prohibit`).
+- **shell** — `init`, `teardown`, `ban`, `unban` (required commands),
+  `check`, `flush` (optional).
+- **cloudflare** — `token` or `email`+`key`, `zone`, `mode`, `notes`,
+  `timeout`.
+- **netscaler** — `host`, `user`+`pass` or `auth`, `dataset`,
+  `scheme`, `ssl_verify`, `timeout`.
+- **nsupdate** — `domain`, `keyfile`, `ttl`, `rdata`, `nsupdate`.
 - **dummy** — takes none; an underworld of pure imagination that just
   remembers what it was told, for testing.
 

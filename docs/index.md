@@ -12,7 +12,12 @@ to the world above.
 
 - [configuration.md](configuration.md) :: the ereshkigal.toml reference and a complete
   example
-  
+
+- [kurs.md](kurs.md) :: every kind of underworld — shared settings and a page per kur
+  under [kurs/](kurs/) detailing each backend, its options, and what the host must
+  provide
+
+
 - [usage.md](usage.md) :: communing with Ereshkigal via CLI or socket
 
 - [security.md](security.md) :: the trust model, Neti at the gate, and why you probably
