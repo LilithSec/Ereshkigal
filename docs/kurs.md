@@ -14,99 +14,99 @@ interacts with it, and its particular footguns.
 
 ## Every kind of kur
 
-- [gate](kurs/gate) — the `fan_out` gate: one name opening onto
+- [gate](kurs/gate.md) — the `fan_out` gate: one name opening onto
   several underworlds; validation, command fan out, response shapes,
   and the authorization model that is its reason to exist
-- [dummy](kurs/dummy) — an underworld of pure imagination, for
+- [dummy](kurs/dummy.md) — an underworld of pure imagination, for
   testing
 
 Local packet filters...
 
-- [pf](kurs/pf) — pf on FreeBSD/OpenBSD; table in an anchor,
+- [pf](kurs/pf.md) — pf on FreeBSD/OpenBSD; table in an anchor,
   and the `anchor "kur/*"` line pf.conf must carry
-- [ipfw](kurs/ipfw) — ipfw on FreeBSD; table plus a rule
+- [ipfw](kurs/ipfw.md) — ipfw on FreeBSD; table plus a rule
   number, and why that number must be unique per kur
-- [iptables](kurs/iptables) — Linux iptables/ip6tables plus
+- [iptables](kurs/iptables.md) — Linux iptables/ip6tables plus
   ipset; also carries the `tarpit`/`delude` types via xtables-addons
-- [nftables](kurs/nftables) — Linux nft; everything in one
+- [nftables](kurs/nftables.md) — Linux nft; everything in one
   dedicated table
-- [firewalld](kurs/firewalld) — Linux hosts firewalld manages;
+- [firewalld](kurs/firewalld.md) — Linux hosts firewalld manages;
   ipsets plus direct interface rules, and what a firewalld reload
   does to them
-- [ufw](kurs/ufw) — Ubuntu's uncomplicated firewall; per-IP
+- [ufw](kurs/ufw.md) — Ubuntu's uncomplicated firewall; per-IP
   prepended rules
-- [shorewall](kurs/shorewall) — Shorewall's dynamic blacklist
-- [npf](kurs/npf) — npf on NetBSD; the table and rule npf.conf
+- [shorewall](kurs/shorewall.md) — Shorewall's dynamic blacklist
+- [npf](kurs/npf.md) — npf on NetBSD; the table and rule npf.conf
   must declare
-- [route](kurs/route) — null routes via iproute2; no firewall
+- [route](kurs/route.md) — null routes via iproute2; no firewall
   needed at all
-- [xdp](kurs/xdp) — XDP/eBPF drops before the network stack,
+- [xdp](kurs/xdp.md) — XDP/eBPF drops before the network stack,
   via xdp-filter
-- [hosts_deny](kurs/hosts_deny) — TCP wrappers; a marked
+- [hosts_deny](kurs/hosts_deny.md) — TCP wrappers; a marked
   region in /etc/hosts.deny
 
 Network gear and appliances...
 
-- [routeros](kurs/routeros) — MikroTik RouterOS over ssh;
+- [routeros](kurs/routeros.md) — MikroTik RouterOS over ssh;
   creates its own address-lists and rules
-- [routeros_api](kurs/routeros_api) — MikroTik RouterOS over
+- [routeros_api](kurs/routeros_api.md) — MikroTik RouterOS over
   REST (7.1+); membership in your address-lists
-- [opnsense](kurs/opnsense) — an OPNsense firewall alias via
+- [opnsense](kurs/opnsense.md) — an OPNsense firewall alias via
   its REST API
-- [pfsense](kurs/pfsense) — a pfSense firewall alias via the
+- [pfsense](kurs/pfsense.md) — a pfSense firewall alias via the
   pfSense-API package
-- [vyos](kurs/vyos) — VyOS firewall address-groups via its
+- [vyos](kurs/vyos.md) — VyOS firewall address-groups via its
   HTTP API
-- [panos](kurs/panos) — Palo Alto PAN-OS; tag registrations
+- [panos](kurs/panos.md) — Palo Alto PAN-OS; tag registrations
   feeding a Dynamic Address Group, no commit needed
-- [fortigate](kurs/fortigate) — Fortinet FortiGate; address
+- [fortigate](kurs/fortigate.md) — Fortinet FortiGate; address
   objects and group membership via the FortiOS REST API
-- [cisco_fmc](kurs/cisco_fmc) — Cisco Firepower network group
+- [cisco_fmc](kurs/cisco_fmc.md) — Cisco Firepower network group
   literals via the FMC REST API; mind the deployment caveat
-- [checkpoint](kurs/checkpoint) — Check Point host objects and
+- [checkpoint](kurs/checkpoint.md) — Check Point host objects and
   a group via the Management API; mind the install-policy caveat
-- [juniper_srx](kurs/juniper_srx) — Juniper SRX address-book
+- [juniper_srx](kurs/juniper_srx.md) — Juniper SRX address-book
   and address-set via the Junos REST API, committed live
-- [f5_bigip](kurs/f5_bigip) — an F5 BIG-IP AFM address-list
+- [f5_bigip](kurs/f5_bigip.md) — an F5 BIG-IP AFM address-list
   via iControl REST
-- [netscaler](kurs/netscaler) — policy dataset bindings on a
+- [netscaler](kurs/netscaler.md) — policy dataset bindings on a
   Citrix NetScaler/ADC
-- [bgp_rtbh](kurs/bgp_rtbh) — BGP Remote Triggered Black Hole
+- [bgp_rtbh](kurs/bgp_rtbh.md) — BGP Remote Triggered Black Hole
   (or FlowSpec); host routes with the RFC 7999 blackhole community
   via ExaBGP, GoBGP, or FRR
 
 Cloud and edge services...
 
-- [cloudflare](kurs/cloudflare) — IP access rules at the
+- [cloudflare](kurs/cloudflare.md) — IP access rules at the
   Cloudflare edge
-- [fastly](kurs/fastly) — Fastly Edge ACL entries
-- [akamai](kurs/akamai) — Akamai network lists; mind the
+- [fastly](kurs/fastly.md) — Fastly Edge ACL entries
+- [akamai](kurs/akamai.md) — Akamai network lists; mind the
   activation caveat
-- [aws_wafv2](kurs/aws_wafv2) — AWS WAFv2 IP sets via the aws
+- [aws_wafv2](kurs/aws_wafv2.md) — AWS WAFv2 IP sets via the aws
   CLI
-- [cloud_armor](kurs/cloud_armor) — a GCP Cloud Armor rule via
+- [cloud_armor](kurs/cloud_armor.md) — a GCP Cloud Armor rule via
   gcloud; mind the 10-range limit
-- [azure](kurs/azure) — an Azure NSG deny rule's source
+- [azure](kurs/azure.md) — an Azure NSG deny rule's source
   prefixes via the az CLI
 
 DNS...
 
-- [nsupdate](kurs/nsupdate) — an RBL-style DNS blocklist in a
+- [nsupdate](kurs/nsupdate.md) — an RBL-style DNS blocklist in a
   BIND zone (IPv4 only)
-- [dns_rpz](kurs/dns_rpz) — Response Policy Zone triggers;
+- [dns_rpz](kurs/dns_rpz.md) — Response Policy Zone triggers;
   block clients from resolving, or answers from resolving to them
 
 Reporting...
 
-- [abuseipdb](kurs/abuseipdb) — report the banished to
+- [abuseipdb](kurs/abuseipdb.md) — report the banished to
   AbuseIPDB; reporting only, pairs with a blocker inside a gate
 
 Generic...
 
-- [file_reload](kurs/file_reload) — render the ban list to a
+- [file_reload](kurs/file_reload.md) — render the ban list to a
   file, run a reload hook; web servers, RPZ zones, EDLs, ipset
   restore files
-- [shell](kurs/shell) — commands you specify; the escape hatch
+- [shell](kurs/shell.md) — commands you specify; the escape hatch
 
 The authoritative reference for any backend remains its POD on
 MetaCPAN, under `Net::Firewall::BlockerHelper::backends::<backend>`.
@@ -116,7 +116,7 @@ MetaCPAN, under `Net::Firewall::BlockerHelper::backends::<backend>`.
 | key             | default          | what                                                              |
 |-----------------|------------------|-------------------------------------------------------------------|
 | `backend`       | *(required)*     | one of the backends above; mutually exclusive with `fan_out`      |
-| `fan_out`       | *(unset)*        | array of other kur names; makes this a [gate](kurs/gate)       |
+| `fan_out`       | *(unset)*        | array of other kur names; makes this a [gate](kurs/gate.md)       |
 | `ports`         | `[]`             | ports to block for; all if unset                                  |
 | `protocols`     | `[]`             | protocols to block for; backend-dependent default if unset        |
 | `prefix`        | `"kur"`          | rule/table/chain/set name prefix; must match `/^[a-zA-Z0-9]+$/`   |
@@ -200,5 +200,5 @@ Notes that apply across the board...
 
 On "kill support": a firewall rule only stops **new** connections;
 `kill` severs the established ones too. For ban-on-abuse you almost
-certainly want it on where it exists — [security](security)
+certainly want it on where it exists — [security](security.md)
 explains.
