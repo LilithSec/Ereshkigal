@@ -60,6 +60,14 @@ sub execute {
 
 	my $ereshkigal = Ereshkigal->new( 'config' => $opt->config );
 
+	# A previous manager may still be tearing down. `ereshkigal stop`, and thus
+	# `service ereshkigal restart`, returns as soon as the shutdown is requested,
+	# so the following start can race the old process. The manager unlinks its
+	# PID file only once it has fully exited, so wait briefly for a live PID to
+	# clear rather than letting daemonize() abort with
+	# "Pid_file already exists for running process".
+	$self->_wait_for_pid_clear( $ereshkigal->pid_path );
+
 	if ( $opt->foreground ) {
 		open( my $pid_fh, '>', $ereshkigal->pid_path )
 			|| die( 'Failed to open the PID file "' . $ereshkigal->pid_path . '"... ' . $! );
@@ -75,6 +83,36 @@ sub execute {
 
 	return;
 } ## end sub execute
+
+# Poll for up to ~10s, waiting for the named PID file to belong to a process
+# that is no longer running. Returns as soon as the file is gone, holds no
+# readable PID, or names a dead process, so a stale PID file (which daemonize()
+# happily reclaims) and a still-exiting manager both resolve cleanly. If a live
+# manager is still running after the timeout, we return anyway and let
+# daemonize() refuse to start a duplicate.
+sub _wait_for_pid_clear {
+	my ( $self, $pid_path ) = @_;
+
+	for ( 1 .. 40 ) {
+		last if !-e $pid_path;
+
+		open( my $pid_fh, '<', $pid_path ) or last;
+		my $pid = <$pid_fh>;
+		close($pid_fh);
+
+		last if !defined($pid) || $pid !~ /([0-9]+)/;
+		$pid = $1;
+
+		# kill 0 is true while the process exists (or exists but is ours to
+		# signal); once it goes false the old manager is gone.
+		last if !kill( 0, $pid );
+
+		# 0.25s nap without pulling in Time::HiRes.
+		select( undef, undef, undef, 0.25 );
+	}
+
+	return;
+} ## end sub _wait_for_pid_clear
 
 =head1 AUTHOR
 
