@@ -12,6 +12,8 @@
 #
 #   ereshkigal_config="/usr/local/etc/ereshkigal.toml"
 
+export PATH=$PATH:/usr/local/bin:/usr/local/sbin
+
 . /etc/rc.subr
 
 name="ereshkigal"

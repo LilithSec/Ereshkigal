@@ -4,6 +4,7 @@ use 5.006;
 use strict;
 use warnings;
 use base 'Error::Helper';
+use FindBin                          ();
 use POE                              qw( Wheel::Run );
 use POE::Component::Server::JSONUnix ();
 use TOML::Tiny                       qw( from_toml );
@@ -234,6 +235,18 @@ sub new {
 	}
 	if ( defined( $config->{socket_mode} ) ) {
 		$self->{socket_mode} = oct( '' . $config->{socket_mode} );
+	}
+
+	# A bare kur_bin (no path separator) is resolved against the directory
+	# ereshkigal was invoked from, since kur is installed alongside it. This
+	# avoids relying on $PATH, which is stripped down under service managers
+	# such as FreeBSD's rc.subr (no /usr/local/bin) and would otherwise make
+	# exec of the kur bin fail with "No such file or directory".
+	if ( $self->{kur_bin} !~ m{/} ) {
+		my $sibling = $FindBin::RealBin . '/' . $self->{kur_bin};
+		if ( -x $sibling ) {
+			$self->{kur_bin} = $sibling;
+		}
 	}
 
 	if ( $self->{ban_time} !~ /^[0-9]+$/ ) {
