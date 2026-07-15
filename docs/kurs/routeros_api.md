@@ -5,7 +5,7 @@ Blocks on a MikroTik router via the RouterOS REST API (RouterOS
 raw) rules that consume the lists are yours to build — the
 npf/netscaler "membership only" model. If you want the rules created
 for you, or are on RouterOS 6, use the ssh driven
-[routeros](routeros) backend instead.
+[routeros](routeros.md) backend instead.
 
 ```toml
 [kur.sshd]
@@ -82,7 +82,7 @@ unbanned, not an error.
 
 `check`/init probe only the IPv4 list endpoint — reachability and
 credentials, not list contents, not the IPv6 side, and never whether
-any rule consumes the lists. As with [npf](npf), the kur will
+any rule consumes the lists. As with [npf](npf.md), the kur will
 happily manage a list nothing reads; if bans don't bite, check the
 rules first.
 

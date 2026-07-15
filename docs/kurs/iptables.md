@@ -2,7 +2,7 @@
 
 Blocks via ipset in combination with iptables and ip6tables. Banning
 an IP is one ipset add. If the host runs firewalld, use the
-[firewalld](firewalld) backend instead — driving iptables directly
+[firewalld](firewalld.md) backend instead — driving iptables directly
 fights the daemon and loses on reload.
 
 ```toml
@@ -32,7 +32,7 @@ iptables -A INPUT -j kur_web
 The jump is appended (`-A INPUT`), so it lands after existing INPUT
 rules — an earlier ACCEPT wins. If your INPUT chain accepts by
 protocol/port before falling through, consider whether the block
-needs to come earlier; the [nftables](nftables) backend's priority
+needs to come earlier; the [nftables](nftables.md) backend's priority
 option gives finer control.
 
 ## Requirements
@@ -102,7 +102,7 @@ pairs well — sever the existing states, tarpit the reconnects.
 
 A firewall rule only stops **new** connections — established flows
 keep talking through their conntrack entries (see
-[security](../security)). With `kill = 1`, each ban also runs
+[security](../security.md)). With `kill = 1`, each ban also runs
 `conntrack -D -s <ip>` (with `-f ipv6` for IPv6 IPs), scoped to the
 configured protocols via `-p`:
 

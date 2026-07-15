@@ -36,7 +36,7 @@ ereshkigal banned           # the rolls... every banned IP per kur, with the epo
 ## Sending IPs below and calling them back
 
 ```shell
-ereshkigal ban 1.2.3.4 5.6.7.8        # consign to EVERY kur
+ereshkigal ban 1.2.3.4 5.6.7.8        # banish to EVERY kur
 ereshkigal ban --kur sshd 1.2.3.4     # just the sshd underworld
 ereshkigal ban --kur gate 1.2.3.4     # a gate (fan_out kur) sends it to
                                       # every member underworld
@@ -129,5 +129,5 @@ optional), `unban` (`{"ip":...}` or `{"all":true}`), `add_kur`
 `{"status":"ok","result":...}` or `{"status":"error","error":"..."}`.
 
 Note that with `enable_auth` on, a raw `nc` integration must complete
-the auth challenge itself (see [security](security)) — using
+the auth challenge itself (see [security](security.md)) — using
 Ereshkigal::Client is much less bother.

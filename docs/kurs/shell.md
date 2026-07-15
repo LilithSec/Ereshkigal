@@ -29,7 +29,7 @@ The IP is validated against strict IPv4/IPv6 regexes before it goes
 anywhere near your template, so the substitution cannot smuggle shell
 metacharacters — but the templates themselves run verbatim as root
 (usually), so treat the config file accordingly (it already is code
-execution as root — see [security](../security)).
+execution as root — see [security](../security.md)).
 
 ## Requirements
 

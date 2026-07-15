@@ -90,7 +90,7 @@ gone until `re_init`.
 - This is the chattiest of the API backends: two calls per ban, two
   per unban, four per timed ban's lifetime. For high-churn bans,
   something set-based suits FortiGate better (an external EDL via
-  [file_reload](file_reload), for instance — FortiGates can poll
+  [file_reload](file_reload.md), for instance — FortiGates can poll
   those as External Connectors).
 - Removing a group member the group doesn't have errors (it is not
   tolerated the way whole-object hand-removal is elsewhere); after

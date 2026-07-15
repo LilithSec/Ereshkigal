@@ -70,9 +70,9 @@ tcp/udp/sctp. Protocols that cannot take ports get one portless rule.
 
 ### `kill`
 
-Consigning an IP to the table only stops **new** connections —
+Banishing an IP to the table only stops **new** connections —
 established states keep talking (see
-[security](../security); for ban-on-abuse you almost certainly
+[security](../security.md); for ban-on-abuse you almost certainly
 want `kill = 1`).
 
 With it on, each ban also severs live states, scoped to what the kur

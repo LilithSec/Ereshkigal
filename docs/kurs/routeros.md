@@ -4,7 +4,7 @@ Blocks on a MikroTik router by driving its CLI over ssh: two
 address-lists (IPv4 and IPv6) plus the input-chain filter rules
 referencing them, all created by the kur itself. For the REST flavor
 that manages only list membership, see
-[routeros_api](routeros_api); this ssh one also works on RouterOS
+[routeros_api](routeros_api.md); this ssh one also works on RouterOS
 6, which has no REST API.
 
 ```toml

@@ -75,7 +75,7 @@ fails at kur startup.
 
 `mode` is what Cloudflare does with matching requests — `block`
 refuses outright, the challenge modes interpose a CAPTCHA / JS proof
-/ managed challenge instead, useful when you would rather taunt than
+/ managed challenge instead, useful when you would rather turn back than
 banish.
 
 ## What each operation does

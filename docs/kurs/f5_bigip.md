@@ -74,7 +74,7 @@ agreed.
 ## self_heal
 
 `check` verifies auth and the list's existence — not its contents or
-the policy. As with [pfsense](pfsense), wholesale rendering is
+the policy. As with [pfsense](pfsense.md), wholesale rendering is
 self-correcting: any hand-edit to the list is overwritten at the
 next mutation.
 

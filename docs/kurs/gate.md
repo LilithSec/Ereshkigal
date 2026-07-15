@@ -91,13 +91,13 @@ With `enable_auth` on, a command aimed at a gate is authorized
 against the **gate's own** `authed_users`/`authed_groups` (plus the
 global lists), not its members'. That is the reason gates exist: an
 outside integration — a log watcher, IDS glue, [an external
-client](../configuration) — can be granted just the gate and drive
+client](../configuration.md) — can be granted just the gate and drive
 a whole set of kurs through a single point of contact, without being
 listed on, or even knowing about, any member.
 
 UID 0 is always authorized, and the per-gate lists *expand* the
 global ones — they never replace them. See
-[security](../security) for the full trust model.
+[security](../security.md) for the full trust model.
 
 ## Gates in `status`
 

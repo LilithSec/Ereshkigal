@@ -58,7 +58,7 @@ protocols = [ "tcp" ]
 ban_time  = 300                 # web scanners come and go
 ```
 
-`ereshkigal ban 198.51.100.9` consigns an IP to all three at once;
+`ereshkigal ban 198.51.100.9` banishes an IP to all three at once;
 `--kur web` picks one.
 
 ## An eternal-residence blocklist
@@ -103,7 +103,7 @@ The simplest possible integration, banning via the CLI...
 
 ```sh
 #!/bin/sh
-# consign repeat offenders in auth.log to the sshd underworld
+# banish repeat offenders in auth.log to the sshd underworld
 tail -F /var/log/auth.log | while read line; do
     ip=$(printf '%s\n' "$line" \
         | sed -n 's/.*Failed password.*from \([0-9.]*\).*/\1/p')
@@ -121,7 +121,7 @@ printf '%s\n' \
 ```
 
 From perl, use `Ereshkigal::Client` — it also handles the
-`enable_auth` gate transparently (see [usage](usage)).
+`enable_auth` gate transparently (see [usage](usage.md)).
 
 ## A monitoring user Neti admits to only one kur
 
@@ -142,7 +142,7 @@ kill = 1
 The `sshd-mon` user can `ereshkigal status sshd` and
 `ereshkigal ban --kur sshd ...`, but `status`, a bare `ban`, `stop`,
 and anything touching other kurs is refused at the gate. See
-[security](security) for the full trust model.
+[security](security.md) for the full trust model.
 
 ## An underworld of pure imagination
 

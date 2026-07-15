@@ -91,7 +91,7 @@ that any policy enforces them. Two consequences worth knowing:
   User-ID cache clear) silently drops them while `check` stays
   green — pair such events with a `re_init`.
 - A missing or mis-matched DAG means registrations succeed and
-  nothing is blocked; as with [npf](npf), the kur cannot see
+  nothing is blocked; as with [npf](npf.md), the kur cannot see
   whether anything consumes its work.
 
 ## Gotchas

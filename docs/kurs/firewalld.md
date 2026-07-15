@@ -69,7 +69,7 @@ are protecting.
 
 ### `type` / `kill`
 
-Same semantics as the [iptables](iptables) backend — `reject` is
+Same semantics as the [iptables](iptables.md) backend — `reject` is
 `REJECT --reject-with icmp-port-unreachable` / `icmp6-port-unreachable`
 per family, and `kill` runs the same protocol-scoped
 `conntrack -D -s <ip>` commands, exit codes ignored.

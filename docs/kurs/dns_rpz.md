@@ -2,7 +2,7 @@
 
 Blocks at the resolver by maintaining RPZ triggers in a BIND
 Response Policy Zone via `nsupdate(1)` and a TSIG key. Both IPv4 and
-IPv6, unlike its RBL cousin [nsupdate](nsupdate). What "blocked"
+IPv6, unlike its RBL cousin [nsupdate](nsupdate.md). What "blocked"
 means depends on the trigger:
 
 - **`client-ip`** (the default) — banned IPs can't use the resolver:
@@ -46,7 +46,7 @@ options {
 
 The `response-policy` clause is what makes the zone *do* anything —
 a dynamic zone nothing consults is the RPZ version of the
-[npf](npf) rule-less table.
+[npf](npf.md) rule-less table.
 
 ## Requirements
 
@@ -97,7 +97,7 @@ zone's master is not where resolution would find it.
 
 `check` only confirms the keyfile exists — DNS reachability, TSIG
 validity, and zone contents are all invisible to it, so `self_heal`
-is effectively a no-op here (as with [nsupdate](nsupdate)).
+is effectively a no-op here (as with [nsupdate](nsupdate.md)).
 Records removed server-side stay gone until `re_init`.
 
 ## Gotchas

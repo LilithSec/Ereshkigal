@@ -6,7 +6,7 @@ to the world above.
 
 In the world above, Ereshkigal is a ban manager for firewalls, in the
 same family as fail2ban. An `ereshkigal` manager daemon rules over all
-`kur`. Each kur an underworld of its own, holding the IPs consigned to it. Each kur wraps
+`kur`. Each kur an underworld of its own, holding the IPs banished to it. Each kur wraps
 a single
 [Net::Firewall::BlockerHelper](https://metacpan.org/pod/Net::Firewall::BlockerHelper)
 instance for talking to the actual firewall (pf, ipfw, iptables, shell commands, or a
@@ -18,7 +18,7 @@ Sending an IP below and calling it back looks like this...
 # raise the underworlds
 ereshkigal start
 
-# consign an IP to the sshd underworld for an hour
+# banish an IP to the sshd underworld for an hour
 ereshkigal ban --kur sshd --ban-time 3600 1.2.3.4
 
 # read the rolls of who dwells below
@@ -72,7 +72,7 @@ Startup scripts for running at boot
 
 ## Documentation
 
-To continue your journey go to [docs/index.md](docs/index.md).
+To continue your descent go to [docs/index.md](docs/index.md).
 
 Also...
 

@@ -54,7 +54,7 @@ should never relax the run dir's permissions.
 
 ## The dead still speaking: established connections survive plain bans
 
-The big one. Consigning an IP to Kur adds a firewall rule, and on
+The big one. Banishing an IP to Kur adds a firewall rule, and on
 every real firewall that only bars NEW connections — sessions
 established before the ban keep right on talking from the underworld.
 An attacker whose brute-force succeeded before the ban landed keeps
@@ -116,7 +116,7 @@ readable only by root.
   automation feeding a `ban_time = 0` kur is something you trust.
 - `self_heal` (default on) re-establishes the firewall scaffolding
   (the anchor/table/chain/etc) if something outside removed it, before
-  each ban or unban. It does not resurrect individual rules removed
+  each ban or unban. It does not restore individual rules removed
   by hand behind the kur's back — the kur's book and the tablets are
   the source of truth, and `re_init` (or a kur restart) will re-ban
   from them.

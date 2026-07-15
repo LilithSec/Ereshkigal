@@ -5,7 +5,7 @@ Not a blocker at all: reports banned IPs to
 equivalent of the fail2ban abuseipdb action. A ban files a report;
 nothing is ever blocked by this kur itself.
 
-Its natural home is inside a [gate](gate), next to a real
+Its natural home is inside a [gate](gate.md), next to a real
 blocker — one command through the gate blocks locally *and* reports
 upstream:
 
