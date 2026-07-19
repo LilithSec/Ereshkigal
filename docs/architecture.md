@@ -73,12 +73,12 @@ one JSON object per line in each direction.
 ```
 
 The manager commands are `status`, `status_all`, `status_kur`,
-`banned`, `ban`, `unban`, `add_kur`, `remove_kur`, `checkpoint`, and
-`stop`. The kur commands are `ban`, `unban`, `banned`, `status`,
-`flush`, `re_init`, `checkpoint`, and `stop`. The kur sockets are
-0600 and only Ereshkigal is expected to speak to them. See
-[usage](usage.md) for driving the socket from your own
-integrations.
+`banned`, `ban`, `unban`, `cidr_ban`, `cidr_unban`, `add_kur`,
+`remove_kur`, `checkpoint`, and `stop`. The kur commands are `ban`,
+`unban`, `cidr_ban`, `cidr_unban`, `banned`, `status`, `flush`,
+`re_init`, `checkpoint`, and `stop`. The kur sockets are 0600 and only
+Ereshkigal is expected to speak to them. See [usage](usage.md) for
+driving the socket from your own integrations.
 
 ## Sentences and the sweeper
 
@@ -95,7 +95,10 @@ Each kur checkpoints its banishments to
 `/var/cache/ereshkigal/kur.<name>.csv`, a CSV of
 `ip,time,ban_time_left` — who is below, when the row was written, and
 how many seconds of their sentence remained at that moment (`0` for
-eternal). The tablets are re-written when the events below happen.
+eternal). Range bans, when a kur carries any, keep to a sibling
+`kur.<name>.cidr.csv` of the same shape, so the single IP tablet is
+untouched by them. The tablets are re-written when the events below
+happen.
 
 - on every arrival and departure (ban/unban/flush/expiry)
 - every `checkpoint` seconds (default 60) even without changes, so

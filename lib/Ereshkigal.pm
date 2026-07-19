@@ -9,7 +9,7 @@ use POE                              qw( Wheel::Run );
 use POE::Component::Server::JSONUnix ();
 use TOML::Tiny                       qw( from_toml );
 use Ereshkigal::Client               ();
-use Ereshkigal::IP                   qw( normalize_ip );
+use Ereshkigal::IP                   qw( normalize_ip normalize_cidr );
 use Ereshkigal::LogDrek              qw( log_drek );
 
 =head1 NAME
@@ -84,6 +84,20 @@ Top level keys are manager settings.
           and on demand checkpoints still happen. May be overridden per kur
           via checkpoint in it's hash.
         Default :: 60
+
+    - enable_cidr :: Whether CIDR banning is enabled. May be overridden per
+          kur via enable_cidr in it's hash. Even when set, the cidr_ban and
+          cidr_unban commands only work on a kur whose backend supports CIDR
+          bans.
+        Default :: false
+
+    - cidr_silent_drop :: How a kur handles a CIDR command when CIDR banning
+          is not available for it, either because enable_cidr is off or the
+          backend can not do CIDR. When set such a kur silently drops the
+          command rather than erroring, which keeps a fan out across a mix of
+          CIDR capable and incapable kurs from being spoiled by the incapable
+          ones. May be overridden per kur via cidr_silent_drop in it's hash.
+        Default :: false
 
     - enable_auth :: Enables the L<POE::Component::Server::JSONUnix>
           auth_required cookie file ownership challenge on the manager
@@ -173,25 +187,27 @@ sub new {
 			fatal_flags      => {},
 			perror_not_fatal => 0,
 		},
-		config         => '/usr/local/etc/ereshkigal.toml',
-		run_base_dir   => '/var/run/ereshkigal',
-		cache_base_dir => '/var/cache/ereshkigal',
-		kur_bin        => 'kur',
-		timeout        => 30,
-		ban_time       => 600,
-		checkpoint     => 60,
-		enable_auth    => 0,
-		authed_users   => [],
-		authed_groups  => [],
-		auth_temp_dir  => undef,
-		socket_group   => undef,
-		socket_mode    => 0660,
-		kurs           => {},
-		wheel_to_kur   => {},
-		pid_to_kur     => {},
-		shutting_down  => 0,
-		started        => undef,
-		server         => undef,
+		config           => '/usr/local/etc/ereshkigal.toml',
+		run_base_dir     => '/var/run/ereshkigal',
+		cache_base_dir   => '/var/cache/ereshkigal',
+		kur_bin          => 'kur',
+		timeout          => 30,
+		ban_time         => 600,
+		checkpoint       => 60,
+		enable_cidr      => 0,
+		cidr_silent_drop => 0,
+		enable_auth      => 0,
+		authed_users     => [],
+		authed_groups    => [],
+		auth_temp_dir    => undef,
+		socket_group     => undef,
+		socket_mode      => 0660,
+		kurs             => {},
+		wheel_to_kur     => {},
+		pid_to_kur       => {},
+		shutting_down    => 0,
+		started          => undef,
+		server           => undef,
 	};
 	bless $self;
 
@@ -225,7 +241,8 @@ sub new {
 	}
 
 	my @settings_to_merge = (
-		'run_base_dir', 'cache_base_dir', 'kur_bin', 'timeout', 'ban_time', 'checkpoint',
+		'run_base_dir', 'cache_base_dir', 'kur_bin',     'timeout',
+		'ban_time',     'checkpoint',     'enable_cidr', 'cidr_silent_drop',
 		'enable_auth',  'auth_temp_dir',  'socket_group'
 	);
 	foreach my $item (@settings_to_merge) {
@@ -417,6 +434,18 @@ The JSON commands handled are as below.
           normalize args.ip, erroring if it fails to validate, then check
           each kur for it and unban it from each kur it is present on.
 
+    - cidr_ban :: Ban the CIDR ranges args.cidrs, otherwise behaving like
+          ban including the args.kur targeting and args.ban_time forwarding.
+          CIDRs are validated and reduced to their canonical network form
+          before being fanned out. A targeted kur, or a untargeted fan out,
+          for which CIDR is not available answers per kur with either a drop
+          or a error depending on it's cidr_silent_drop.
+
+    - cidr_unban :: Validate and normalize args.cidr, erroring if it fails to
+          validate, then check each kur for it and unban it from each kur it
+          is present on. There is no all form... unban with args.all already
+          flushes CIDR bans alongside single IP bans.
+
     - add_kur :: Define and start a new kur instance, args.name and
           args.opts. Does not rewrite the config file.
 
@@ -489,6 +518,15 @@ sub start_server {
 				my ( undef, $request, $ctx ) = @_;
 				$self->_authorize( $ctx, $self->_real_kur_names );
 				return $self->_cmd_unban($request);
+			},
+			'cidr_ban' => sub {
+				my ( undef, $request, $ctx ) = @_;
+				return $self->_cmd_cidr_ban( $request, $ctx );
+			},
+			'cidr_unban' => sub {
+				my ( undef, $request, $ctx ) = @_;
+				$self->_authorize( $ctx, $self->_real_kur_names );
+				return $self->_cmd_cidr_unban($request);
 			},
 			'add_kur' => sub {
 				my ( undef, $request, $ctx ) = @_;
@@ -818,6 +856,13 @@ sub _build_kur_cmd {
 	push( @cmd, '--ban-time',   defined( $def->{ban_time} )   ? $def->{ban_time}   : $self->{ban_time} );
 	push( @cmd, '--checkpoint', defined( $def->{checkpoint} ) ? $def->{checkpoint} : $self->{checkpoint} );
 
+	# the CIDR toggles, per kur overriding the manager wide ones, collapsed to
+	# 1/0 here so the kur is handed a clean boolean
+	my $enable_cidr      = defined( $def->{enable_cidr} )      ? $def->{enable_cidr}      : $self->{enable_cidr};
+	my $cidr_silent_drop = defined( $def->{cidr_silent_drop} ) ? $def->{cidr_silent_drop} : $self->{cidr_silent_drop};
+	push( @cmd, '--enable-cidr',      $enable_cidr      ? 1 : 0 );
+	push( @cmd, '--cidr-silent-drop', $cidr_silent_drop ? 1 : 0 );
+
 	if ( ref( $def->{options} ) eq 'HASH' ) {
 		foreach my $key ( sort( keys( %{ $def->{options} } ) ) ) {
 			push( @cmd, '--option', $key . '=' . $def->{options}{$key} );
@@ -1117,9 +1162,14 @@ sub _cmd_banned {
 	my $kurs = $self->_fan_out( [ $self->_real_kur_names ], 'banned' );
 	foreach my $name ( keys( %{$kurs} ) ) {
 		if ( !defined( $kurs->{$name}{error} ) ) {
-			$kurs->{$name} = { 'banned' => $kurs->{$name}{banned}, 'expires' => $kurs->{$name}{expires} };
+			$kurs->{$name} = {
+				'banned'       => $kurs->{$name}{banned},
+				'expires'      => $kurs->{$name}{expires},
+				'banned_cidr'  => $kurs->{$name}{banned_cidr},
+				'cidr_expires' => $kurs->{$name}{cidr_expires},
+			};
 		}
-	}
+	} ## end foreach my $name ( keys( %{$kurs} ) )
 
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_banned
@@ -1213,6 +1263,90 @@ sub _cmd_unban {
 
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_unban
+
+sub _cmd_cidr_ban {
+	my ( $self, $request, $ctx ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || ref( $args->{cidrs} ) ne 'ARRAY' || !@{ $args->{cidrs} } ) {
+		die('args.cidrs must be a array of one or more CIDRs');
+	}
+
+	# pre-flight the CIDRs so garbage is bounced here instead of being fanned
+	# out just for every kur to bounce it, and so what is fanned out is the
+	# canonical network form... variant spellings of the same range dedupe here
+	my @cidrs;
+	my %seen;
+	my $rejected = {};
+	foreach my $raw_cidr ( @{ $args->{cidrs} } ) {
+		my $cidr = normalize_cidr($raw_cidr);
+		if ( !defined($cidr) ) {
+			my $key = defined($raw_cidr) ? $raw_cidr : '';
+			$rejected->{$key}
+				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 CIDR' };
+			next;
+		}
+		if ( !$seen{$cidr} ) {
+			$seen{$cidr} = 1;
+			push( @cidrs, $cidr );
+		}
+	} ## end foreach my $raw_cidr ( @{ $args->{cidrs} } )
+	if ( !@cidrs ) {
+		die('None of the CIDRs in args.cidrs appear to be a IPv4 or IPv6 CIDR');
+	}
+
+	my @targets;
+	if ( defined( $args->{kur} ) ) {
+		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
+			die( 'No such kur instance, "' . $args->{kur} . '"' );
+		}
+		# authorization is checked against the requested name, same as ban, so
+		# a fan_out kur grant covers the fanned command
+		$self->_authorize( $ctx, $args->{kur} );
+		@targets = $self->_expand_kur_targets( $args->{kur} );
+	} else {
+		@targets = $self->_real_kur_names;
+		if ( !@targets ) {
+			die('No kur instances');
+		}
+		$self->_authorize( $ctx, @targets );
+	}
+
+	my $kur_args = { 'cidrs' => \@cidrs };
+	if ( defined( $args->{ban_time} ) ) {
+		$kur_args->{ban_time} = $args->{ban_time};
+	}
+
+	my $response = { 'kurs' => $self->_fan_out( \@targets, 'cidr_ban', $kur_args ) };
+	if ( %{$rejected} ) {
+		$response->{rejected} = $rejected;
+	}
+
+	return $response;
+} ## end sub _cmd_cidr_ban
+
+sub _cmd_cidr_unban {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) || !defined( $args->{cidr} ) ) {
+		die('args.cidr must be a CIDR');
+	}
+
+	# bounce garbage here instead of fanning it out just for every kur to
+	# report it absent, and fan out the canonical network form so variant
+	# spellings of the same range all find the ban
+	my $cidr = normalize_cidr( $args->{cidr} );
+	if ( !defined($cidr) ) {
+		die( '"' . $args->{cidr} . '" does not appear to be a IPv4 or IPv6 CIDR' );
+	}
+
+	# the kur checks if the CIDR is present and only unbans it if it is,
+	# reporting back via was_banned
+	my $kurs = $self->_fan_out( [ $self->_real_kur_names ], 'cidr_unban', { 'cidr' => $cidr } );
+
+	return { 'kurs' => $kurs };
+} ## end sub _cmd_cidr_unban
 
 sub _cmd_checkpoint {
 	my ( $self, $request, $ctx ) = @_;

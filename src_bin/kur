@@ -94,6 +94,20 @@ checkpoints still happen.
 
 Default is 60.
 
+=head2 --enable-cidr <0/1>
+
+Whether CIDR banning is enabled. Even when set, CIDR commands only work if
+the backend supports CIDR bans.
+
+Default is 0.
+
+=head2 --cidr-silent-drop <0/1>
+
+When set, CIDR commands are silently dropped rather than erroring when CIDR
+banning is not available for this instance.
+
+Default is 0.
+
 =head2 --run=<run dir>
 
 The base dir for run files.
@@ -138,26 +152,30 @@ my @options;
 my $self_heal;
 my $ban_time;
 my $checkpoint;
+my $enable_cidr;
+my $cidr_silent_drop;
 my $cache_dir = '/var/cache/ereshkigal';
 my $run_dir   = '/var/run/ereshkigal';
 my $foreground;
 my $version;
 my $help;
 GetOptions(
-	'version|v'    => \$version,
-	'help|h'       => \$help,
-	'name=s'       => \$name,
-	'backend=s'    => \$backend,
-	'ports=s'      => \$ports,
-	'protocols=s'  => \$protocols,
-	'prefix=s'     => \$prefix,
-	'option=s'     => \@options,
-	'self-heal=i'  => \$self_heal,
-	'ban-time=s'   => \$ban_time,
-	'checkpoint=s' => \$checkpoint,
-	'cache=s'      => \$cache_dir,
-	'run=s'        => \$run_dir,
-	'foreground|f' => \$foreground,
+	'version|v'          => \$version,
+	'help|h'             => \$help,
+	'name=s'             => \$name,
+	'backend=s'          => \$backend,
+	'ports=s'            => \$ports,
+	'protocols=s'        => \$protocols,
+	'prefix=s'           => \$prefix,
+	'option=s'           => \@options,
+	'self-heal=i'        => \$self_heal,
+	'ban-time=s'         => \$ban_time,
+	'checkpoint=s'       => \$checkpoint,
+	'enable-cidr=s'      => \$enable_cidr,
+	'cidr-silent-drop=s' => \$cidr_silent_drop,
+	'cache=s'            => \$cache_dir,
+	'run=s'              => \$run_dir,
+	'foreground|f'       => \$foreground,
 ) || pod2usage( -exitval => 255, -verbose => 1, -output => \*STDERR, );
 
 # print version or help if requested
@@ -184,11 +202,13 @@ my $kur = Ereshkigal::Kur->new(
 	'backend'   => $backend,
 	'ports'     => defined($ports)     ? [ split( /\s*,\s*/, $ports ) ]     : [],
 	'protocols' => defined($protocols) ? [ split( /\s*,\s*/, $protocols ) ] : [],
-	defined($prefix)     ? ( 'prefix'     => $prefix )           : (),
-	%backend_options     ? ( 'options'    => \%backend_options ) : (),
-	defined($self_heal)  ? ( 'self_heal'  => $self_heal )        : (),
-	defined($ban_time)   ? ( 'ban_time'   => $ban_time )         : (),
-	defined($checkpoint) ? ( 'checkpoint' => $checkpoint )       : (),
+	defined($prefix)           ? ( 'prefix'           => $prefix )           : (),
+	%backend_options           ? ( 'options'          => \%backend_options ) : (),
+	defined($self_heal)        ? ( 'self_heal'        => $self_heal )        : (),
+	defined($ban_time)         ? ( 'ban_time'         => $ban_time )         : (),
+	defined($checkpoint)       ? ( 'checkpoint'       => $checkpoint )       : (),
+	defined($enable_cidr)      ? ( 'enable_cidr'      => $enable_cidr )      : (),
+	defined($cidr_silent_drop) ? ( 'cidr_silent_drop' => $cidr_silent_drop ) : (),
 	'run_base_dir'   => $run_dir,
 	'cache_base_dir' => $cache_dir,
 );

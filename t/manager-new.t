@@ -109,7 +109,9 @@ is( $ereshkigal->{timeout},     30,    'timeout defaults to 30' );
 is( $ereshkigal->{kur_bin},     'kur', 'kur_bin defaults to kur' );
 is( $ereshkigal->{ban_time},    600,   'ban_time defaults to 600' );
 is( $ereshkigal->{checkpoint},  60,    'checkpoint defaults to 60' );
-ok( !$ereshkigal->{enable_auth}, 'enable_auth defaults to off' );
+ok( !$ereshkigal->{enable_auth},      'enable_auth defaults to off' );
+ok( !$ereshkigal->{enable_cidr},      'enable_cidr defaults to off' );
+ok( !$ereshkigal->{cidr_silent_drop}, 'cidr_silent_drop defaults to off' );
 is_deeply( $ereshkigal->{authed_users},  [], 'authed_users defaults to empty' );
 is_deeply( $ereshkigal->{authed_groups}, [], 'authed_groups defaults to empty' );
 is( $ereshkigal->{socket_gid}, ( getpwnam('root') )[3], 'socket_gid defaults to the default group of root' );
@@ -134,6 +136,7 @@ my $full
 		. 'timeout        = 5' . "\n"
 		. 'ban_time       = 120' . "\n"
 		. 'checkpoint     = 90' . "\n"
+		. 'enable_cidr    = true' . "\n"
 		. 'enable_auth    = true' . "\n"
 		. 'auth_temp_dir  = "/tmp"' . "\n"
 		. 'authed_users   = [ "zane" ]' . "\n"
@@ -149,10 +152,12 @@ my $full
 		. 'b = "2"' . "\n"
 		. 'a = "1"' . "\n\n"
 		. '[kur.smtp]' . "\n"
-		. 'backend    = "dummy"' . "\n"
-		. 'ban_time   = 30' . "\n"
-		. 'checkpoint = 15' . "\n"
-		. 'ports      = [ "25" ]'
+		. 'backend          = "dummy"' . "\n"
+		. 'ban_time         = 30' . "\n"
+		. 'checkpoint       = 15' . "\n"
+		. 'enable_cidr      = false' . "\n"
+		. 'cidr_silent_drop = true' . "\n"
+		. 'ports            = [ "25" ]'
 		. "\n" );
 
 lives_ok { $ereshkigal = Ereshkigal->new( 'config' => $full ) } 'new lives on a full config';
@@ -163,6 +168,7 @@ is( $ereshkigal->{timeout},        5,                'timeout merged' );
 is( $ereshkigal->{ban_time},       120,              'ban_time merged' );
 is( $ereshkigal->{checkpoint},     90,               'checkpoint merged' );
 ok( $ereshkigal->{enable_auth}, 'enable_auth merged' );
+ok( $ereshkigal->{enable_cidr}, 'enable_cidr merged' );
 is( $ereshkigal->{auth_temp_dir}, '/tmp', 'auth_temp_dir merged' );
 is_deeply( $ereshkigal->{authed_users},  ['zane'], 'authed_users merged' );
 is_deeply( $ereshkigal->{authed_groups}, [$group], 'authed_groups merged' );
@@ -199,14 +205,18 @@ like( $cmd_str, qr/--self-heal 1/,             'cmd has self-heal' );
 like( $cmd_str, qr/--option a=1 --option b=2/, 'cmd has sorted options' );
 like( $cmd_str, qr/--ban-time 120/,            'cmd has the manager wide ban_time' );
 like( $cmd_str, qr/--checkpoint 90/,           'cmd has the manager wide checkpoint' );
+like( $cmd_str, qr/--enable-cidr 1/,           'cmd inherits the manager wide enable_cidr' );
+like( $cmd_str, qr/--cidr-silent-drop 0/,      'cmd inherits the manager wide cidr_silent_drop' );
 like( $cmd_str, qr/--run \Q$dir\E\/run/,       'cmd has the run dir' );
 like( $cmd_str, qr/--cache \Q$dir\E\/cache/,   'cmd has the cache dir' );
 
 @cmd     = $ereshkigal->_build_kur_cmd('smtp');
 $cmd_str = join( ' ', @cmd );
 unlike( $cmd_str, qr/--prefix|--self-heal|--option|--protocols/, 'unset options not passed for smtp' );
-like( $cmd_str, qr/--ban-time 30/,   'the kur ban_time overrides the manager wide one' );
-like( $cmd_str, qr/--checkpoint 15/, 'the kur checkpoint overrides the manager wide one' );
+like( $cmd_str, qr/--ban-time 30/,        'the kur ban_time overrides the manager wide one' );
+like( $cmd_str, qr/--checkpoint 15/,      'the kur checkpoint overrides the manager wide one' );
+like( $cmd_str, qr/--enable-cidr 0/,      'the kur enable_cidr override off is passed' );
+like( $cmd_str, qr/--cidr-silent-drop 1/, 'the kur cidr_silent_drop override on is passed' );
 
 #
 # fan_out kurs

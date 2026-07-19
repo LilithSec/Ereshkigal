@@ -16,6 +16,8 @@ lib/Ereshkigal/App/Command/add.pm
 lib/Ereshkigal/App/Command/ban.pm
 lib/Ereshkigal/App/Command/banned.pm
 lib/Ereshkigal/App/Command/checkpoint.pm
+lib/Ereshkigal/App/Command/cidr_ban.pm
+lib/Ereshkigal/App/Command/cidr_unban.pm
 lib/Ereshkigal/App/Command/remove.pm
 lib/Ereshkigal/App/Command/start.pm
 lib/Ereshkigal/App/Command/status.pm
@@ -40,12 +42,14 @@ t/ip.t
 t/kur-ban-time.t
 t/kur-bin.t
 t/kur-checkpoint.t
+t/kur-cidr.t
 t/kur-cmds.t
 t/kur-new.t
 t/kur-server.t
 t/lib/EreshkigalTest.pm
 t/logdrek.t
 t/manager-auth.t
+t/manager-cidr.t
 t/manager-new.t
 t/manager.t
 t/manifest.t

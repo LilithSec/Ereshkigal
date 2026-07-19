@@ -123,6 +123,8 @@ MetaCPAN, under `Net::Firewall::BlockerHelper::backends::<backend>`.
 | `self_heal`     | `1`              | check the firewall setup before each ban/unban, re-init if gone   |
 | `ban_time`      | top level / 600  | this kur's default sentence in seconds; `0` = eternal residence   |
 | `checkpoint`    | top level / 60   | seconds between tablet recopies; `0` = mutations/stop only        |
+| `enable_cidr`   | top level / off  | whether this kur banishes whole ranges; needs a range-capable backend |
+| `cidr_silent_drop`| top level / off | drop rather than error range commands where CIDR is unavailable |
 | `options`       | `{}`             | backend specific options table — see each backend's page          |
 | `authed_users`  | `[]`             | users granted access to this kur (with `enable_auth`)             |
 | `authed_groups` | `[]`             | groups granted access to this kur (with `enable_auth`)            |

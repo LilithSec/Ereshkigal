@@ -89,38 +89,44 @@ throws_ok { $ereshkigal->_authorize( $gateuser, 'sshd' ) } qr/not authorized/,
 	'gateway user denied the members directly';
 throws_ok { $ereshkigal->_authorize($gateuser) } qr/not authorized/, 'gateway user denied manager level';
 
-# group via the user's own primary group
-$ereshkigal->{authed_users}  = [];
-$ereshkigal->{authed_groups} = [$primary_group];
-my $me = ctx( 'uid' => $>, 'username' => $username );
-lives_ok { $ereshkigal->_authorize($me) } 'authorized via primary group membership';
-lives_ok { $ereshkigal->_authorize( $me, 'sshd', 'smtp' ) } 'primary group covers kurs too';
-
-# unknown groups just never match rather than erroring
-$ereshkigal->{authed_groups} = ['nosuchgroupzzz'];
-throws_ok { $ereshkigal->_authorize($me) } qr/not authorized/, 'unknown group never matches';
-
-# group via a member list
-my $member_group;
-setgrent();
-while ( my ( $group_name, undef, undef, $members ) = getgrent() ) {
-	if ( defined($members) && grep { $_ eq $username } split( /\s+/, $members ) ) {
-		$member_group = $group_name;
-		last;
-	}
-}
-endgrent();
 SKIP: {
-	skip 'current user is not in any group member list', 1 if !defined($member_group);
-	$ereshkigal->{authed_groups} = [$member_group];
-	lives_ok { $ereshkigal->_authorize($me) } 'authorized via a group member list';
-}
+	# these exercise the current user's real group membership, so uid 0 short
+	# circuiting to always authorized makes every assertion meaningless
+	skip 'group membership auth is meaningless when running as root', 6 if $> == 0;
 
-# per kur groups expand the global ones
-$ereshkigal->{authed_groups} = [];
-$ereshkigal->{kurs}{sshd}{opts}{authed_groups} = [$primary_group];
-lives_ok { $ereshkigal->_authorize( $me, 'sshd' ) } 'kur level group grants that kur';
-throws_ok { $ereshkigal->_authorize( $me, 'smtp' ) } qr/not authorized/, 'but not the other kur';
+	# group via the user's own primary group
+	$ereshkigal->{authed_users}  = [];
+	$ereshkigal->{authed_groups} = [$primary_group];
+	my $me = ctx( 'uid' => $>, 'username' => $username );
+	lives_ok { $ereshkigal->_authorize($me) } 'authorized via primary group membership';
+	lives_ok { $ereshkigal->_authorize( $me, 'sshd', 'smtp' ) } 'primary group covers kurs too';
+
+	# unknown groups just never match rather than erroring
+	$ereshkigal->{authed_groups} = ['nosuchgroupzzz'];
+	throws_ok { $ereshkigal->_authorize($me) } qr/not authorized/, 'unknown group never matches';
+
+	# group via a member list
+	my $member_group;
+	setgrent();
+	while ( my ( $group_name, undef, undef, $members ) = getgrent() ) {
+		if ( defined($members) && grep { $_ eq $username } split( /\s+/, $members ) ) {
+			$member_group = $group_name;
+			last;
+		}
+	}
+	endgrent();
+	SKIP: {
+		skip 'current user is not in any group member list', 1 if !defined($member_group);
+		$ereshkigal->{authed_groups} = [$member_group];
+		lives_ok { $ereshkigal->_authorize($me) } 'authorized via a group member list';
+	}
+
+	# per kur groups expand the global ones
+	$ereshkigal->{authed_groups} = [];
+	$ereshkigal->{kurs}{sshd}{opts}{authed_groups} = [$primary_group];
+	lives_ok { $ereshkigal->_authorize( $me, 'sshd' ) } 'kur level group grants that kur';
+	throws_ok { $ereshkigal->_authorize( $me, 'smtp' ) } qr/not authorized/, 'but not the other kur';
+} ## end SKIP:
 
 # with enable_auth off everything is authorized regardless of lists
 $ereshkigal->{enable_auth} = 0;

@@ -22,11 +22,11 @@ Version 0.0.1
 
 our $VERSION = '0.0.1';
 
-our @EXPORT_OK = qw( normalize_ip );
+our @EXPORT_OK = qw( normalize_ip normalize_cidr );
 
 =head1 SYNOPSIS
 
-    use Ereshkigal::IP qw( normalize_ip );
+    use Ereshkigal::IP qw( normalize_ip normalize_cidr );
 
     my $ip = normalize_ip('2001:0DB8:0000:0000:0000:0000:0000:0001');
     # $ip is now '2001:db8::1'
@@ -34,6 +34,9 @@ our @EXPORT_OK = qw( normalize_ip );
     if ( !defined( normalize_ip($raw_ip) ) ) {
         die( '"' . $raw_ip . '" does not appear to be a IPv4 or IPv6 IP' );
     }
+
+    my $cidr = normalize_cidr('1.2.3.4/24');
+    # $cidr is now '1.2.3.0/24' with the host bits masked off
 
 =head1 DESCRIPTION
 
@@ -46,7 +49,8 @@ further down to bounce.
 
 =head1 EXPORTS
 
-Nothing is exported by default. L</normalize_ip> is available via C<@EXPORT_OK>.
+Nothing is exported by default. L</normalize_ip> and L</normalize_cidr> are
+available via C<@EXPORT_OK>.
 
 =head1 FUNCTIONS
 
@@ -107,6 +111,104 @@ sub normalize_ip {
 
 	return undef;
 } ## end sub normalize_ip
+
+=head2 normalize_cidr
+
+Returns the canonical string form of the passed IPv4 or IPv6 CIDR range. If it
+does not validate, undef is returned. undef and refs also return undef.
+
+    my $cidr = normalize_cidr($raw_cidr);
+
+A CIDR is an address, validated the same way L</normalize_ip> validates it,
+followed by C</> and a prefix length that is a non-negative integer within the
+range valid for its family, 0 to 32 for IPv4 and 0 to 128 for IPv6. A bare IP
+with no prefix is refused, as are prefixes with leading zeros, since those are
+not canonical. The prefix range matches what L<Net::Firewall::BlockerHelper>
+accepts, so anything accepted here is also acceptable to the backends.
+
+The host bits below the prefix are masked off so the network address is
+returned, meaning C<1.2.3.4/24> and C<1.2.3.0/24> both reduce to C<1.2.3.0/24>
+and variant spellings of the same range can not be mistaken for differing
+ranges. The address portion is canonicalized the same as L</normalize_ip>, so
+IPv6 long form and case variants reduce to the same short form.
+
+=cut
+
+sub normalize_cidr {
+	my ($cidr) = @_;
+
+	if ( !defined($cidr) || ref($cidr) ne '' ) {
+		return undef;
+	}
+
+	# exactly one slash, an address on the left and a run of digits on the
+	# right... a bare IP with no prefix does not match and is refused
+	if ( $cidr !~ m!\A([^/]+)/([0-9]+)\z! ) {
+		return undef;
+	}
+	my ( $raw_addr, $prefix ) = ( $1, $2 );
+
+	# a leading zero prefix, such as /024, is not canonical and its intent is
+	# ambiguous, so it is refused rather than guessed at, the same as is done
+	# with leading zero IPv4 octets
+	if ( length($prefix) > 1 && $prefix =~ /\A0/ ) {
+		return undef;
+	}
+
+	# validate and canonicalize the address portion via the same path a bare
+	# IP takes, bouncing leading zero octets and the like here too
+	my $addr = normalize_ip($raw_addr);
+	if ( !defined($addr) ) {
+		return undef;
+	}
+
+	if ( $addr =~ /\A$IPv4_re\z/ ) {
+		if ( $prefix > 32 ) {
+			return undef;
+		}
+		my @octets = split( /\./, $addr );
+		my $int    = ( $octets[0] << 24 ) | ( $octets[1] << 16 ) | ( $octets[2] << 8 ) | $octets[3];
+		# for a /0 the shift is by 32, which on Perl's wider ints leaves the
+		# high bits set, so the trailing mask brings it back to 32 bits and a
+		# all zero network
+		my $mask    = ( 0xFFFFFFFF << ( 32 - $prefix ) ) & 0xFFFFFFFF;
+		my $network = $int & $mask;
+		return
+			  ( ( $network >> 24 ) & 0xFF ) . '.'
+			. ( ( $network >> 16 ) & 0xFF ) . '.'
+			. ( ( $network >> 8 ) & 0xFF ) . '.'
+			. ( $network & 0xFF ) . '/'
+			. $prefix;
+	} ## end if ( $addr =~ /\A$IPv4_re\z/ )
+
+	# IPv6, already canonicalized and validated by normalize_ip above
+	if ( $prefix > 128 ) {
+		return undef;
+	}
+	my $packed = inet_pton( AF_INET6, $addr );
+	if ( !defined($packed) ) {
+		return undef;
+	}
+	my @bytes      = unpack( 'C16', $packed );
+	my $full_bytes = int( $prefix / 8 );
+	my $rem_bits   = $prefix % 8;
+	for ( my $index = 0; $index < 16; $index++ ) {
+		if ( $index < $full_bytes ) {
+			# wholly within the prefix, kept as is
+		} elsif ( $index == $full_bytes && $rem_bits ) {
+			# straddles the prefix, keep the leading $rem_bits of this byte
+			$bytes[$index] &= ( 0xFF << ( 8 - $rem_bits ) ) & 0xFF;
+		} else {
+			# wholly host bits, zeroed
+			$bytes[$index] = 0;
+		}
+	} ## end for ( my $index = 0; $index < 16; $index++ )
+	my $canonical = inet_ntop( AF_INET6, pack( 'C16', @bytes ) );
+	if ( !defined($canonical) ) {
+		return undef;
+	}
+	return $canonical . '/' . $prefix;
+} ## end sub normalize_cidr
 
 =head1 AUTHOR
 

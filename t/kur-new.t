@@ -88,15 +88,15 @@ is( $kur->socket_path, $dir . '/run/kur/testy.sock', 'socket_path' );
 is( $kur->pid_path,    $dir . '/run/kur/testy.pid',  'pid_path' );
 ok( -d $dir . '/run/kur', 'the kur dir under run_base_dir was created' );
 ok( -d $dir . '/cache',   'the cache dir was created' );
-is( $kur->{name},      'testy',   'name merged' );
-is( $kur->{backend},   'dummy',   'backend merged' );
-is( $kur->{prefix},    'foo9',    'prefix merged' );
-is( $kur->{self_heal}, 0,         'self_heal merged' );
+is( $kur->{name},      'testy', 'name merged' );
+is( $kur->{backend},   'dummy', 'backend merged' );
+is( $kur->{prefix},    'foo9',  'prefix merged' );
+is( $kur->{self_heal}, 0,       'self_heal merged' );
 is_deeply( $kur->{ports},     ['22'],  'ports merged' );
 is_deeply( $kur->{protocols}, ['tcp'], 'protocols merged' );
 is_deeply(
 	$kur->{stats},
-	{ 'bans' => 0, 'unbans' => 0, 'errors' => 0, 'expired' => 0 },
+	{ 'bans' => 0, 'unbans' => 0, 'cidr_bans' => 0, 'cidr_unbans' => 0, 'errors' => 0, 'expired' => 0 },
 	'stats initialized to zeros'
 );
 isa_ok( $kur->{backend_obj}, 'Net::Firewall::BlockerHelper', 'backend_obj' );

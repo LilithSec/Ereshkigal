@@ -8,7 +8,7 @@ use POE;
 use POE::Component::Server::JSONUnix ();
 use Net::Firewall::BlockerHelper     ();
 use Ereshkigal::LogDrek              qw( log_drek );
-use Ereshkigal::IP                   qw( normalize_ip );
+use Ereshkigal::IP                   qw( normalize_ip normalize_cidr );
 
 =head1 NAME
 
@@ -76,6 +76,20 @@ it will die.
           checkpoints still happen.
         Default :: 60
 
+    - enable_cidr :: Boolean for whether CIDR banning is enabled for this
+          instance. Even when set, CIDR commands only work if the backend
+          supports CIDR bans. The strings true/false/yes/no/on/off are
+          accepted alongside 1/0.
+        Default :: 0
+
+    - cidr_silent_drop :: Boolean for how a CIDR command is handled when CIDR
+          banning is not available for this instance, either because
+          enable_cidr is off or the backend does not support it. When set the
+          command is silently dropped, returning dropped => 1, rather than
+          erroring, which is the point of contact when fanning out to a mix of
+          CIDR capable and incapable instances.
+        Default :: 0
+
     - run_base_dir :: Base dir for run files. The socket and PID for this
           instance live under C<$run_base_dir/kur/> named for this instance.
         Default :: /var/run/ereshkigal
@@ -111,39 +125,58 @@ sub new {
 			fatal_flags      => {},
 			perror_not_fatal => 0,
 		},
-		name            => undef,
-		backend         => undef,
-		ports           => [],
-		protocols       => [],
-		prefix          => undef,
-		options         => undef,
-		self_heal       => undef,
-		ban_time        => 600,
-		checkpoint      => 60,
-		run_base_dir    => '/var/run/ereshkigal',
-		cache_base_dir  => '/var/cache/ereshkigal',
-		backend_obj     => undef,
-		server          => undef,
-		started         => undef,
-		stopping        => 0,
-		bans            => {},
-		last_checkpoint => 0,
-		stats           => {
-			bans    => 0,
-			unbans  => 0,
-			errors  => 0,
-			expired => 0,
+		name             => undef,
+		backend          => undef,
+		ports            => [],
+		protocols        => [],
+		prefix           => undef,
+		options          => undef,
+		self_heal        => undef,
+		ban_time         => 600,
+		checkpoint       => 60,
+		enable_cidr      => 0,
+		cidr_silent_drop => 0,
+		run_base_dir     => '/var/run/ereshkigal',
+		cache_base_dir   => '/var/cache/ereshkigal',
+		backend_obj      => undef,
+		cidr_supported   => 0,
+		server           => undef,
+		started          => undef,
+		stopping         => 0,
+		bans             => {},
+		cidr_bans        => {},
+		last_checkpoint  => 0,
+		stats            => {
+			bans        => 0,
+			unbans      => 0,
+			cidr_bans   => 0,
+			cidr_unbans => 0,
+			errors      => 0,
+			expired     => 0,
 		},
 	};
 	bless $self;
 
 	my @to_merge = (
-		'name',      'backend',  'ports',      'protocols',    'prefix', 'options',
-		'self_heal', 'ban_time', 'checkpoint', 'run_base_dir', 'cache_base_dir'
+		'name',       'backend',     'ports',            'protocols',
+		'prefix',     'options',     'self_heal',        'ban_time',
+		'checkpoint', 'enable_cidr', 'cidr_silent_drop', 'run_base_dir',
+		'cache_base_dir'
 	);
 	foreach my $item (@to_merge) {
 		if ( defined( $opts{$item} ) ) {
 			$self->{$item} = $opts{$item};
+		}
+	}
+
+	# the two CIDR toggles are booleans... a config may hand them over as the
+	# literal strings true/false, which are both truthy in Perl, so those are
+	# folded down before the truthiness of the value is trusted
+	foreach my $toggle ( 'enable_cidr', 'cidr_silent_drop' ) {
+		if ( !defined( $self->{$toggle} ) || $self->{$toggle} =~ /\A(?:0|false|no|off)\z/i ) {
+			$self->{$toggle} = 0;
+		} else {
+			$self->{$toggle} = 1;
 		}
 	}
 
@@ -231,9 +264,25 @@ sub new {
 		$self->warn;
 	}
 
+	# note whether the backend can carry CIDR bans... enable_cidr is the
+	# operator opting in, but a backend that can not do CIDR still can not, so
+	# the two together are what gate the CIDR commands
+	$self->{cidr_supported} = $self->_backend_cidr_supported;
+	if ( $self->{enable_cidr} && !$self->{cidr_supported} ) {
+		log_drek(
+			'warning',
+			'enable_cidr is set but the "'
+				. $self->{backend}
+				. '" backend does not support CIDR bans... CIDR commands will be refused',
+			undef,
+			'kur-' . ( defined( $self->{name} ) ? $self->{name} : '' )
+		);
+	} ## end if ( $self->{enable_cidr} && !$self->{cidr_supported...})
+
 	# bring any persisted ban state back, dropping and unbanning whatever
 	# expired while not running
 	$self->_load_bans;
+	$self->_load_cidr_bans;
 
 	return $self;
 } ## end sub new
@@ -280,6 +329,21 @@ sub state_path {
 	return $self->{cache_base_dir} . '/kur.' . $self->{name} . '.csv';
 }
 
+=head2 cidr_state_path
+
+Returns the path of the CIDR ban state CSV for this instance. This is kept
+separate from L</state_path> so the single IP state format stays untouched.
+
+    my $cidr_state_path = $kur->cidr_state_path;
+
+=cut
+
+sub cidr_state_path {
+	my ($self) = @_;
+
+	return $self->{cache_base_dir} . '/kur.' . $self->{name} . '.cidr.csv';
+}
+
 =head2 start_server
 
 Starts up the L<POE::Component::Server::JSONUnix> server for this instance,
@@ -309,8 +373,17 @@ The JSON commands handled are as below.
 
     - unban :: Check if the IP, args.ip, is banned and if so unban it.
 
+    - cidr_ban :: Ban the CIDR ranges specified via the array args.cidrs,
+          otherwise behaving like ban. Only handled when enable_cidr is set
+          and the backend supports CIDR bans, otherwise it is either dropped
+          or refused per cidr_silent_drop.
+
+    - cidr_unban :: Check if the CIDR, args.cidr, is banned and if so unban
+          it. Gated the same as cidr_ban.
+
     - banned :: Return a list of banned IPs along with a expires map of
-          when each times out, 0 meaning never.
+          when each times out, 0 meaning never. banned_cidr and cidr_expires
+          carry the same for CIDR bans.
 
     - status :: Return instance status info and stats, including ban_time,
           counts of timed and permanent bans, and the next expiry.
@@ -349,6 +422,14 @@ sub start_server {
 			'unban' => sub {
 				my ( undef, $request ) = @_;
 				return $self->_cmd_unban($request);
+			},
+			'cidr_ban' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_cidr_ban($request);
+			},
+			'cidr_unban' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_cidr_unban($request);
 			},
 			'banned' => sub {
 				return $self->_cmd_banned;
@@ -512,6 +593,169 @@ sub _cmd_unban {
 	return { 'ip' => $ip, 'was_banned' => 1 };
 } ## end sub _cmd_unban
 
+# reaches through the frontend to the actual backend object to see if it
+# claims CIDR support, mirroring how the frontend its self gates ban_cidr...
+# anything missing is treated as no support rather than dieing
+sub _backend_cidr_supported {
+	my ($self) = @_;
+
+	my $frontend = $self->{backend_obj};
+	if ( !defined($frontend) || ref($frontend) eq '' ) {
+		return 0;
+	}
+	my $backend = $frontend->{backend_obj};
+	if ( !defined($backend) || ref($backend) eq '' ) {
+		return 0;
+	}
+
+	return $backend->{cidr_supported} ? 1 : 0;
+} ## end sub _backend_cidr_supported
+
+# whether this instance will actually act on CIDR commands... the operator has
+# to have opted in via enable_cidr and the backend has to be able to do it
+sub _cidr_available {
+	my ($self) = @_;
+
+	return ( $self->{enable_cidr} && $self->{cidr_supported} ) ? 1 : 0;
+}
+
+# decides what to do with a CIDR command when CIDR is not available... returns
+# undef to say carry on, a dropped response hashref when cidr_silent_drop is
+# set, or dies otherwise so the refusal is reported
+sub _cidr_guard {
+	my ($self) = @_;
+
+	if ( $self->_cidr_available ) {
+		return undef;
+	}
+
+	my $reason;
+	if ( !$self->{enable_cidr} ) {
+		$reason = 'CIDR bans are not enabled for this kur';
+	} else {
+		$reason = 'the "' . $self->{backend} . '" backend does not support CIDR bans';
+	}
+
+	if ( $self->{cidr_silent_drop} ) {
+		log_drek( 'info', 'dropping CIDR command... ' . $reason, undef, 'kur-' . $self->{name} );
+		return { 'dropped' => 1, 'reason' => $reason };
+	}
+
+	die($reason);
+} ## end sub _cidr_guard
+
+sub _cmd_cidr_ban {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) ) {
+		$args = {};
+	}
+
+	# the guard comes first so a dropping or incapable instance short circuits
+	# regardless of the payload... a capable one falls through and validates
+	my $drop = $self->_cidr_guard;
+	if ( defined($drop) ) {
+		return $drop;
+	}
+
+	if ( ref( $args->{cidrs} ) ne 'ARRAY' || !@{ $args->{cidrs} } ) {
+		die('args.cidrs must be a array of one or more CIDRs');
+	}
+
+	my $ban_time = $self->{ban_time};
+	if ( defined( $args->{ban_time} ) ) {
+		if ( ref( $args->{ban_time} ) ne '' || $args->{ban_time} !~ /^[0-9]+$/ ) {
+			die('args.ban_time must be a non-negative int of seconds');
+		}
+		$ban_time = $args->{ban_time};
+	}
+
+	my $ident = 'kur-' . $self->{name};
+
+	my $results = {};
+	foreach my $raw_cidr ( @{ $args->{cidrs} } ) {
+		# bounced here rather than left for the backend to judge, and reduced
+		# to the canonical network form so variant spellings dedupe
+		my $cidr = normalize_cidr($raw_cidr);
+		if ( !defined($cidr) ) {
+			my $key = defined($raw_cidr) ? $raw_cidr : '';
+			$self->{stats}{errors}++;
+			$results->{$key}
+				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 CIDR' };
+			log_drek( 'err', 'cidr ban of "' . $key . '" failed... does not appear to be a IPv4 or IPv6 CIDR',
+				undef, $ident );
+			next;
+		}
+		my $expires = $ban_time ? time + $ban_time : 0;
+
+		# already banned, so just refresh it's timer
+		if ( defined( $self->{cidr_bans}{$cidr} ) ) {
+			$self->{cidr_bans}{$cidr}{expires} = $expires;
+			$results->{$cidr} = { 'status' => 'ok', 'refreshed' => 1 };
+			log_drek( 'info', 'refreshed cidr ban of ' . $cidr . ' expires=' . $expires, undef, $ident );
+			next;
+		}
+
+		eval { $self->_backend_do( 'ban_cidr', ban => $cidr ); };
+		if ($@) {
+			$self->{stats}{errors}++;
+			$results->{$cidr} = { 'status' => 'error', 'error' => $@ };
+			log_drek( 'err', 'cidr ban of "' . $cidr . '" failed... ' . $@, undef, $ident );
+		} else {
+			$self->{stats}{cidr_bans}++;
+			$self->{cidr_bans}{$cidr} = { 'banned_at' => time, 'expires' => $expires };
+			$results->{$cidr} = { 'status' => 'ok' };
+			log_drek( 'info', 'banned cidr ' . $cidr . ' expires=' . $expires, undef, $ident );
+		}
+	} ## end foreach my $raw_cidr ( @{ $args->{cidrs} } )
+
+	$self->_checkpoint_cidr;
+
+	return { 'cidrs' => $results };
+} ## end sub _cmd_cidr_ban
+
+sub _cmd_cidr_unban {
+	my ( $self, $request ) = @_;
+
+	my $args = $request->{args};
+	if ( !defined($args) ) {
+		$args = {};
+	}
+
+	my $drop = $self->_cidr_guard;
+	if ( defined($drop) ) {
+		return $drop;
+	}
+
+	if ( !defined( $args->{cidr} ) || ref( $args->{cidr} ) ne '' ) {
+		die('args.cidr must be a CIDR');
+	}
+	my $cidr = normalize_cidr( $args->{cidr} );
+	if ( !defined($cidr) ) {
+		die( 'args.cidr, "' . $args->{cidr} . '", does not appear to be a IPv4 or IPv6 CIDR' );
+	}
+
+	# check if it is actually present before trying to unban it
+	my @banned  = $self->_backend_do('list_cidr');
+	my $present = grep { $_ eq $cidr } @banned;
+	if ( !$present ) {
+		# make sure no stale timer is left behind either way
+		if ( defined( delete( $self->{cidr_bans}{$cidr} ) ) ) {
+			$self->_checkpoint_cidr;
+		}
+		return { 'cidr' => $cidr, 'was_banned' => 0 };
+	}
+
+	$self->_backend_do( 'unban_cidr', ban => $cidr );
+	$self->{stats}{cidr_unbans}++;
+	delete( $self->{cidr_bans}{$cidr} );
+	$self->_checkpoint_cidr;
+	log_drek( 'info', 'unbanned cidr ' . $cidr, undef, 'kur-' . $self->{name} );
+
+	return { 'cidr' => $cidr, 'was_banned' => 1 };
+} ## end sub _cmd_cidr_unban
+
 sub _cmd_banned {
 	my ($self) = @_;
 
@@ -522,7 +766,21 @@ sub _cmd_banned {
 		$expires->{$ip} = $self->{bans}{$ip}{expires};
 	}
 
-	return { 'banned' => \@banned, 'expires' => $expires };
+	# list_cidr is safe on every backend, returning empty on the ones that do
+	# not do CIDR, so there is no need to gate this on _cidr_available
+	my @banned_cidr = $self->_backend_do('list_cidr');
+
+	my $cidr_expires = {};
+	foreach my $cidr ( keys( %{ $self->{cidr_bans} } ) ) {
+		$cidr_expires->{$cidr} = $self->{cidr_bans}{$cidr}{expires};
+	}
+
+	return {
+		'banned'       => \@banned,
+		'expires'      => $expires,
+		'banned_cidr'  => \@banned_cidr,
+		'cidr_expires' => $cidr_expires,
+	};
 } ## end sub _cmd_banned
 
 sub _cmd_status {
@@ -544,31 +802,54 @@ sub _cmd_status {
 		}
 	} ## end foreach my $ip ( keys( %{ $self->{bans} } ) )
 
+	my @banned_cidr    = $self->_backend_do('list_cidr');
+	my $cidr_timed     = 0;
+	my $cidr_permanent = 0;
+	foreach my $cidr ( keys( %{ $self->{cidr_bans} } ) ) {
+		if ( $self->{cidr_bans}{$cidr}{expires} ) {
+			$cidr_timed++;
+			if ( !$next_expiry || $self->{cidr_bans}{$cidr}{expires} < $next_expiry ) {
+				$next_expiry = $self->{cidr_bans}{$cidr}{expires};
+			}
+		} else {
+			$cidr_permanent++;
+		}
+	} ## end foreach my $cidr ( keys( %{ $self->{cidr_bans} ...}))
+
 	return {
-		'name'            => $self->{name},
-		'backend'         => $self->{backend},
-		'ports'           => $self->{ports},
-		'protocols'       => $self->{protocols},
-		'prefix'          => $self->{prefix},
-		'ban_time'        => $self->{ban_time},
-		'checkpoint'      => $self->{checkpoint},
-		'last_checkpoint' => $self->{last_checkpoint},
-		'pid'             => $$,
-		'uptime'          => time - $self->{started},
-		'stats'           => $self->{stats},
-		'banned_count'    => scalar(@banned),
-		'bans_timed'      => $timed,
-		'bans_permanent'  => $permanent,
-		'next_expiry'     => $next_expiry,
+		'name'                => $self->{name},
+		'backend'             => $self->{backend},
+		'ports'               => $self->{ports},
+		'protocols'           => $self->{protocols},
+		'prefix'              => $self->{prefix},
+		'ban_time'            => $self->{ban_time},
+		'checkpoint'          => $self->{checkpoint},
+		'last_checkpoint'     => $self->{last_checkpoint},
+		'pid'                 => $$,
+		'uptime'              => time - $self->{started},
+		'stats'               => $self->{stats},
+		'banned_count'        => scalar(@banned),
+		'bans_timed'          => $timed,
+		'bans_permanent'      => $permanent,
+		'next_expiry'         => $next_expiry,
+		'cidr_enabled'        => $self->{enable_cidr},
+		'cidr_supported'      => $self->{cidr_supported},
+		'cidr_banned_count'   => scalar(@banned_cidr),
+		'cidr_bans_timed'     => $cidr_timed,
+		'cidr_bans_permanent' => $cidr_permanent,
 	};
 } ## end sub _cmd_status
 
 sub _cmd_flush {
 	my ($self) = @_;
 
+	# the backend flush clears both single IP and CIDR rules, so the CIDR
+	# tracking is cleared and checkpointed alongside the single IP tracking
 	$self->_backend_do('flush');
-	$self->{bans} = {};
+	$self->{bans}      = {};
+	$self->{cidr_bans} = {};
 	$self->_checkpoint;
+	$self->_checkpoint_cidr;
 	log_drek( 'info', 'flushed all bans', undef, 'kur-' . $self->{name} );
 
 	return { 'flushed' => 1 };
@@ -587,10 +868,15 @@ sub _cmd_checkpoint {
 	my ($self) = @_;
 
 	$self->_checkpoint;
+	$self->_checkpoint_cidr;
 	log_drek( 'info', 'checkpointed', undef, 'kur-' . $self->{name} );
 
-	return { 'checkpointed' => 1, 'bans' => scalar( keys( %{ $self->{bans} } ) ) };
-}
+	return {
+		'checkpointed' => 1,
+		'bans'         => scalar( keys( %{ $self->{bans} } ) ),
+		'cidr_bans'    => scalar( keys( %{ $self->{cidr_bans} } ) ),
+	};
+} ## end sub _cmd_checkpoint
 
 sub _cmd_stop {
 	my ( $self, $ctx ) = @_;
@@ -604,6 +890,7 @@ sub _cmd_stop {
 
 	# leave a fresh state CSV behind
 	$self->_checkpoint;
+	$self->_checkpoint_cidr;
 
 	eval { $self->_backend_do('teardown'); };
 	my $teardown_error = $@;
@@ -665,45 +952,89 @@ sub _sweep_bans {
 		$self->_checkpoint;
 	}
 
+	my $cidr_changed = 0;
+	foreach my $cidr ( keys( %{ $self->{cidr_bans} } ) ) {
+		my $entry = $self->{cidr_bans}{$cidr};
+		if ( !$entry->{expires} || $entry->{expires} > $now ) {
+			next;
+		}
+
+		eval { $self->_backend_do( 'unban_cidr', ban => $cidr ); };
+		if ($@) {
+			$self->{stats}{errors}++;
+			log_drek( 'err', 'unbanning expired cidr ban of "' . $cidr . '" failed... ' . $@, undef, $ident );
+		}
+		delete( $self->{cidr_bans}{$cidr} );
+		$self->{stats}{expired}++;
+		$cidr_changed = 1;
+		log_drek( 'info', 'cidr ban of ' . $cidr . ' expired', undef, $ident );
+	} ## end foreach my $cidr ( keys( %{ $self->{cidr_bans} ...}))
+
+	if ($cidr_changed) {
+		$self->_checkpoint_cidr;
+	}
+
 	return;
 } ## end sub _sweep_bans
 
-# checkpoints the ban state as a CSV of ip,time,ban_time_left to the state
-# file under the cache dir, atomically via a temp file and rename
+# checkpoints the single IP ban state, tracking the time of the last
+# successful checkpoint so the periodic timer has something to measure against
 sub _checkpoint {
 	my ($self) = @_;
 
-	my $state_file = $self->state_path;
-	my $now        = time;
+	my $now = time;
+	if ( $self->_write_state( $self->state_path, $self->{bans}, $now, 'ip' ) ) {
+		$self->{last_checkpoint} = $now;
+	}
+
+	return;
+} ## end sub _checkpoint
+
+# checkpoints the CIDR ban state to its own sibling CSV, kept separate so the
+# single IP state format and its load path stay untouched
+sub _checkpoint_cidr {
+	my ($self) = @_;
+
+	$self->_write_state( $self->cidr_state_path, $self->{cidr_bans}, time, 'cidr' );
+
+	return;
+}
+
+# writes a ban state hash out as a CSV of <label>,time,ban_time_left to the
+# given file, atomically via a temp file and rename... returns 1 on success
+# and 0 on failure, having logged the failure. shared by the single IP and
+# CIDR checkpoints, the only difference being the file, the hash, and the
+# label used for the first column
+sub _write_state {
+	my ( $self, $state_file, $bans, $now, $label ) = @_;
+
 	eval {
 		my $tmp = $state_file . '.tmp';
 		open( my $fh, '>', $tmp ) || die( 'open failed... ' . $! );
-		print $fh "ip,time,ban_time_left\n";
-		foreach my $ip ( sort( keys( %{ $self->{bans} } ) ) ) {
+		print $fh $label . ",time,ban_time_left\n";
+		foreach my $key ( sort( keys( %{$bans} ) ) ) {
 			my $left = 0;
-			if ( $self->{bans}{$ip}{expires} ) {
-				$left = $self->{bans}{$ip}{expires} - $now;
+			if ( $bans->{$key}{expires} ) {
+				$left = $bans->{$key}{expires} - $now;
 				# clamped so a nearly expired ban can't collide with 0 meaning
 				# permanent... anything actually expired is the sweeper's job
 				if ( $left < 1 ) {
 					$left = 1;
 				}
 			}
-			print $fh $ip . ',' . $now . ',' . $left . "\n";
-		} ## end foreach my $ip ( sort( keys( %{ $self->{bans} }...)))
+			print $fh $key . ',' . $now . ',' . $left . "\n";
+		} ## end foreach my $key ( sort( keys( %{$bans} ) ) )
 		close($fh);
 		rename( $tmp, $state_file ) || die( 'rename failed... ' . $! );
 	};
 	if ($@) {
-		log_drek( 'err', 'checkpointing ban state to "' . $state_file . '" failed... ' . $@,
+		log_drek( 'err', 'checkpointing ' . $label . ' ban state to "' . $state_file . '" failed... ' . $@,
 			undef, 'kur-' . $self->{name} );
-		return;
+		return 0;
 	}
 
-	$self->{last_checkpoint} = $now;
-
-	return;
-} ## end sub _checkpoint
+	return 1;
+} ## end sub _write_state
 
 # loads the persisted ban state CSV... the time in each row is compared to
 # the current time for figuring out if the ban should be restored or not...
@@ -781,6 +1112,85 @@ sub _load_bans {
 
 	return;
 } ## end sub _load_bans
+
+# loads the persisted CIDR ban state, mirroring _load_bans but for CIDR... it
+# is skipped entirely when CIDR is not available for this instance so the
+# persisted file is left intact for a later run that re-enables it, rather than
+# being handed to a backend that can not carry it
+sub _load_cidr_bans {
+	my ($self) = @_;
+
+	if ( !$self->_cidr_available ) {
+		return;
+	}
+
+	my $state_file = $self->cidr_state_path;
+	if ( !-f $state_file ) {
+		return;
+	}
+
+	my $ident = 'kur-' . $self->{name};
+
+	my @lines;
+	eval {
+		open( my $fh, '<', $state_file ) || die( 'open failed... ' . $! );
+		@lines = <$fh>;
+		close($fh);
+	};
+	if ($@) {
+		log_drek( 'err', 'loading cidr ban state from "' . $state_file . '" failed... ' . $@, undef, $ident );
+		return;
+	}
+
+	my $now         = time;
+	my $line_number = 0;
+	foreach my $line (@lines) {
+		$line_number++;
+		chomp($line);
+		if ( $line eq '' ) {
+			next;
+		}
+		if ( $line_number == 1 && $line =~ /^cidr,/ ) {
+			# the header
+			next;
+		}
+
+		my @row = split( /,/, $line );
+		if ( @row != 3 || $row[0] eq '' || $row[1] !~ /^[0-9]+$/ || $row[2] !~ /^[0-9]+$/ ) {
+			log_drek( 'err', 'skipping malformed line ' . $line_number . ' in "' . $state_file . '"... "' . $line . '"',
+				undef, $ident );
+			next;
+		}
+		my ( $cidr, $written, $left ) = @row;
+		# state files may carry non-canonical forms
+		my $normalized = normalize_cidr($cidr);
+		if ( defined($normalized) ) {
+			$cidr = $normalized;
+		}
+
+		my $expires = $left ? $written + $left : 0;
+
+		if ( $expires && $expires <= $now ) {
+			# expired while not running... the backend may still carry the rule
+			eval { $self->{backend_obj}->unban_cidr( ban => $cidr ); };
+			$self->{stats}{expired}++;
+			log_drek( 'info', 'cidr ban of ' . $cidr . ' expired while not running', undef, $ident );
+			next;
+		}
+
+		eval { $self->_backend_do( 'ban_cidr', ban => $cidr ); };
+		if ($@) {
+			log_drek( 'err', 're-banning cidr "' . $cidr . '" from saved state failed... ' . $@, undef, $ident );
+		}
+		# banned_at is not persisted, so the row's time stands in for it
+		$self->{cidr_bans}{$cidr} = { 'banned_at' => $written, 'expires' => $expires };
+	} ## end foreach my $line (@lines)
+
+	# write a updated one back out so the file reflects what got restored
+	$self->_checkpoint_cidr;
+
+	return;
+} ## end sub _load_cidr_bans
 
 =head1 ERRORS CODES / ERROR FLAGS
 

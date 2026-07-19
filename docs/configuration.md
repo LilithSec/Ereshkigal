@@ -18,6 +18,8 @@ named for the hash — the hash at `kur.sshd` is the kur instance
 | `timeout`       | `30`                          | seconds the manager waits on a kur socket                   |
 | `ban_time`      | `600`                         | seconds a ban lasts; `0` = eternal residence                |
 | `checkpoint`    | `60`                          | seconds between tablet recopies; `0` = mutations/stop only  |
+| `enable_cidr`   | `false`                       | whether whole ranges may be banished — see below            |
+| `cidr_silent_drop`| `false`                     | drop rather than error CIDR commands where CIDR is unavailable |
 | `enable_auth`   | `false`                       | Neti at the gate — see [security](security.md)           |
 | `authed_users`  | `[]`                          | users with global access (with enable_auth)                 |
 | `authed_groups` | `[]`                          | groups with global access (with enable_auth)                |
@@ -40,6 +42,8 @@ Inside a `[kur.<name>]` hash...
 | `self_heal`     | verify and re-init the firewall setup before each ban/unban, default 1   |
 | `ban_time`      | this underworld's default sentence, overriding the top level one         |
 | `checkpoint`    | this underworld's tablet recopy interval, overriding the top level one   |
+| `enable_cidr`   | whether this underworld banishes ranges, overriding the top level one    |
+| `cidr_silent_drop`| this underworld's drop-vs-error handling for CIDR, overriding the top level one |
 | `options`       | a table of backend specific options, passed through                      |
 | `authed_users`  | users granted access to this kur, expanding the global list              |
 | `authed_groups` | groups granted access to this kur, expanding the global list             |
@@ -78,6 +82,43 @@ The most specific setting wins:
 
 `0` at any layer means the ban never expires. `checkpoint` layers the
 same way, minus the per-request level.
+
+## Banishing ranges
+
+`enable_cidr` opens the `cidr-ban`/`cidr-unban` commands (see
+[usage](usage.md)). It is off by default and layers per kur — a top
+level `enable_cidr = true` turns it on everywhere, a `[kur.<name>]`
+`enable_cidr` overrides it for that one underworld either way.
+
+```toml
+enable_cidr = true          # ranges may be banished everywhere...
+
+[kur.sshd]
+backend = "pf"
+
+[kur.abuseipdb]
+backend     = "abuseipdb"
+enable_cidr = false         # ...but not through this one
+```
+
+Enabling it is only half the story — the backend has to be able to
+carry ranges. Table and set based backends (`pf`, `ipfw`, `ufw`,
+`npf`, `route`, `shorewall`, and most of the appliance and cloud
+backends) can; `iptables`, `nftables`, `firewalld`, `xdp`,
+`hosts_deny`, `dns_rpz`, `nsupdate`, `abuseipdb`, and `netscaler` can
+not. A kur that has `enable_cidr` set on a backend that can not carry
+ranges logs a warning at startup and refuses range commands.
+
+`cidr_silent_drop` decides how such a kur — CIDR off, or a backend that
+can not oblige — answers a range command. Off (the default), it returns
+an error. On, it quietly drops the command, reporting `dropped:1`. The
+point is fan-outs: with a gate spanning range-capable and
+range-incapable underworlds, setting `cidr_silent_drop` on the
+incapable ones lets a single `cidr-ban` land where it can without the
+rest souring the response.
+
+Single IP `ban`/`unban` are unaffected by either toggle, and
+`unban --all` empties ranges alongside single IPs regardless.
 
 ## Backend options
 

@@ -41,6 +41,11 @@ usage_error_ok( ['unban'], qr/either --all or a single IP/, 'unban with no args'
 usage_error_ok( [ 'unban', '--all',   '1.2.3.4' ], qr/may not be used together/,    'unban --all with a IP' );
 usage_error_ok( [ 'unban', '1.2.3.4', '5.6.7.8' ], qr/either --all or a single IP/, 'unban with two IPs' );
 
+usage_error_ok( ['cidr-ban'], qr/at least one CIDR/, 'cidr-ban with no CIDRs' );
+
+usage_error_ok( ['cidr-unban'],                               qr/a single CIDR/, 'cidr-unban with no args' );
+usage_error_ok( [ 'cidr-unban', '1.2.3.0/24', '10.0.0.0/8' ], qr/a single CIDR/, 'cidr-unban with two CIDRs' );
+
 usage_error_ok( ['add'],             qr/single kur instance name/, 'add with no name' );
 usage_error_ok( [ 'add', 'a', 'b' ], qr/single kur instance name/, 'add with two names' );
 usage_error_ok(
@@ -69,9 +74,19 @@ usage_error_ok( ['bogus'], qr/bogus/i, 'unknown subcommand' );
 foreach my $command ( 'stop', 'status', 'banned' ) {
 	usage_error_ok( [ '-s', $dir . '/nothere.sock', $command ], qr/Failed to connect/, $command . ' honors -s' );
 }
-usage_error_ok( [ '-s', $dir . '/nothere.sock', 'ban',    '1.2.3.4' ], qr/Failed to connect/, 'ban honors -s' );
-usage_error_ok( [ '-s', $dir . '/nothere.sock', 'unban',  '--all' ],   qr/Failed to connect/, 'unban honors -s' );
-usage_error_ok( [ '-s', $dir . '/nothere.sock', 'remove', 'sshd' ],    qr/Failed to connect/, 'remove honors -s' );
+usage_error_ok( [ '-s', $dir . '/nothere.sock', 'ban',   '1.2.3.4' ], qr/Failed to connect/, 'ban honors -s' );
+usage_error_ok( [ '-s', $dir . '/nothere.sock', 'unban', '--all' ],   qr/Failed to connect/, 'unban honors -s' );
+usage_error_ok(
+	[ '-s', $dir . '/nothere.sock', 'cidr-ban', '1.2.3.0/24' ],
+	qr/Failed to connect/,
+	'cidr-ban honors -s'
+);
+usage_error_ok(
+	[ '-s', $dir . '/nothere.sock', 'cidr-unban', '1.2.3.0/24' ],
+	qr/Failed to connect/,
+	'cidr-unban honors -s'
+);
+usage_error_ok( [ '-s', $dir . '/nothere.sock', 'remove', 'sshd' ], qr/Failed to connect/, 'remove honors -s' );
 usage_error_ok( [ '-s', $dir . '/nothere.sock', 'checkpoint' ], qr/Failed to connect/, 'checkpoint honors -s' );
 usage_error_ok(
 	[ '-s', $dir . '/nothere.sock', 'add', 'sshd', '--backend', 'dummy' ],
@@ -84,8 +99,8 @@ usage_error_ok(
 #
 
 SKIP: {
-	skip 'temp dir path too long for a unix socket', 29 if !socket_path_ok($dir);
-	skip 'unix sockets and fork required',           29 if $^O eq 'MSWin32';
+	skip 'temp dir path too long for a unix socket', 36 if !socket_path_ok($dir);
+	skip 'unix sockets and fork required',           36 if $^O eq 'MSWin32';
 
 	my $socket = $dir . '/mock.sock';
 	my $echo   = sub {
@@ -101,6 +116,8 @@ SKIP: {
 			'banned'     => { 'status' => 'ok', 'result' => { 'kurs' => { 'sshd' => { 'banned' => [] } } } },
 			'ban'        => $echo,
 			'unban'      => $echo,
+			'cidr_ban'   => $echo,
+			'cidr_unban' => $echo,
 			'add_kur'    => $echo,
 			'remove_kur' => { 'status' => 'error', 'error' => 'No such kur instance, "sshd"' },
 			'checkpoint' => $echo,
@@ -160,6 +177,22 @@ SKIP: {
 	$result  = test_app( 'Ereshkigal::App' => [ @s, 'unban', '--all' ] );
 	$decoded = decode_json( $result->stdout );
 	is( $decoded->{args}{all}, 1, 'unban --all sends all' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 'cidr-ban', '1.2.3.0/24', '10.0.0.0/8' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{command}, 'cidr_ban', 'cidr-ban calls cidr_ban' );
+	is_deeply( $decoded->{args}{cidrs}, [ '1.2.3.0/24', '10.0.0.0/8' ], 'cidr-ban passes the CIDRs' );
+	ok( !defined( $decoded->{args}{kur} ), 'cidr-ban with out --kur sends no kur' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 'cidr-ban', '--kur', 'sshd', '--ban-time', '30', '1.2.3.0/24' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{args}{kur},      'sshd', 'cidr-ban passes --kur' );
+	is( $decoded->{args}{ban_time}, 30,     'cidr-ban passes --ban-time' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 'cidr-unban', '1.2.3.0/24' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{command},    'cidr_unban', 'cidr-unban calls cidr_unban' );
+	is( $decoded->{args}{cidr}, '1.2.3.0/24', 'cidr-unban passes the CIDR' );
 
 	$result = test_app(
 		'Ereshkigal::App' => [

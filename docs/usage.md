@@ -54,6 +54,35 @@ Sentences default per the config layering (request > kur > global >
 When a sentence is served, the kur's sweeper releases the IP on its
 own — no cron jobs needed.
 
+## Banishing whole ranges
+
+Whole CIDR ranges can be banished too, once CIDR banning is enabled
+(see [configuration](configuration.md)) and the kur's backend can
+carry ranges.
+
+```shell
+ereshkigal cidr-ban 1.2.3.0/24 10.0.0.0/8   # banish ranges to EVERY kur
+ereshkigal cidr-ban --kur sshd 1.2.3.0/24   # just the sshd underworld
+ereshkigal cidr-ban --ban-time 3600 1.2.3.0/24  # a one hour sentence
+
+ereshkigal cidr-unban 1.2.3.0/24            # each kur checked, the range
+                                            # released wherever it is held
+```
+
+Ranges are reduced to their network address before being sent below,
+so `1.2.3.4/24` and `1.2.3.0/24` are the same range and either spelling
+finds it again for an unban. `cidr-ban` and its sentences behave exactly
+like `ban`, sweeper and all.
+
+There is no `cidr-unban --all` — `unban --all` already empties every
+underworld, single IPs and ranges alike.
+
+A kur without CIDR banning available for it (not enabled, or a backend
+that can not carry ranges) either answers a plain error or, when its
+`cidr_silent_drop` is set, quietly drops the command with `dropped:1`.
+That keeps a fan-out across a mix of range-capable and range-incapable
+underworlds from being spoiled by the ones that can not oblige.
+
 ## Managing underworlds at runtime
 
 ```shell
@@ -123,7 +152,9 @@ if ( $response->{status} eq 'ok' ) { ... }
 The commands and their args mirror the CLI exactly: `status`,
 `status_all`, `status_kur` (`{"name":...}`), `banned`, `ban`
 (`{"ips":[...], "kur":..., "ban_time":...}` with kur/ban_time
-optional), `unban` (`{"ip":...}` or `{"all":true}`), `add_kur`
+optional), `unban` (`{"ip":...}` or `{"all":true}`), `cidr_ban`
+(`{"cidrs":[...], "kur":..., "ban_time":...}` with kur/ban_time
+optional), `cidr_unban` (`{"cidr":...}`), `add_kur`
 (`{"name":..., "opts":{...}}`), `remove_kur` (`{"name":...}`),
 `checkpoint` (`{"kur":...}` optional), and `stop`. Responses are
 `{"status":"ok","result":...}` or `{"status":"error","error":"..."}`.

@@ -65,21 +65,25 @@ ban_time  = 300                 # web scanners come and go
 
 ```toml
 [kur.blocklist]
-backend  = "pf"
-ban_time = 0                    # no one comes back on their own
+backend     = "pf"
+ban_time    = 0                 # no one comes back on their own
+enable_cidr = true              # whole ranges welcome too
 
 [kur.blocklist.options]
 kill = 1
 ```
 
-Feeding it from a file...
+Feeding it single IPs and whole ranges from files...
 
 ```shell
-xargs ereshkigal ban --kur blocklist < /usr/local/etc/blocklist.txt
+xargs ereshkigal ban      --kur blocklist < /usr/local/etc/blocklist.txt
+xargs ereshkigal cidr-ban --kur blocklist < /usr/local/etc/blockranges.txt
 ```
 
-Those IPs stay below across restarts (the tablets see to that) until
-an explicit `ereshkigal unban`.
+Those IPs and ranges stay below across restarts (the tablets see to
+that) until an explicit `ereshkigal unban` / `ereshkigal cidr-unban`.
+A range is stored as its network address, so `ereshkigal cidr-unban
+203.0.113.0/24` releases it however the ban was first spelled.
 
 ## Raising and tearing down an underworld at runtime
 

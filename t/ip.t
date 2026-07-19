@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Test::More;
 
-use Ereshkigal::IP qw( normalize_ip );
+use Ereshkigal::IP qw( normalize_ip normalize_cidr );
 
 #
 # IPv4
@@ -51,5 +51,51 @@ is( normalize_ip('1.2.3.4/32'),   undef, 'CIDR refused' );
 is( normalize_ip(' 1.2.3.4'),     undef, 'leading whitespace refused' );
 is( normalize_ip("1.2.3.4\n"),    undef, 'trailing newline refused' );
 is( normalize_ip('fe80::1%eth0'), undef, 'scope id refused' );
+
+#
+# normalize_cidr, IPv4... the host bits below the prefix are masked off so the
+# network address is what comes back
+#
+
+is( normalize_cidr('1.2.3.0/24'),       '1.2.3.0/24',       'IPv4 network address returned as is' );
+is( normalize_cidr('1.2.3.4/24'),       '1.2.3.0/24',       'IPv4 host bits masked off' );
+is( normalize_cidr('10.0.0.0/8'),       '10.0.0.0/8',       'IPv4 /8 ok' );
+is( normalize_cidr('192.168.1.130/25'), '192.168.1.128/25', 'IPv4 mid byte prefix masked' );
+is( normalize_cidr('1.2.3.4/32'),       '1.2.3.4/32',       'IPv4 /32 keeps the whole address' );
+is( normalize_cidr('1.2.3.4/0'),        '0.0.0.0/0',        'IPv4 /0 masks to all zero' );
+
+is( normalize_cidr('1.2.3.0/33'),  undef, 'IPv4 prefix out of range refused' );
+is( normalize_cidr('010.0.0.0/8'), undef, 'IPv4 leading zero octet refused' );
+
+#
+# normalize_cidr, IPv6... long form, case, and host bits all reduce to the same
+# canonical masked network
+#
+
+is( normalize_cidr('2001:db8::/32'),       '2001:db8::/32',      'IPv6 network returned canonical' );
+is( normalize_cidr('2001:0DB8:0000::/32'), '2001:db8::/32',      'IPv6 long uppercase form canonicalized' );
+is( normalize_cidr('2001:db8::abcd/32'),   '2001:db8::/32',      'IPv6 host bits masked off' );
+is( normalize_cidr('2001:db8:ffff::/33'),  '2001:db8:8000::/33', 'IPv6 mid byte prefix masked' );
+is( normalize_cidr('2001:db8::1/128'),     '2001:db8::1/128',    'IPv6 /128 keeps the whole address' );
+is( normalize_cidr('2001:db8::1/0'),       '::/0',               'IPv6 /0 masks to all zero' );
+
+is( normalize_cidr('2001:db8::/129'), undef, 'IPv6 prefix out of range refused' );
+
+#
+# normalize_cidr, non-CIDR stuff
+#
+
+is( normalize_cidr('1.2.3.4'),         undef, 'bare IPv4 with no prefix refused' );
+is( normalize_cidr('2001:db8::1'),     undef, 'bare IPv6 with no prefix refused' );
+is( normalize_cidr('1.2.3.0/024'),     undef, 'IPv4 leading zero prefix refused' );
+is( normalize_cidr('1.2.3.0/'),        undef, 'empty prefix refused' );
+is( normalize_cidr('1.2.3.0/24/24'),   undef, 'extra prefix refused' );
+is( normalize_cidr('not-a-cidr/24'),   undef, 'non-IP address refused' );
+is( normalize_cidr('fe80::1%eth0/64'), undef, 'scope id refused' );
+is( normalize_cidr('1.2.3.0/24 '),     undef, 'trailing whitespace refused' );
+is( normalize_cidr("1.2.3.0/24\n"),    undef, 'trailing newline refused' );
+is( normalize_cidr(''),                undef, 'empty string refused' );
+is( normalize_cidr(undef),             undef, 'undef refused' );
+is( normalize_cidr( ['1.2.3.0/24'] ),  undef, 'ref refused' );
 
 done_testing;
