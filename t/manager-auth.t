@@ -21,11 +21,50 @@ sub new {
 sub uid      { return $_[0]{uid}; }
 sub username { return $_[0]{username}; }
 
+# a stand in for the real context's NSS backed in_group... resolves the
+# uid's primary group and any group member lists, which is enough to
+# exercise _authorize's group handling with real users and groups
+sub in_group {
+	my ( $self, $group ) = @_;
+	return 0 unless defined($group);
+
+	my $primary_gid = ( getpwuid( $self->{uid} ) )[3];
+	if ( defined($primary_gid) ) {
+		my $primary_group = getgrgid($primary_gid);
+		return 1 if defined($primary_group) && $primary_group eq $group;
+	}
+
+	my $members = ( getgrnam($group) )[3];
+	if ( defined($members) ) {
+		foreach my $member ( split( /\s+/, $members ) ) {
+			return 1 if $member eq $self->{username};
+		}
+	}
+
+	return 0;
+} ## end sub in_group
+
 package main;
 
 sub ctx {
 	return EreshkigalTest::FakeCtx->new(@_);
 }
+
+# _authorize signals a refusal by dying with a { error, code } hash ref,
+# that hash ref being what carries the machine-readable code through to the
+# JSONUnix error response... assert against both the message and the code
+sub denied_ok {
+	my ( $coderef, $regex, $desc ) = @_;
+	my $lived = eval { $coderef->(); 1 };
+	# capture the exception before subtest's own internals clobber $@
+	my $err = $@;
+	return subtest $desc => sub {
+		plan tests => 3;
+		ok( !$lived, 'refused' );
+		like( ( ref($err) eq 'HASH' ? $err->{error} : $err ), $regex, 'error message' );
+		is( ( ref($err) eq 'HASH' ? $err->{code} : undef ), 'permission_denied', 'permission_denied code' );
+	};
+} ## end sub denied_ok
 
 my $dir = test_dir();
 
@@ -69,25 +108,26 @@ lives_ok { $ereshkigal->_authorize( $global, 'sshd', 'smtp' ) } 'global user all
 # a kur scoped user is authorized for just that kur
 my $scoped = ctx( 'uid' => 12346, 'username' => 'scopeduser' );
 lives_ok { $ereshkigal->_authorize( $scoped, 'sshd' ) } 'scoped user their kur';
-throws_ok { $ereshkigal->_authorize( $scoped, 'smtp' ) } qr/not authorized for the kur "smtp"/,
-	'scoped user other kur denied';
-throws_ok { $ereshkigal->_authorize($scoped) } qr/not authorized for manager level/, 'scoped user manager level denied';
-throws_ok { $ereshkigal->_authorize( $scoped, 'sshd', 'smtp' ) } qr/not authorized for the kur "smtp"/,
-	'scoped user denied when any touched kur is not theirs';
+denied_ok( sub { $ereshkigal->_authorize( $scoped, 'smtp' ) }, qr/not authorized for the kur "smtp"/,
+	'scoped user other kur denied' );
+denied_ok( sub { $ereshkigal->_authorize($scoped) }, qr/not authorized for manager level/,
+	'scoped user manager level denied' );
+denied_ok( sub { $ereshkigal->_authorize( $scoped, 'sshd', 'smtp' ) }, qr/not authorized for the kur "smtp"/,
+	'scoped user denied when any touched kur is not theirs' );
 
 # a nobody is denied everywhere
 my $nobody = ctx( 'uid' => 12347, 'username' => 'nobodyuser' );
-throws_ok { $ereshkigal->_authorize($nobody) } qr/not authorized/, 'unknown user manager level denied';
-throws_ok { $ereshkigal->_authorize( $nobody, 'sshd' ) } qr/not authorized/, 'unknown user kur denied';
+denied_ok( sub { $ereshkigal->_authorize($nobody) },         qr/not authorized/, 'unknown user manager level denied' );
+denied_ok( sub { $ereshkigal->_authorize( $nobody, 'sshd' ) }, qr/not authorized/, 'unknown user kur denied' );
 
 # a gateway scoped user... authorization for a command targeted at a
 # fan_out kur is checked against the gateway's own lists, not it's
 # members', that being what makes one usable as a single point of contact
 my $gateuser = ctx( 'uid' => 12348, 'username' => 'gateuser' );
 lives_ok { $ereshkigal->_authorize( $gateuser, 'gate' ) } 'gateway user their gateway';
-throws_ok { $ereshkigal->_authorize( $gateuser, 'sshd' ) } qr/not authorized/,
-	'gateway user denied the members directly';
-throws_ok { $ereshkigal->_authorize($gateuser) } qr/not authorized/, 'gateway user denied manager level';
+denied_ok( sub { $ereshkigal->_authorize( $gateuser, 'sshd' ) }, qr/not authorized/,
+	'gateway user denied the members directly' );
+denied_ok( sub { $ereshkigal->_authorize($gateuser) }, qr/not authorized/, 'gateway user denied manager level' );
 
 SKIP: {
 	# these exercise the current user's real group membership, so uid 0 short
@@ -103,7 +143,7 @@ SKIP: {
 
 	# unknown groups just never match rather than erroring
 	$ereshkigal->{authed_groups} = ['nosuchgroupzzz'];
-	throws_ok { $ereshkigal->_authorize($me) } qr/not authorized/, 'unknown group never matches';
+	denied_ok( sub { $ereshkigal->_authorize($me) }, qr/not authorized/, 'unknown group never matches' );
 
 	# group via a member list
 	my $member_group;
@@ -125,7 +165,7 @@ SKIP: {
 	$ereshkigal->{authed_groups} = [];
 	$ereshkigal->{kurs}{sshd}{opts}{authed_groups} = [$primary_group];
 	lives_ok { $ereshkigal->_authorize( $me, 'sshd' ) } 'kur level group grants that kur';
-	throws_ok { $ereshkigal->_authorize( $me, 'smtp' ) } qr/not authorized/, 'but not the other kur';
+	denied_ok( sub { $ereshkigal->_authorize( $me, 'smtp' ) }, qr/not authorized/, 'but not the other kur' );
 } ## end SKIP:
 
 # with enable_auth off everything is authorized regardless of lists

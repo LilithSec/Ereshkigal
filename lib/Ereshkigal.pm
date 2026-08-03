@@ -141,6 +141,12 @@ is always authorized. The kur backends do no checking at all... their
 sockets are 0600 and only ereshkigal is expected to be able to write to
 them, so enforcement is entirely the manager's responsibility.
 
+A refused command comes back as a normal JSONUnix error response carrying
+a machine-readable C<code>, C<permission_denied> for a authorization
+refusal, matching the C<code> field convention of
+L<POE::Component::Server::JSONUnix>'s own permission and auth errors, so a
+consumer may branch on the code rather than matching the message text.
+
 Example...
 
     socket_group = "wheel"
@@ -676,10 +682,11 @@ sub _authed_list_error {
 } ## end sub _authed_list_error
 
 # checks if the user is in the passed users list or a member of one of the
-# passed groups... membership is resolved at request time so user/group
-# database changes apply with out a restart
+# passed groups... group membership (primary and secondary) comes from the
+# JSONUnix context, which resolves it through NSS and caches it per
+# connection, so user/group database changes apply with out a restart
 sub _user_in_lists {
-	my ( $self, $username, $uid, $users, $groups ) = @_;
+	my ( $self, $ctx, $username, $users, $groups ) = @_;
 
 	foreach my $user ( @{$users} ) {
 		if ( $user eq $username ) {
@@ -687,27 +694,12 @@ sub _user_in_lists {
 		}
 	}
 
-	# the user's primary group
-	my $primary_gid = ( getpwuid($uid) )[3];
-	my $primary_group;
-	if ( defined($primary_gid) ) {
-		$primary_group = getgrgid($primary_gid);
-	}
-
 	foreach my $group ( @{$groups} ) {
-		if ( defined($primary_group) && $group eq $primary_group ) {
+		# unknown groups just never match rather than erroring
+		if ( $ctx->in_group($group) ) {
 			return 1;
 		}
-		# unknown groups just never match rather than erroring
-		my $members = ( getgrnam($group) )[3];
-		if ( defined($members) ) {
-			foreach my $member ( split( /\s+/, $members ) ) {
-				if ( $member eq $username ) {
-					return 1;
-				}
-			}
-		}
-	} ## end foreach my $group ( @{$groups} )
+	}
 
 	return 0;
 } ## end sub _user_in_lists
@@ -725,8 +717,10 @@ sub _authorize {
 	my $uid      = $ctx->uid;
 	my $username = $ctx->username;
 	if ( !defined($uid) ) {
-		# should be unreachable as JSONUnix gates unauthed commands first
-		die('authentication required');
+		# should be unreachable as JSONUnix gates unauthed commands first...
+		# a hash ref die carries a machine-readable code through to the
+		# JSONUnix error response, matching it's own auth_required code
+		die( { 'error' => 'authentication required', 'code' => 'auth_required' } );
 	}
 	if ( $uid == 0 ) {
 		return;
@@ -734,11 +728,14 @@ sub _authorize {
 	$username = '' if !defined($username);
 
 	if ( !@kurs ) {
-		if ( $self->_user_in_lists( $username, $uid, $self->{authed_users}, $self->{authed_groups} ) ) {
+		if ( $self->_user_in_lists( $ctx, $username, $self->{authed_users}, $self->{authed_groups} ) ) {
 			return;
 		}
-		die( 'The user "' . $username . '" is not authorized for manager level commands' );
-	}
+		die( {
+			'error' => 'The user "' . $username . '" is not authorized for manager level commands',
+			'code'  => 'permission_denied',
+		} );
+	} ## end if ( !@kurs )
 
 	foreach my $name (@kurs) {
 		# the effective lists for a kur are the global ones plus it's own
@@ -747,8 +744,11 @@ sub _authorize {
 			= ( @{ $self->{authed_users} }, ref( $def->{authed_users} ) eq 'ARRAY' ? @{ $def->{authed_users} } : () );
 		my @groups = ( @{ $self->{authed_groups} },
 			ref( $def->{authed_groups} ) eq 'ARRAY' ? @{ $def->{authed_groups} } : () );
-		if ( !$self->_user_in_lists( $username, $uid, \@users, \@groups ) ) {
-			die( 'The user "' . $username . '" is not authorized for the kur "' . $name . '"' );
+		if ( !$self->_user_in_lists( $ctx, $username, \@users, \@groups ) ) {
+			die( {
+				'error' => 'The user "' . $username . '" is not authorized for the kur "' . $name . '"',
+				'code'  => 'permission_denied',
+			} );
 		}
 	} ## end foreach my $name (@kurs)
 
