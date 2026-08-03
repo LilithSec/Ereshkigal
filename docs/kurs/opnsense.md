@@ -34,6 +34,8 @@ secret = "someAPIsecret"
 
 - `ports` / `protocols` — accepted for parity but **ignored**;
   scoping lives on the referencing rule.
+- `enable_cidr` — supported; the alias carries networks as readily
+  as hosts.
 - `prefix` — builds the default alias name.
 
 ## Options
@@ -65,7 +67,7 @@ All calls are
 | `teardown` | the same alias flush (ban book kept for re_init)                      |
 
 Deleting an address already gone from the alias succeeds quietly —
-hand-removals on the firewall don't error later unbans.
+a hand-removal on the firewall won't make a later unban error.
 
 ## self_heal
 

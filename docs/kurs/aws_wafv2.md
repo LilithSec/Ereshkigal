@@ -42,6 +42,9 @@ id6    = "e5f6a7b8-..."
 
 - `ports` / `protocols` — accepted for parity but **ignored**;
   scoping lives on the WebACL rule.
+- `enable_cidr` — supported; WAFv2 IP sets take real CIDRs, which
+  render alongside the single IPs.
+- `prefix` — unused; the IP sets are addressed by name and ID.
 - At least one family must be fully configured (`name4`+`id4` or
   `name6`+`id6`); banning an IP of an unconfigured family is an
   error (`ipsetNotConfigured`).
@@ -69,12 +72,13 @@ supplies the **lock token** WAF's optimistic locking requires:
 | `ban`      | `get-ip-set` for the IP's family, then `aws wafv2 update-ip-set ... --addresses <ip1>/32 <ip2>/32 ... --lock-token <token>` — the family's full book |
 | `unban`    | the same, minus the IP                                               |
 | `list`     | no command — the kur's own ban book                                  |
-| `check`    | the `get-ip-set` per configured family                               |
+| `check`    | a `get-ip-set` per configured family                                 |
 | `flush`    | `update-ip-set` with an empty address list per family                |
 | `re_init`  | teardown (best effort), init, update with the full book per family   |
 | `teardown` | update with empty addresses per family (ban book kept)               |
 
-IPv4 addresses render as `/32`, IPv6 as `/128`.
+Single IPv4 addresses render as `/32`, IPv6 as `/128`; banned CIDR
+ranges render as themselves.
 
 ## self_heal
 

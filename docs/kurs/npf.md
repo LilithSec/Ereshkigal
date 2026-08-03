@@ -19,7 +19,7 @@ Declare the table and a rule using it in `/etc/npf.conf`, then
 reload:
 
 ```
-table <kur_sshd> type ipset
+table <kur_sshd> type ipset    # type lpm instead if CIDR banning is enabled
 
 group default {
     block in final from <kur_sshd>
@@ -55,6 +55,10 @@ fails if it does not.
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup (`portsNotSupported` /
   `protocolsNotSupported`). They belong to the rule in `npf.conf`.
+- `enable_cidr` — supported, but only against an `lpm`-type table:
+  `ipset` tables hold exact addresses and reject prefixes, so a CIDR
+  ban against one fails with `banCidrFailed`. Declare `type lpm` in
+  `npf.conf` if this kur will banish ranges.
 - `prefix` — only used to build the default table name.
 
 ## Options
@@ -80,7 +84,7 @@ here is exactly what must be declared in `npf.conf`.
 | `teardown` | `npfctl table <table> flush` (the table itself cannot be removed; ban book kept for re_init) |
 
 An `ipset`-type npf table holds both IPv4 and IPv6 addresses, so both
-families work.
+families work; ranges need `type lpm` (see Settings).
 
 ## self_heal and reloads
 
@@ -94,9 +98,9 @@ procedure.
 ## Gotchas
 
 - Everything interesting is in `npf.conf`. If the block rule is
-  missing or ordered after a pass rule that wins, the kur will bill
-  and cool sentences happily while nothing is blocked — the kur can
-  only see the table, not whether any rule consults it.
+  missing or ordered after a pass rule that wins, the kur will hand
+  down and cool sentences happily while nothing is blocked — the kur
+  can only see the table, not whether any rule consults it.
 - Underscores are allowed in the table name (unlike kur names and
   prefixes), since npf allows them.
 - IPv6 addresses are lowercased on ban.

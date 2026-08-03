@@ -47,20 +47,25 @@ engineering that must already exist:
   Destination-based RTBH with attacker sources does something quite
   different (it blackholes your replies); know which one your edge
   implements.
-- **Guardrails are not optional.** A bug here announces routes.
+- **Guardrails are not optional.** A bug here announces routes to
+  your network that nothing else vets.
   Configure max-prefix limits on the peers, filter what the routers
   will accept to host routes carrying the community, and never let
   these announcements escape to peers that shouldn't see them.
 
 ## Requirements
 
-- `exabgpcli` (driver `exabgp`, the default) or `gobgp` (driver
-  `gobgp`) in the `PATH` of the kur process, and its daemon running.
+- `exabgpcli` (driver `exabgp`, the default), `gobgp` (driver
+  `gobgp`), or `vtysh` (driver `frr`) in the `PATH` of the kur
+  process, and its daemon running.
 
 ## Settings
 
 - `ports` / `protocols` — accepted for parity but **ignored**; a
   route has no ports.
+- `enable_cidr` — supported; a banned range is announced verbatim in
+  place of the host route. The same guardrails apply, only more so —
+  a range announcement widens the blast radius by definition.
 - `prefix` / `name` — unused beyond the usual bookkeeping.
 
 ## Options
@@ -120,16 +125,16 @@ blackhole'`, and its `check` is `vtysh -c 'show ip bgp summary'`.
 `check` confirms the daemon answers — not that sessions are
 Established, not that any specific route is still announced, and
 certainly not that routers are dropping. An ExaBGP restart loses its
-announcements while `check` recovers as soon as the daemon is back:
-pair daemon restarts with a `re_init` (which re-announces the whole
-book), and watch session state with your normal BGP monitoring, not
-this kur.
+announcements, yet `check` goes green again as soon as the daemon is
+back: pair daemon restarts with a `re_init` (which re-announces the
+whole book), and watch session state with your normal BGP
+monitoring, not this kur.
 
 ## Gotchas
 
 - The blast radius is the network, not the host. Test with a lab
   peer and `ban_time` short before trusting automation with it.
-- Sentences ending means withdraws; a mass expiry is a burst of
+- A sentence ending means a withdraw; a mass expiry is a burst of
   `exabgpcli` invocations. BGP handles it; your logging might blink.
 - Errors carry Error::Helper flags (`driverInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::bgp_rtbh`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::bgp_rtbh) has the full
   table.

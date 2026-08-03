@@ -24,7 +24,7 @@ set firewall group ipv6-address-group kur_sshd
 set firewall ipv4 input filter rule 10 action 'drop'
 set firewall ipv4 input filter rule 10 source group address-group 'kur_sshd'
 set firewall ipv6 input filter rule 10 action 'drop'
-set firewall ipv6 input filter rule 10 source group address-group 'kur_sshd'
+set firewall ipv6 input filter rule 10 source group ipv6-address-group 'kur_sshd'
 commit ; save
 ```
 
@@ -40,6 +40,8 @@ family sourcing from the group.)
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping lives on the rules.
+- `enable_cidr` — supported; the address-groups take networks as
+  readily as hosts.
 - `prefix` — builds the default group name.
 
 ## Options
@@ -78,8 +80,10 @@ anyway).
 ## self_heal
 
 `check` verifies the API answers and can read the group's config —
-not the group's contents nor the rules. Entries removed on the
-router by hand stay gone until `re_init`.
+not the group's contents nor the rules. Both init and check probe
+only the IPv4 `address-group`; the `ipv6-address-group` is never
+probed. Entries removed on the router by hand stay gone until
+`re_init`.
 
 ## Gotchas
 

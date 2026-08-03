@@ -17,13 +17,13 @@ to the world above.
   under [kurs/](kurs/) detailing each backend, its options, and what the host must
   provide
 
-
 - [usage](usage.md) :: communing with Ereshkigal via CLI or socket
 
 - [security](security.md) :: the trust model, Neti at the gate, and why you probably
   want `kill = 1`
 
-- [examples](examples.md) :: More examples!
+- [examples](examples.md) :: worked configs to copy from — per-service underworlds,
+  eternal blocklists, log watchers, and an unprivileged playground
 
 Also...
 

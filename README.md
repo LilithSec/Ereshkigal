@@ -6,11 +6,12 @@ to the world above.
 
 In the world above, Ereshkigal is a ban manager for firewalls, in the
 same family as fail2ban. An `ereshkigal` manager daemon rules over all
-`kur`. Each kur an underworld of its own, holding the IPs banished to it. Each kur wraps
-a single
+`kur`. Each kur is an underworld of its own, holding the IPs banished
+to it. Each kur wraps a single
 [Net::Firewall::BlockerHelper](https://metacpan.org/pod/Net::Firewall::BlockerHelper)
-instance for talking to the actual firewall (pf, ipfw, iptables, shell commands, or a
-dummy for testing).
+instance for talking to the actual firewall — one of 36 backends, from
+local packet filters (pf, ipfw, iptables, nftables...) through network
+gear and cloud edges to a dummy for testing.
 
 Sending an IP below and calling it back looks like this...
 
@@ -28,9 +29,10 @@ ereshkigal banned
 ereshkigal unban 1.2.3.4
 ```
 
-Banishments may be timed sentences, served, and then automatically released
-by the sweeper or eternal (`--ban-time 0`). Every kur records its
-residents to a CSV clay tablets, so the underworld survives a restart intact.
+Banishments may be timed sentences — served and then automatically
+released by the sweeper — or eternal (`--ban-time 0`). Every kur
+records its residents to a CSV clay tablet, so the underworld survives
+a restart intact.
 
 ## Install
 
@@ -56,18 +58,19 @@ cpanm TOML::Tiny Net::Firewall::BlockerHelper \
     POE::Component::Server::JSONUnix Ereshkigal
 ```
 
-Startup scripts for running at boot [rc/freebsd/ereshkigal](rc/freebsd/ereshkigal).
+A startup script for running at boot ships at
+[rc/freebsd/ereshkigal](rc/freebsd/ereshkigal).
 
 ### Debian
 
 ```shell
 apt-get install libapp-cmd-perl libjson-maybexs-perl libnet-server-perl \
-    libpoe-perl libtoml-tiny-perl cpanminus
+    libpoe-perl libtoml-tiny-perl cpanminus build-essential
 cpanm Error::Helper Net::Firewall::BlockerHelper \
     POE::Component::Server::JSONUnix Ereshkigal
 ```
 
-Startup scripts for running at boot
+A systemd unit for running at boot ships at
 [rc/systemd/ereshkigal.service](rc/systemd/ereshkigal.service).
 
 ## Documentation
@@ -76,6 +79,6 @@ To continue your descent go to [docs/index.md](docs/index.md).
 
 Also...
 
-- `perldoc Ereshkigal`
-- `perldoc Ereshkigal::Kur`
-- `perldoc Ereshkigal::Client`
+- [`Ereshkigal`](https://metacpan.org/pod/Ereshkigal)
+- [`Ereshkigal::Kur`](https://metacpan.org/pod/Ereshkigal::Kur)
+- [`Ereshkigal::Client`](https://metacpan.org/pod/Ereshkigal::Client)

@@ -20,10 +20,12 @@ acl     = "6tUXdegLTf5BCig0zGFrU3"
 
 - Create the ACL on the service (via UI or API) and note the
   **service ID** and **ACL ID** — the options take IDs, not names.
-- VCL that consults the ACL and acts, e.g.:
+- VCL that consults the ACL and acts (referencing the ACL by
+  whatever *name* you created it under — the kur only ever sees the
+  ID), e.g.:
 
 ```vcl
-if (client.ip ~ kur_web) {
+if (client.ip ~ my_banned_acl) {
   error 403 "banished";
 }
 ```
@@ -39,6 +41,8 @@ if (client.ip ~ kur_web) {
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup.
+- `enable_cidr` — supported; ACL entries carry a subnet as readily
+  as a single IP.
 - `prefix` — bookkeeping only; Fastly objects are addressed by ID.
 
 ## Options
@@ -79,7 +83,7 @@ until `re_init`.
 
 - The unban lookup fetches the entry list to find the ID — with very
   large ACLs that is a heavy read per unban, and mass expiries
-  multiply it. Fastly ACLs cap at 1000 entries per default anyway;
+  multiply it. Fastly ACLs also cap at 10,000 entries by default;
   keep ban volumes inside that.
 - Fastly rate-limits API writes account-wide; pace chatty ban
   sources.

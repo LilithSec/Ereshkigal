@@ -58,6 +58,8 @@ tcp/udp/sctp. Protocols that cannot take ports get one portless rule.
   tcp/udp/sctp.
 - The rules are family-neutral; one table holds both IPv4 and IPv6
   IPs.
+- `enable_cidr` — supported; pf tables carry prefixes as readily as
+  addresses.
 - `<prefix>_<name>` must be ≤ 31 characters — the pf table name
   limit, enforced at kur startup rather than as a confusing pfctl
   error later.

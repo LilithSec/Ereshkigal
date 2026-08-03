@@ -32,15 +32,7 @@ IPv6 IPs use `"target": "ip6"`. The `notes` value is the rule's
 identity: unban looks the rule ID up by mode + notes + target + value
 and DELETEs it.
 
-## Requirements
-
-- `LWP::UserAgent` and `LWP::Protocol::https` installed — loaded only
-  at runtime, so they are needed only if this backend is actually
-  used.
-- Credentials (below), and outbound HTTPS to
-  `api.cloudflare.com`.
-
-### Cloudflare-side setup
+## Cloudflare-side setup — required first
 
 - **Token auth (preferred):** create an API token with just what is
   needed — *Zone → Firewall Services → Edit* for zone level rules
@@ -52,10 +44,20 @@ and DELETEs it.
   parity with the old fail2ban action, but the global key is
   all-powerful — prefer a scoped token.
 
+## Requirements
+
+- `LWP::UserAgent` and `LWP::Protocol::https` installed — loaded only
+  at runtime, so they are needed only if this backend is actually
+  used.
+- Credentials (above), and outbound HTTPS to
+  `api.cloudflare.com`.
+
 ## Settings
 
 - `ports` / `protocols` — **not supported**; Cloudflare access rules
   are per-IP. Specifying either is a fatal error at kur startup.
+- `enable_cidr` — supported; access rules take CIDR targets as well
+  as single IPs.
 - `prefix` — only used in the default `notes` value.
 
 ## Options

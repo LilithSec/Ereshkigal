@@ -40,9 +40,11 @@ shell.
 
 - `ports` / `protocols` — ignored entirely; encode any scoping into
   your commands.
-- `prefix` — unused.
-- `name` — required by the frontend as always, available to you only
-  in the sense that you know it when writing the config.
+- `enable_cidr` — supported; a banned range is substituted into the
+  same `ban`/`unban` templates via `%%%BAN%%%`, so make sure your
+  commands can take a CIDR where they take an IP.
+- `prefix` — unused. The kur name never reaches your commands either;
+  the only substitution is `%%%BAN%%%`.
 
 ## Options
 
@@ -78,8 +80,8 @@ everything your commands created).
 - **Make `ban` idempotent.** During a kur restart the saved tablet is
   replayed through your `ban` command; after re_init, likewise. A ban
   command that errors when the IP is already blocked will spray
-  errors into the log at every restart. (`touch`, `ipset add -exist`,
-  `-o pipefile` style commands are naturally idempotent; `add`
+  errors into the log at every restart. (`touch` and
+  `ipset add -exist` style commands are naturally idempotent; `add`
   commands often are not.)
 - **Make `unban` tolerate absence** for the mirrored reason —
   sentences that expired while the kur was down are unbanned at

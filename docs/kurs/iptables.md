@@ -58,6 +58,9 @@ option gives finer control.
   rule.
 - `<prefix>_<name>` must be ≤ 28 characters — the iptables chain name
   limit (the ipsets add `_4`/`_6` within ipset's 31-char limit).
+- `enable_cidr` — this backend can **not** carry ranges (the sets are
+  `hash:ip`); a kur with it set logs a warning at startup and answers
+  range commands per `cidr_silent_drop`.
 
 ## Options
 
@@ -131,6 +134,12 @@ With `C = <prefix>_<name>`, `S4/S6` the sets:
 | `re_init`  | teardown (best effort), init, re-add every banned IP                                |
 | `teardown` | `-D INPUT -j C`, `-F C`, `-X C` on both frontends, then `ipset destroy S4`, `ipset destroy S6` |
 
+With `type = "tarpit"`/`"delude"`, init, check, and teardown each
+additionally cover the raw-table chain: init creates it (`-t raw -N
+C`, the notrack rules, `-t raw -A PREROUTING -j C`), check re-tests
+the PREROUTING jump and every notrack rule with `-C`, and teardown
+removes it (`-D PREROUTING -j C`, `-F`, `-X`).
+
 ## self_heal and reloads
 
 `check` is thorough here: both sets, both INPUT jumps, and every
@@ -147,8 +156,8 @@ populated — is the common post-reload state, and re_init handles it.
   `/etc/iptables/rules.v4` or the like — after a reboot the kur
   recreates everything at startup, which is the intended model.
   Conversely, if you use `iptables-save` for persistence, the kur's
-  chain and jump will be captured; harmless, but re-initialized over
-  at next start.
+  chain and jump will be captured; harmless, since the kur tears the
+  captured copies down and recreates them at next start.
 - IPv6 addresses are lowercased on ban so case variants can't
   duplicate.
 - Errors carry Error::Helper flags (`typeInvalid`, `nameTooLong`, …)

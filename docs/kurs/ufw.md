@@ -54,6 +54,8 @@ identity.
   `tcp`, `udp` when `ports` are given. Ports attach only to tcp/udp.
 - `prefix` is accepted but unused — there is no named object to
   prefix; no combined length limit applies.
+- `enable_cidr` — supported; a banned range becomes the same per-rule
+  specs with the CIDR in place of the IP.
 
 ## Options
 
@@ -97,9 +99,10 @@ Exit codes are ignored — nothing matching is not an error.
 `check` only verifies ufw is active — it does **not** verify the
 individual per-IP rules still exist. `ufw disable`/`enable` cycles
 are caught; a hand-deleted rule is not, and self_heal won't restore
-it (that is true of every backend — the kur's book and `re_init` are
-the recovery path, see the ban-time footnotes in
-[security](../security.md)).
+it — the kur's book and `re_init` are the recovery path, see the
+ban-time footnotes in [security](../security.md). (Some backends'
+`check` does verify individual rules; ufw's is only the status
+probe.)
 
 ## Gotchas
 
@@ -111,8 +114,11 @@ the recovery path, see the ban-time footnotes in
   is the point, and also means the bans show at the top of `ufw
   status`.
 - Because ufw persists its rules, kur rules present at an unclean
-  shutdown survive a reboot inside ufw's own state; the kur re-inits
-  at startup (teardown+init+re-ban), so duplicates do not accumulate.
+  shutdown survive a reboot inside ufw's own state — and init is only
+  the status probe, so nothing is cleaned at startup. Re-banning the
+  same IP produces the identical spec (which ufw itself deduplicates),
+  but rules for IPs no longer in the kur's book linger until a
+  `re_init` or `teardown` deletes them spec by spec.
 - IPv6 addresses are lowercased on ban.
 - Errors carry Error::Helper flags (`typeInvalid`, `killInvalid`, …)
   — [`Net::Firewall::BlockerHelper::backends::ufw`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::ufw) has the

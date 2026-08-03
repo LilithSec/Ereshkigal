@@ -64,6 +64,10 @@ directory of their own).
 - **IPv4 only**, matching the fail2ban action — banning an IPv6 IP is
   an error (`ipv6NotSupported`); the reversed-octet name only makes
   sense for IPv4. Keep IPv6 sources pointed at other kurs.
+- `enable_cidr` — this backend can **not** carry ranges (the
+  reversed-octet owner name cannot express a prefix at all); a kur
+  with it set logs a warning at startup and answers range commands
+  per `cidr_silent_drop`.
 - `prefix` — accepted, unused.
 
 ## Options

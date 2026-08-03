@@ -1,6 +1,6 @@
 # route — null routes via iproute2
 
-Blocks whole IPs by adding reject/blackhole routes with `ip(8)`. No
+Blocks whole IPs by adding unreachable/blackhole routes with `ip(8)`. No
 firewall required at all, traffic dies in the routing decision before
 it reaches any firewall chain, and it stays fast with very large
 numbers of banned IPs — a good fallback and a good "block everything
@@ -17,7 +17,8 @@ blocktype = "blackhole"
 
 ## What it creates
 
-One route per banned IP:
+One route per banned IP (per the configured `blocktype` —
+`unreachable` here, the default):
 
 ```
 ip route add unreachable 1.2.3.4
@@ -43,6 +44,8 @@ be scoped to a port or protocol.
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. A route blocks the whole IP or nothing.
+- `enable_cidr` — supported; a banned range is one route for the
+  whole prefix.
 - `prefix` — accepted, unused; routes carry no names.
 
 ## Options

@@ -22,17 +22,17 @@
           v                       v
      Net::Firewall::         Net::Firewall::
      BlockerHelper           BlockerHelper
-     (pf/ipfw/iptables/      (pf/ipfw/iptables/
-      shell/dummy)            shell/dummy)
+     (one of 36 backends:    (one of 36 backends:
+      pf, iptables, ...)      pf, iptables, ...)
 ```
 
 The `ereshkigal` reads the config, spawns one `kur` process per hash under
 `kur` in the config, and supervises them. Each kur owns exactly one
-`Net::Firewall::BlockerHelper` instance(the module that actually
+`Net::Firewall::BlockerHelper` instance (the module that actually
 talks to the firewall) and serves it over its own unix socket. The
 CLI (and anything else in the world above) talks only to the `ereshkigal`
-via it's socket. `ereshkigal` in turn conveys those messages/replies to/from each kur via
-it's own socket.
+via its socket. `ereshkigal` in turn conveys those messages/replies to/from each kur via
+its own socket.
 
 ## What lives where
 
@@ -106,4 +106,4 @@ happen.
 - at `stop`, right before the firewall teardown
 - on demand via the `checkpoint` command
 
-Writes the the file are done in a atomic manner.
+Writes to the file are done in an atomic manner.

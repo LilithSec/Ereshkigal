@@ -40,7 +40,12 @@ moment the ban lands.
 
 - `ports` / `protocols` — accepted for parity but **ignored**;
   xdp-filter's IP blocklist is whole-IP.
-- `prefix` / `name` — unused; there are no named objects.
+- `enable_cidr` — this backend can **not** carry ranges (the map
+  holds single IPs); a kur with it set logs a warning at startup and
+  answers range commands per `cidr_silent_drop`.
+- `prefix` / `name` — accepted and unused by the backend; xdp-filter's
+  map is global, not per-instance (which is also why `check` is a
+  global probe).
 
 ## Options
 

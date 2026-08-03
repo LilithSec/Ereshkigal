@@ -1,7 +1,7 @@
 # firewalld — Linux hosts firewalld manages
 
-Blocks on hosts where firewalld owns the firewall, where driving
-iptables directly would fight the daemon and be lost on reload. Uses
+Blocks on hosts where firewalld owns the firewall — where driving
+iptables directly fights the daemon and loses on reload. Uses
 ipset for the IP sets and the firewalld **direct interface** for the
 block rules, so the daemon and the bans coexist.
 
@@ -51,6 +51,9 @@ passes them through to iptables/ip6tables underneath.
   skipped per family.
 - `<prefix>_<name>` must be ≤ 29 characters — leaving room for the
   `_4`/`_6` suffix within ipset's 31-character set name limit.
+- `enable_cidr` — this backend can **not** carry ranges (the sets are
+  `hash:ip`); a kur with it set logs a warning at startup and answers
+  range commands per `cidr_silent_drop`.
 
 ## Options
 

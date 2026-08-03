@@ -44,8 +44,13 @@ theirs: `ip4`, `ipv4`, `icmp`, `igmp` → `me`; `ip6`, `ipv6`, `icmp6`,
 ## Ports, protocols, and names
 
 - Default `protocols`: `ip4`, `ip6` (everything, both families) — or
-  `tcp`, `udp` when `ports` are given. Port-capable protocols are
-  tcp/udp/sctp; ports are appended to the rule as a comma list.
+  `tcp`, `udp` when `ports` are given. Note `ip4`/`ip6` are ipfw(8)
+  rule keywords, not `/etc/protocols` names — the defaults bypass
+  validation and cannot be requested explicitly in `protocols`.
+  Port-capable protocols are tcp/udp/sctp; ports are appended to the
+  rule as a comma list.
+- `enable_cidr` — supported; ipfw tables carry prefixes as readily
+  as addresses.
 - `<prefix>_<name>` must be ≤ 63 characters, the ipfw table name
   limit.
 
@@ -56,7 +61,7 @@ theirs: `ip4`, `ipv4`, `icmp`, `igmp` → `me`; `ip6`, `ipv6`, `icmp6`,
 | `rule`     | `150`   | the ipfw rule number all this kur's rules live under — **unique per kur** |
 | `type`     | `deny`  | `deny` silently drops; `unreach`/`unreach6` reject                       |
 | `unreach`  | `port`  | IPv4 unreach code when rejecting                                         |
-| `unreach6` | `port`  | IPv6 unreach6 code when rejecting                                        |
+| `unreach6` | `port`  | IPv6 unreach code when rejecting                                         |
 | `kill`     | `0`     | tcpdrop existing TCP connections for a banned IP                         |
 
 ### `rule`
@@ -65,9 +70,9 @@ Must be a positive int. Both init and teardown run `ipfw delete
 <rule>`, which removes **every** rule under that number — so two kurs
 sharing a rule number will silently destroy each other's rules.
 Give every ipfw kur its own number, and keep the numbers clear of
-your hand-maintained ruleset. Placement matters as everywhere in
-ipfw: the number decides where in the ruleset the block happens, so
-pick one that lands before your accept rules.
+your hand-maintained ruleset. Placement matters, as it does
+everywhere in ipfw: the number decides where in the ruleset the
+block happens, so pick one that lands before your accept rules.
 
 ### `type`, `unreach`, `unreach6`
 

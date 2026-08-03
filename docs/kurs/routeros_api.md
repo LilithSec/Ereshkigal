@@ -44,6 +44,8 @@ are the part that must exist for bans to bite.)
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping belongs on your referencing
   rules.
+- `enable_cidr` — supported; RouterOS address-lists take ranges as
+  readily as single IPs.
 - `prefix` — builds the default list names.
 
 ## Options
@@ -91,9 +93,10 @@ rules first.
 - `insecure = 1` disables certificate verification — encrypted but
   unauthenticated, so credentials are exposed to an on-path
   attacker. Give the router a real cert if the path matters.
-- Every ban is one HTTP round trip and every unban two; timed bans
-  double the expiry-time traffic. Fine for a router's management
-  plane at normal rates.
+- Every ban is one HTTP round trip; an unban is two (a lookup, then
+  the delete — or just the lookup when the entry is already gone), so
+  a timed ban costs three calls over its lifetime. Fine for a
+  router's management plane at normal rates.
 - Errors carry Error::Helper flags (`hostNotDefined`,
   `userNotDefined`, `passwordNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::routeros_api`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::routeros_api) has the full
   table.

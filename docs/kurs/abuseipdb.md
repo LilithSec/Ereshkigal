@@ -40,7 +40,7 @@ deliberately lopsided:
   answers HTTP 429, which the kur treats as *already reported*, not
   an error.
 - **unban / flush / teardown** = internal bookkeeping only. No API
-  calls; sentences ending changes nothing at AbuseIPDB.
+  calls; a sentence ending changes nothing at AbuseIPDB.
 - **re_init** re-inits but re-reports nothing — there is no remote
   state to restore.
 - A kur **restart** replays the tablet through ban, so
@@ -64,6 +64,9 @@ allows 1,000 reports/day — pace your ban sources accordingly.
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup.
+- `enable_cidr` — this backend can **not** carry ranges (reports are
+  per IP); a kur with it set logs a warning at startup and answers
+  range commands per `cidr_silent_drop`.
 - `prefix` — only appears in the default comment.
 - Both IPv4 and IPv6 report fine.
 
@@ -100,9 +103,9 @@ publish.
 
 ## Gotchas
 
-- Because unban is free, `ban_time` here only governs the kur's own
-  book (and thus which IPs a restart re-reports). Matching the
-  blocking kur's `ban_time` keeps gate members' books aligned.
+- Because unban costs no API call, `ban_time` here only governs the
+  kur's own book (and thus which IPs a restart re-reports). Matching
+  the blocking kur's `ban_time` keeps gate members' books aligned.
 - The already-banned check means one report per IP per sentence —
   the kur will not spam reports while an IP sits in the book, even
   if the ban source keeps firing (a refreshed sentence is not a new

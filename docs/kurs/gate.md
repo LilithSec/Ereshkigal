@@ -31,8 +31,8 @@ with `fan_out`.
 Config validation happens in two passes. Per kur hash:
 
 - The gate's name must match `/^[a-zA-Z0-9-]+$/`, like any kur.
-- Exactly one of `backend` or `fan_out` must be present — both is an
-  error, neither is an error.
+- Exactly one of `backend` or `fan_out` must be present — carrying
+  both is an error, and so is carrying neither.
 - `fan_out` must be an array of **one or more** strings, each
   matching `/^[a-zA-Z0-9-]+$/`. An empty array is rejected.
 - `authed_users`/`authed_groups`, if present, must be arrays of
@@ -53,13 +53,15 @@ Targeted commands, when their target is a gate, expand to the gate's
 members and run against each:
 
 - `ban --kur <gate>` — bans the IPs on every member.
+- `cidr-ban --kur <gate>` — bans the ranges on every member; each
+  member answers per its own CIDR capability and `cidr_silent_drop`.
 - `checkpoint <gate>` — checkpoints every member.
 - `status <gate>` — returns the gate's member list plus each member's
   full status.
 
-Untargeted commands — a bare `ban` (no `--kur`), `unban`, `banned`,
-and a bare `checkpoint` — never touch gates. They enumerate only real
-kurs; gates are skipped entirely. Naming a gate's *member* directly
+Untargeted commands — a bare `ban` (no `--kur`), `unban`,
+`cidr-unban`, `banned`, and a bare `checkpoint` — never touch gates.
+They enumerate only real kurs; gates are skipped entirely. Naming a gate's *member* directly
 (`ban --kur sshd`) works normally and is authorized against the
 member's own lists, not the gate's.
 
@@ -91,7 +93,7 @@ With `enable_auth` on, a command aimed at a gate is authorized
 against the **gate's own** `authed_users`/`authed_groups` (plus the
 global lists), not its members'. That is the reason gates exist: an
 outside integration — a log watcher, IDS glue, [an external
-client](../configuration.md) — can be granted just the gate and drive
+client](../usage.md) — can be granted just the gate and drive
 a whole set of kurs through a single point of contact, without being
 listed on, or even knowing about, any member.
 

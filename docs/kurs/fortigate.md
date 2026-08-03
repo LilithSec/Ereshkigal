@@ -38,6 +38,8 @@ token = "the-rest-api-token"
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping belongs on the policy.
+- `enable_cidr` — supported; a banned range becomes a subnet address
+  object in the same groups.
 - `prefix` — builds the default group names and the per-IP object
   names.
 
@@ -87,8 +89,8 @@ gone until `re_init`.
   remove membership but fail the object delete. Orphans are inert
   but accumulate — an occasional sweep of `<prefix>_<name>_*`
   objects not in the group tidies them.
-- This is the chattiest of the API backends: two calls per ban, two
-  per unban, four per timed ban's lifetime. For high-churn bans,
+- This is among the chattiest of the API backends: two calls per
+  ban, two per unban, four per timed ban's lifetime. For high-churn bans,
   something set-based suits FortiGate better (an external EDL via
   [file_reload](file_reload.md), for instance — FortiGates can poll
   those as External Connectors).

@@ -20,11 +20,16 @@ and `cache_base_dir` point somewhere that user can write.
 
 - `ports` / `protocols` — accepted and validated (ports must be
   1–65535 or `getservbyname`-resolvable names, protocols must resolve
-  via `getprotobyname`), then ignored. This keeps it a drop-in
-  stand-in for a real backend: a config that validates against dummy
-  will validate against iptables or pf.
+  via `getprotobyname` — the same validation every backend gets),
+  then ignored. So it stays a drop-in stand-in for a real backend: a
+  config that validates against dummy will validate against iptables
+  or pf.
+- `enable_cidr` — supported; range bans are remembered just like
+  single IPs, so CIDR flows can be tested here too.
 - `prefix` — accepted, unused.
-- `options` — takes none; anything passed is ignored.
+- `options` — takes none; any keys passed are ignored, though the
+  value must still be a hash (anything else is a fatal
+  `optionsNotHash`).
 
 ## What each operation does
 

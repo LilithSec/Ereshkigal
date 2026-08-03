@@ -49,6 +49,8 @@ without that, bans accumulate in SmartConsole and block nothing.
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup.
+- `enable_cidr` — supported; a banned range becomes a network object
+  in the same group.
 - `prefix` — builds the default group name and the per-IP object
   names.
 
@@ -59,7 +61,7 @@ without that, bans accumulate in SmartConsole and block nothing.
 | `host`     | *(required)*      | management server host                  |
 | `user`     | *(required)*      | Management API user                     |
 | `password` | *(required)*      | its password                            |
-| `group`    | `<prefix>_<name>` | the pre-existing group objects join     |
+| `group`    | `<prefix>_<name>` | the pre-existing group that objects join |
 | `timeout`  | `30`              | HTTP timeout in seconds                 |
 | `insecure` | `0`               | skip TLS certificate verification       |
 
@@ -84,9 +86,9 @@ init POSTs `/web_api/login` and carries the returned session id as
 
 `check` is a session keepalive — it validates (and refreshes) the
 session, nothing about objects, group, policy, or installation. A
-timed-out session fails checks and bans; the `re_init` self_heal
-triggers performs a fresh login, so session expiry heals itself at
-the next ban/unban. Note that with `self_heal` on, every ban's
+timed-out session fails checks and bans; the `re_init` that
+self_heal then triggers performs a fresh login, so session expiry
+heals itself at the next ban/unban. Note that with `self_heal` on, every ban's
 keepalive also conveniently keeps the session alive.
 
 ## Gotchas

@@ -37,6 +37,8 @@ password = "hunter2"
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping lives on the policy.
+- `enable_cidr` — supported; the address-list carries ranges as
+  readily as single IPs.
 - `prefix` — builds the default list name.
 
 ## Options

@@ -17,17 +17,6 @@ access_token    = "akab-..."
 network_list_id = "12345_KURWEB"
 ```
 
-## Akamai-side setup — required first
-
-- An **IP-type network list**, created in Control Center or via the
-  API; the option takes its ID.
-- A security configuration (App & API Protector or similar) whose
-  policy blocks clients matching the list.
-- An **EdgeGrid API client** (Identity & Access Management) with
-  read-write to the Network Lists API. The four credential options
-  are the fields from its `.edgerc` — the kur takes them directly
-  rather than reading the file.
-
 ## The activation caveat — read this first
 
 Network list edits land in the API immediately but are **not live on
@@ -38,6 +27,17 @@ fast-activation setups or where something else handles activation
 (automation, or lists configured to auto-activate via other
 tooling) — and unsuitable as a standalone rapid-response ban path.
 Know your activation story before relying on it.
+
+## Akamai-side setup — required first
+
+- An **IP-type network list**, created in Control Center or via the
+  API; the option takes its ID.
+- A security configuration (App & API Protector or similar) whose
+  policy blocks clients matching the list.
+- An **EdgeGrid API client** (Identity & Access Management) with
+  read-write to the Network Lists API. The four credential options
+  are the fields from its `.edgerc` — the kur takes them directly
+  rather than reading the file.
 
 ## Requirements
 
@@ -51,6 +51,10 @@ Know your activation story before relying on it.
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup.
+- `enable_cidr` — supported; network lists carry ranges as readily
+  as single IPs.
+- `prefix` — unused; Akamai objects are addressed by
+  `network_list_id`.
 
 ## Options
 

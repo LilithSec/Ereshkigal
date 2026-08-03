@@ -60,9 +60,10 @@ established before the ban keep right on talking from the underworld.
 An attacker whose brute-force succeeded before the ban landed keeps
 their shell.
 
-Every backend has a `kill` option that severs those remaining ties to
-the world above, and for ban-on-abuse use you almost certainly want
-it on:
+The local packet-filter backends (`pf`, `ipfw`, `iptables`,
+`nftables`, `firewalld`, `ufw`) have a `kill` option that severs
+those remaining ties to the world above, and for ban-on-abuse use you
+almost certainly want it on where it exists:
 
 ```toml
 [kur.sshd.options]

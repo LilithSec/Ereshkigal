@@ -44,6 +44,8 @@ az network nsg rule create --resource-group prod-rg --nsg-name web-nsg \
 - `ports` / `protocols` — accepted for parity but **ignored**; the
   rule's own protocol/port fields are the scoping, set by you at
   rule creation.
+- `enable_cidr` — supported; source prefixes are prefixes already,
+  so ranges land as themselves.
 - `prefix` — unused.
 
 ## Options

@@ -44,6 +44,9 @@ IPs banned the region (markers included) is absent entirely.
 
 - `ports` / `protocols` — accepted for parity but **ignored**; the
   `daemon` option is this backend's scoping mechanism.
+- `enable_cidr` — this backend can **not** carry ranges; a kur with
+  it set logs a warning at startup and answers range commands per
+  `cidr_silent_drop`.
 - `prefix` — combined with the kur name to tag the marked region.
 
 ## Options
@@ -64,7 +67,7 @@ region, re-render it from the ban book, write the file back:
 | `ban`      | region re-rendered including the new IP                          |
 | `unban`    | region re-rendered without it                                     |
 | `list`     | no file access — the kur's own ban book                           |
-| `check`    | file contains the BEGIN marker and a `"<daemon> : <ip>"` line per banned IP |
+| `check`    | with ≥1 ban: file contains the BEGIN marker and a `"<daemon> : <ip>"` line per banned IP; with none, passes without touching the file |
 | `flush`    | region emptied (removed)                                          |
 | `re_init`  | region re-rendered from the ban book                              |
 | `teardown` | region removed; ban book kept for re_init                         |

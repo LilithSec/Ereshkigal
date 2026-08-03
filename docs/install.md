@@ -82,7 +82,7 @@ chmod 555 /usr/local/etc/rc.d/ereshkigal
 sysrc ereshkigal_enable=YES
 service ereshkigal start
 
-# set it to the config file for it to something else other than the default
+# to use a config file other than the default
 sysrc ereshkigal_config=/usr/local/etc/foo.toml
 ```
 

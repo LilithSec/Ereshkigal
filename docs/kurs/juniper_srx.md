@@ -32,13 +32,17 @@ commit
   security policy, committed once, e.g.:
 
 ```
-set security address-book global address-set kur_web address 192.0.2.255/32
+set security address-book global address kur_web_placeholder 192.0.2.255/32
+set security address-book global address-set kur_web address kur_web_placeholder
 set security policies from-zone untrust to-zone trust policy kur-web-deny \
     match source-address kur_web destination-address any application any
 set security policies from-zone untrust to-zone trust policy kur-web-deny then deny
 insert security policies from-zone untrust to-zone trust policy kur-web-deny before policy <your-first-allow>
 commit
 ```
+
+(The placeholder member is genuinely needed — Junos rejects an empty
+address-set.)
 
 ## Requirements
 
@@ -49,6 +53,10 @@ commit
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping lives on the policy.
+- `enable_cidr` — nominally supported, but currently broken
+  upstream: the generated object name keeps the range's `/`, which
+  Junos rejects as an identifier, so CIDR bans fail at commit. Leave
+  it off for this kur until the backend is fixed.
 - `prefix` — builds the default address-set name and per-IP object
   names.
 

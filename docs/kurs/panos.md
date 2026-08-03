@@ -39,6 +39,8 @@ key  = "the-api-key"
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping belongs on the security
   policy.
+- `enable_cidr` — supported; a range registers against the tag the
+  same way a single IP does.
 - `prefix` — builds the default tag.
 
 ## Options
@@ -55,7 +57,7 @@ key  = "the-api-key"
 
 ## What each operation does
 
-Everything is a `POST` to `https://<host>/api/` with form-encoded
+Everything is a `POST` to `<scheme>://<host>/api/` with form-encoded
 `type`/`key`/`cmd` (plus `vsys` when set); success requires
 `status="success"` in the XML reply:
 

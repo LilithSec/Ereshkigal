@@ -37,7 +37,7 @@ Inside a `[kur.<name>]` hash...
 | `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `pfsense`, `vyos`, `panos`, `fortigate`, `cisco_fmc`, `checkpoint`, `juniper_srx`, `f5_bigip`, `netscaler`, `bgp_rtbh`, `cloudflare`, `fastly`, `akamai`, `aws_wafv2`, `cloud_armor`, `azure`, `nsupdate`, `dns_rpz`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs](kurs.md) |
 | `fan_out`       | array of other kur names, in place of `backend`; makes this a gate (see below) |
 | `ports`         | array of ports to block for; all if unset                                |
-| `protocols`     | array of protocols to block for; all if unset                            |
+| `protocols`     | array of protocols to block for; backend-dependent default if unset      |
 | `prefix`        | rule/table/chain name prefix, default `kur`                              |
 | `self_heal`     | verify and re-init the firewall setup before each ban/unban, default 1   |
 | `ban_time`      | this underworld's default sentence, overriding the top level one         |
@@ -172,7 +172,8 @@ option and the host setup each needs; the short version...
   `scheme`, `ssl_verify`, `timeout`.
 - **bgp_rtbh** — `driver` (`exabgp`/`gobgp`/`frr`), `announce_type`
   (`rtbh`/`flowspec`), `community`, `next_hop`/`next_hop6`,
-  `mask4`/`mask6`, `extra`, `vtysh_cmd`.
+  `mask4`/`mask6`, `extra`, `exabgpcli_cmd`, `gobgp_cmd`,
+  `vtysh_cmd`.
 - **cloudflare** — `token` or `email`+`key`, `zone`, `mode`, `notes`,
   `timeout`.
 - **fastly** — `token`+`service`+`acl` (required), `timeout`,
@@ -186,7 +187,8 @@ option and the host setup each needs; the short version...
   `gcloud_cmd`; max 10 banned IPs per rule.
 - **azure** — `resource_group`+`nsg`+`rule` (required),
   `subscription`, `az_cmd`.
-- **nsupdate** — `domain`, `keyfile`, `ttl`, `rdata`, `nsupdate`.
+- **nsupdate** — `domain`+`keyfile` (required), `ttl`, `rdata`,
+  `nsupdate`.
 - **dns_rpz** — `zone`+`keyfile` (required), `trigger`
   (`client-ip`/`ip`), `server`, `ttl`, `nsupdate`.
 - **abuseipdb** — `key` (required), `categories`, `comment`,

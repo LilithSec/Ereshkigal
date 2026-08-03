@@ -58,6 +58,10 @@ a dynamic zone nothing consults is the RPZ version of the
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup.
+- `enable_cidr` — this backend can **not** carry ranges, despite the
+  owner-name encoding carrying a prefix length; a kur with it set
+  logs a warning at startup and answers range commands per
+  `cidr_silent_drop`.
 - `prefix` — unused; the zone is the container.
 
 ## Options
@@ -74,10 +78,12 @@ a dynamic zone nothing consults is the RPZ version of the
 ## What each operation runs
 
 Everything is `printf '<statements>' | nsupdate -k '<keyfile>'`. The
-owner name encodes prefix length plus the reversed address — IPv4
-`1.2.3.4` becomes `32.4.3.2.1.rpz-client-ip.<zone>`; IPv6 reverses
-the groups with the longest zero run collapsed to `zz`, so
-`2001:db8::1` becomes `128.1.zz.db8.2001.rpz-client-ip.<zone>`:
+owner name encodes prefix length plus the reversed address under a
+label matching the trigger — `rpz-client-ip`, or `rpz-ip` with
+`trigger = "ip"`. IPv4 `1.2.3.4` becomes
+`32.4.3.2.1.rpz-client-ip.<zone>`; IPv6 reverses the groups with the
+longest zero run collapsed to `zz`, so `2001:db8::1` becomes
+`128.1.zz.db8.2001.rpz-client-ip.<zone>`:
 
 | operation  | statements                                                        |
 |------------|-----------------------------------------------------------------------|
@@ -109,6 +115,10 @@ Records removed server-side stay gone until `re_init`.
 - RPZ acts on the resolver evaluating the policy; secondaries
   serving the zone lag by transfer time.
 - Keep `ttl` low; it bounds how long lifted bans linger in caches.
+- Unlike the [nsupdate](nsupdate.md) backend, `server`, `ttl`, and
+  `nsupdate` are not validated before being interpolated into the
+  shell pipeline — they come from the root-owned config, but treat
+  them as code accordingly.
 - Errors carry Error::Helper flags (`zoneInvalid`,
   `keyfileInvalid`, `triggerInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::dns_rpz`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::dns_rpz) has the full
   table.

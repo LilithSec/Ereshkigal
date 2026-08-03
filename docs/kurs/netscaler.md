@@ -44,7 +44,7 @@ wire it into enforcement, e.g. a responder policy dropping matching
 clients:
 
 ```
-add responder policy kur_block "CLIENT.IP.SRC.TYPECAST_TEXT_T.CONTAINS_ANY(\"banned_ips\")" DROP
+add responder policy kur_block "CLIENT.IP.SRC.EQUALS_ANY(\"banned_ips\")" DROP
 bind lb vserver my_vserver -policyName kur_block -priority 10 -type REQUEST
 ```
 
@@ -66,6 +66,9 @@ bindings is preferable to `nsroot`.
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping lives in the policies consuming
   the dataset.
+- `enable_cidr` — this backend can **not** carry ranges (dataset
+  values are single IPs); a kur with it set logs a warning at startup
+  and answers range commands per `cidr_silent_drop`.
 - `prefix` — only used in the default `dataset` name.
 
 ## Options
@@ -106,7 +109,7 @@ certificate, and consider giving it one if not.
 | `teardown` | the DELETE per banned IP (ban book kept for re_init)                 |
 
 HTTP-level failures die with the status and response body included —
-note NITRO errors that arrive with HTTP 200 are not parsed for, so a
+but NITRO errors that arrive with HTTP 200 are not parsed, so a
 misconfigured dataset name may only surface as a failed ban rather
 than at init.
 

@@ -35,6 +35,8 @@ IPv4 IPs go through the `shorewall` command, IPv6 through
 - `ports` / `protocols` — accepted for parity but **ignored**; the
   dynamic blacklist is whole-IP. Don't mistake a configured `ports`
   list for scoping.
+- `enable_cidr` — supported; the dynamic blacklist takes ranges as
+  readily as single IPs.
 - `prefix` — unused; Shorewall's dynamic blacklist has no named
   containers.
 

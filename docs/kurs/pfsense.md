@@ -34,6 +34,8 @@ key  = "the-api-key"
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping lives on the rule.
+- `enable_cidr` — supported; the alias carries networks as readily
+  as hosts.
 - `prefix` — builds the default alias name.
 
 ## Options

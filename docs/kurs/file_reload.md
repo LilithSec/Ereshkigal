@@ -32,6 +32,9 @@ which makes every operation idempotent and leaves no partial state.
 
 - `ports` / `protocols` — accepted for parity but **ignored**;
   encode scoping into what consumes the file.
+- `enable_cidr` — supported; banned ranges render into the file
+  alongside the single IPs, so make sure the consumer can take a
+  CIDR where it takes an IP.
 - `prefix` — unused.
 
 ## Options

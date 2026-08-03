@@ -49,6 +49,8 @@ paper.
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping lives on the policy rule.
+- `enable_cidr` — supported; ranges land as network literals in the
+  same group.
 - `prefix` — builds the default `group_name`.
 
 ## Options

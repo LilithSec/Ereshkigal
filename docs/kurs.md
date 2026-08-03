@@ -153,9 +153,9 @@ Notes that apply across the board...
   `checkpoint`, `juniper_srx`) treat specifying either as a fatal
   error; the lenient ones (`shorewall`, `hosts_deny`, `file_reload`,
   `xdp`, `routeros`, `opnsense`, `aws_wafv2`, `azure`,
-  `cloud_armor`, `shell`) accept and silently ignore them — so on
-  those, a configured `ports` list scopes nothing. Each page says
-  which.
+  `cloud_armor`, `bgp_rtbh`, `shell`, `dummy`) accept and silently
+  ignore them — so on those, a configured `ports` list scopes
+  nothing. Each page says which.
 - IPv6 addresses are lowercased everywhere, so case variants of one
   IP cannot become two bans.
 

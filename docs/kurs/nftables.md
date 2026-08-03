@@ -52,6 +52,10 @@ priority order.
   no IPv6 rule, `ipv6-icmp`/`icmp6`/`icmpv6` no IPv4 rule).
 - No name length limit is imposed — nftables object names are long
   enough not to matter.
+- `enable_cidr` — this backend can **not** carry ranges (the sets
+  are plain `ipv4_addr`/`ipv6_addr`, no interval flag); a kur with it
+  set logs a warning at startup and answers range commands per
+  `cidr_silent_drop`.
 
 ## Options
 
