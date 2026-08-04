@@ -616,6 +616,11 @@ sub _refresh_heal {
 # the shared loop body of _cmd_ban and _cmd_cidr_ban... validates and
 # normalizes each entry, refreshes the timer of anything already banned, and
 # bans the rest via the backend, returning the per entry results hash
+#
+# $entries is the raw args.ips or args.cidrs arrayref straight from the
+# request, $ban_time the effective seconds from _resolve_ban_time, and $spec
+# the matching %family_spec entry, ip or cidr, supplying the normalizer
+# along with the backend ban method, ban hash, and stats keys
 sub _ban_many {
 	my ( $self, $entries, $ban_time, $spec ) = @_;
 
@@ -670,6 +675,11 @@ sub _ban_many {
 # the shared body of _cmd_unban and _cmd_cidr_unban... checks presence via
 # the backend, unbans when present, and keeps the book and tablet straight
 # either way, returning whether it was actually banned
+#
+# $entry is a single IP or CIDR, already normalized by the caller having ran
+# the request arg through the family normalizer, and $spec is the matching
+# %family_spec entry, ip or cidr, supplying the normalizer along with the
+# backend list/unban methods, ban hash, stats keys, and checkpoint method
 sub _unban_one {
 	my ( $self, $entry, $spec ) = @_;
 
@@ -715,6 +725,9 @@ sub _unban_one {
 	return 1;
 } ## end sub _unban_one
 
+# handles the ban command... bans or refreshes each of args.ips via
+# _ban_many, with args.ban_time optionally overriding the instance default,
+# then checkpoints the lot to the tablet in one go
 sub _cmd_ban {
 	my ( $self, $request ) = @_;
 
@@ -732,6 +745,8 @@ sub _cmd_ban {
 	return { 'ips' => $results };
 } ## end sub _cmd_ban
 
+# handles the unban command... normalizes args.ip and hands it to
+# _unban_one, returning the canonical IP and whether it was actually banned
 sub _cmd_unban {
 	my ( $self, $request ) = @_;
 
@@ -800,6 +815,9 @@ sub _cidr_guard {
 	die($reason);
 } ## end sub _cidr_guard
 
+# the CIDR twin of _cmd_ban... _cidr_guard gets first say, then each of
+# args.cidrs is banned or refreshed via _ban_many and the CIDR tablet
+# checkpointed in one go
 sub _cmd_cidr_ban {
 	my ( $self, $request ) = @_;
 
@@ -828,6 +846,8 @@ sub _cmd_cidr_ban {
 	return { 'cidrs' => $results };
 } ## end sub _cmd_cidr_ban
 
+# the CIDR twin of _cmd_unban... _cidr_guard gets first say, then args.cidr
+# is normalized and handed to _unban_one
 sub _cmd_cidr_unban {
 	my ( $self, $request ) = @_;
 
@@ -854,6 +874,9 @@ sub _cmd_cidr_unban {
 	return { 'cidr' => $cidr, 'was_banned' => $self->_unban_one( $cidr, $family_spec{cidr} ) };
 } ## end sub _cmd_cidr_unban
 
+# handles the banned command... returns what the backend book actually
+# carries for both single IPs and CIDRs, plus the expiry times the ban
+# hashes are tracking for them
 sub _cmd_banned {
 	my ($self) = @_;
 
@@ -881,6 +904,9 @@ sub _cmd_banned {
 	};
 } ## end sub _cmd_banned
 
+# handles the status command... the instance settings and stats plus ban
+# counts from the backend and ban hashes, split timed versus permanent, with
+# the soonest expiry across both families
 sub _cmd_status {
 	my ($self) = @_;
 
@@ -938,6 +964,8 @@ sub _cmd_status {
 	};
 } ## end sub _cmd_status
 
+# handles the flush command... clears everything via the backend, empties
+# both ban hashes, and checkpoints both tablets
 sub _cmd_flush {
 	my ($self) = @_;
 
@@ -955,6 +983,8 @@ sub _cmd_flush {
 	return { 'flushed' => 1 };
 } ## end sub _cmd_flush
 
+# handles the re_init command... has the backend tear its setup down and
+# rebuild it from scratch
 sub _cmd_re_init {
 	my ($self) = @_;
 
@@ -966,6 +996,8 @@ sub _cmd_re_init {
 	return { 're_init' => 1 };
 }
 
+# handles the checkpoint command... force writes both tablets now,
+# returning how many entries each is carrying
 sub _cmd_checkpoint {
 	my ($self) = @_;
 
@@ -980,6 +1012,9 @@ sub _cmd_checkpoint {
 	};
 } ## end sub _cmd_checkpoint
 
+# handles the stop command... unlike the other handlers this one responds
+# via $ctx its self and returns undef, as the response has to be flushed
+# before the delayed shutdown takes the server session down with it
 sub _cmd_stop {
 	my ( $self, $ctx ) = @_;
 

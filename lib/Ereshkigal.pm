@@ -1105,6 +1105,8 @@ sub _kur_summary {
 	return $kurs;
 } ## end sub _kur_summary
 
+# handles the status command... the manager's own info plus the bare
+# summary row for each kur, without asking any kur process anything
 sub _cmd_status {
 	my ($self) = @_;
 
@@ -1117,6 +1119,8 @@ sub _cmd_status {
 	};
 } ## end sub _cmd_status
 
+# handles the status_all command... _cmd_status with each running real kur
+# additionally asked for its own status
 sub _cmd_status_all {
 	my ($self) = @_;
 
@@ -1138,6 +1142,9 @@ sub _cmd_status_all {
 	return $status;
 } ## end sub _cmd_status_all
 
+# handles the status_kur command... the summary row for the kur named by
+# args.name plus its own status when running, or the member list plus each
+# member's status when it is a fan_out kur
 sub _cmd_status_kur {
 	my ( $self, $request, $ctx ) = @_;
 
@@ -1185,6 +1192,8 @@ sub _cmd_status_kur {
 	return $status;
 } ## end sub _cmd_status_kur
 
+# handles the banned command... fans banned out to every real kur, trimming
+# each successful answer down to just the ban and expiry fields
 sub _cmd_banned {
 	my ($self) = @_;
 
@@ -1203,6 +1212,8 @@ sub _cmd_banned {
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_banned
 
+# handles the ban command... fans args.ips out to the targeted kurs, all of
+# the shared validate/authorize/fan_out work living in _cmd_ban_common
 sub _cmd_ban {
 	my ( $self, $request, $ctx ) = @_;
 
@@ -1218,6 +1229,8 @@ sub _cmd_ban {
 	);
 } ## end sub _cmd_ban
 
+# handles the unban command... args.all set fans flush out to every real
+# kur, otherwise args.ip is normalized and unban fanned out instead
 sub _cmd_unban {
 	my ( $self, $request ) = @_;
 
@@ -1246,6 +1259,9 @@ sub _cmd_unban {
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_unban
 
+# the CIDR twin of _cmd_ban... fans args.cidrs out to the targeted kurs,
+# all of the shared validate/authorize/fan_out work living in
+# _cmd_ban_common
 sub _cmd_cidr_ban {
 	my ( $self, $request, $ctx ) = @_;
 
@@ -1329,6 +1345,8 @@ sub _cmd_ban_common {
 	return $response;
 } ## end sub _cmd_ban_common
 
+# the CIDR twin of _cmd_unban, minus the all form... args.cidr is
+# normalized and cidr_unban fanned out to every real kur
 sub _cmd_cidr_unban {
 	my ( $self, $request ) = @_;
 
@@ -1352,6 +1370,8 @@ sub _cmd_cidr_unban {
 	return { 'kurs' => $kurs };
 } ## end sub _cmd_cidr_unban
 
+# handles the checkpoint command... fans checkpoint out to the kurs behind
+# args.kur when given, or every real kur otherwise
 sub _cmd_checkpoint {
 	my ( $self, $request, $ctx ) = @_;
 
@@ -1375,6 +1395,9 @@ sub _cmd_checkpoint {
 	return { 'kurs' => $self->_fan_out( \@targets, 'checkpoint' ) };
 } ## end sub _cmd_checkpoint
 
+# handles the add_kur command... validates the definition in args.opts the
+# same way config load would, registers it under args.name, and has the
+# manager session spawn it
 sub _cmd_add_kur {
 	my ( $self, $request ) = @_;
 
@@ -1410,6 +1433,9 @@ sub _cmd_add_kur {
 	return { 'added' => $name };
 } ## end sub _cmd_add_kur
 
+# handles the remove_kur command... refuses while args.name is still a
+# fan_out member, otherwise disables it and has the manager session stop
+# and drop it
 sub _cmd_remove_kur {
 	my ( $self, $request ) = @_;
 
