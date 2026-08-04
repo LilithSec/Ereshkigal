@@ -50,11 +50,14 @@ Writes a message to syslog.
 
     log_drek( $level, $message, $tracking_int, $ident );
 
-C<$level> defaults to 'info' when undef. When C<$tracking_int> is defined it is
-prepended to the message as C<< $tracking_int . ' : ' . $message >>. C<$ident>
-is the syslog ident to log under and defaults to 'ereshkigal' when undef. Kur
-instances should pass C<'kur-' . $name> so log lines are attributable per
-instance.
+C<$level> defaults to 'info' when undef or not a valid syslog level. When
+C<$tracking_int> is defined it is prepended to the message as
+C<< $tracking_int . ' : ' . $message >>. C<$ident> is the syslog ident to log
+under and defaults to 'ereshkigal' when undef. Kur instances should pass
+C<'kur-' . $name> so log lines are attributable per instance.
+
+Logging failures are swallowed rather than propagated, with a best effort
+print to STDERR instead, so logging can never take down the caller.
 
 =cut
 
@@ -62,6 +65,22 @@ sub log_drek {
 	my ( $level, $message, $tracking_int, $ident ) = @_;
 
 	if ( !defined($level) ) {
+		$level = 'info';
+	}
+
+	# syslog dies on priorities it does not recognize, so anything not a
+	# valid level falls back to info
+	my %valid_syslog_levels = (
+		'emerg'   => 1,
+		'alert'   => 1,
+		'crit'    => 1,
+		'err'     => 1,
+		'warning' => 1,
+		'notice'  => 1,
+		'info'    => 1,
+		'debug'   => 1,
+	);
+	if ( !defined( $valid_syslog_levels{$level} ) ) {
 		$level = 'info';
 	}
 
@@ -78,9 +97,16 @@ sub log_drek {
 		$ident = 'ereshkigal';
 	}
 
-	openlog( $ident, 'cons,pid', 'daemon' );
-	syslog( $level, '%s', $message );
-	closelog();
+	# logging must never take down the caller, so failures talking to
+	# syslog are swallowed, with a best effort print to STDERR instead
+	eval {
+		openlog( $ident, 'cons,pid', 'daemon' );
+		syslog( $level, '%s', $message );
+		closelog();
+	};
+	if ($@) {
+		eval { print STDERR $ident . ' ' . $level . ': ' . $message . "\n"; };
+	}
 
 	return;
 } ## end sub log_drek

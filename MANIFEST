@@ -12,6 +12,7 @@ src_bin/ereshkigal
 src_bin/kur
 lib/Ereshkigal.pm
 lib/Ereshkigal/App.pm
+lib/Ereshkigal/App/Command.pm
 lib/Ereshkigal/App/Command/add.pm
 lib/Ereshkigal/App/Command/ban.pm
 lib/Ereshkigal/App/Command/banned.pm

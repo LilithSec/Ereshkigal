@@ -112,6 +112,7 @@ sub new {
 		errorString   => "",
 		errorExtra    => {
 			all_errors_fatal => 1,
+			all_fatal        => 1,
 			flags            => {
 				1 => 'NErunBaseDir',
 				2 => 'invalidName',
@@ -147,12 +148,13 @@ sub new {
 		cidr_bans        => {},
 		last_checkpoint  => 0,
 		stats            => {
-			bans        => 0,
-			unbans      => 0,
-			cidr_bans   => 0,
-			cidr_unbans => 0,
-			errors      => 0,
-			expired     => 0,
+			bans         => 0,
+			unbans       => 0,
+			cidr_bans    => 0,
+			cidr_unbans  => 0,
+			errors       => 0,
+			expired      => 0,
+			cidr_expired => 0,
 		},
 	};
 	bless $self;
@@ -356,7 +358,8 @@ user, talks to it.
 
 A ban sweeper is also started, which checks once a second for timed bans
 that have expired and unbans them, and handles the periodic checkpointing
-of the ban state CSV.
+of the ban state CSVs. SIGTERM and SIGINT are handled, checkpointing and
+tearing the backend down the same as the stop command before exiting.
 
 IPs passed to ban and unban are validated and normalized to their canonical
 string form, so variant spellings of the same IP, most notably IPv6 long
@@ -459,10 +462,14 @@ sub start_server {
 	# the ban sweeper... a self-rescheduling one second alarm that expires
 	# timed bans and handles the periodic checkpoint... it stops
 	# rescheduling once stop has been requested so the session ends and the
-	# kernel can exit
+	# kernel can exit... it also watches for TERM/INT so a signaled kur
+	# still checkpoints and tears the backend down rather than dying with
+	# the firewall state dangling
 	POE::Session->create(
 		'inline_states' => {
 			'_start' => sub {
+				$_[KERNEL]->sig( 'TERM', 'sig_shutdown' );
+				$_[KERNEL]->sig( 'INT',  'sig_shutdown' );
 				$_[KERNEL]->delay( 'sweep', 1 );
 			},
 			'sweep' => sub {
@@ -471,6 +478,20 @@ sub start_server {
 				}
 				$self->_tick;
 				$_[KERNEL]->delay( 'sweep', 1 );
+			},
+			'sig_shutdown' => sub {
+				my $signal = $_[ARG0];
+				$_[KERNEL]->sig_handled;
+				if ( $self->{stopping} ) {
+					return;
+				}
+				log_drek( 'info', 'SIG' . $signal . ' received, tearing the backend down', undef, $ident );
+				$self->_stop_guts;
+				# _stop_guts set stopping, so the pending sweep alarm is the
+				# only thing keeping this session alive... clear it and fire
+				# the server session's shutdown so the kernel can exit
+				$_[KERNEL]->delay('sweep');
+				$_[KERNEL]->post( $ident, 'shutdown' );
 			},
 		},
 	);
@@ -502,59 +523,209 @@ sub _backend_do {
 	return @results;
 } ## end sub _backend_do
 
+# the per family knobs the shared ban/unban/sweep/load helpers use... the
+# single IP and CIDR paths are identical beyond these
+my %family_spec = (
+	'ip' => {
+		'noun'         => 'IP',
+		'label'        => 'ip',
+		'log_label'    => 'ban',
+		'infix'        => '',
+		'normalizer'   => \&normalize_ip,
+		'ban_method'   => 'ban',
+		'unban_method' => 'unban',
+		'list_method'  => 'list',
+		'hash'         => 'bans',
+		'ban_stat'     => 'bans',
+		'unban_stat'   => 'unbans',
+		'expired_stat' => 'expired',
+		'checkpoint'   => '_checkpoint',
+	},
+	'cidr' => {
+		'noun'         => 'CIDR',
+		'label'        => 'cidr',
+		'log_label'    => 'cidr ban',
+		'infix'        => 'cidr ',
+		'normalizer'   => \&normalize_cidr,
+		'ban_method'   => 'ban_cidr',
+		'unban_method' => 'unban_cidr',
+		'list_method'  => 'list_cidr',
+		'hash'         => 'cidr_bans',
+		'ban_stat'     => 'cidr_bans',
+		'unban_stat'   => 'cidr_unbans',
+		'expired_stat' => 'cidr_expired',
+		'checkpoint'   => '_checkpoint_cidr',
+	},
+);
+
+# refuses backend-mutating commands once stop has been requested... the
+# backend is torn down at that point, and anything landing in the window
+# before the server session shuts down would both fail against it and
+# overwrite the fresh final tablet stop just left behind
+sub _refuse_when_stopping {
+	my ($self) = @_;
+
+	if ( $self->{stopping} ) {
+		die('this kur is stopping');
+	}
+
+	return;
+}
+
+# resolves the effective ban_time for a ban request, the instance default
+# unless the request carries its own, dieing if the carried one is invalid
+sub _resolve_ban_time {
+	my ( $self, $args ) = @_;
+
+	if ( !defined( $args->{ban_time} ) ) {
+		return $self->{ban_time};
+	}
+	if ( ref( $args->{ban_time} ) ne '' || $args->{ban_time} !~ /^[0-9]+$/ ) {
+		die('args.ban_time must be a non-negative int of seconds');
+	}
+
+	return $args->{ban_time};
+} ## end sub _resolve_ban_time
+
+# gives self_heal its chance on the refresh path... a refresh does not go
+# through the backend's ban, which is where self_heal normally hooks in, and
+# refresh heavy traffic is the common case for ban sources, so the
+# check-and-re_init half is ran here so a swept away setup still gets
+# noticed and rebuilt... best effort, a failure here is the next real ban's
+# problem
+sub _refresh_heal {
+	my ($self) = @_;
+
+	my $self_heal = defined( $self->{self_heal} ) ? ( $self->{self_heal} ? 1 : 0 ) : 1;
+	if ( !$self_heal ) {
+		return;
+	}
+
+	my $healthy;
+	eval { ($healthy) = $self->_backend_do('check'); };
+	if ( !$@ && !$healthy ) {
+		eval { $self->_backend_do('re_init'); };
+		if ($@) {
+			log_drek( 'err', 're_init during refresh self heal failed... ' . $@, undef, 'kur-' . $self->{name} );
+		}
+	}
+
+	return;
+} ## end sub _refresh_heal
+
+# the shared loop body of _cmd_ban and _cmd_cidr_ban... validates and
+# normalizes each entry, refreshes the timer of anything already banned, and
+# bans the rest via the backend, returning the per entry results hash
+sub _ban_many {
+	my ( $self, $entries, $ban_time, $spec ) = @_;
+
+	my $ident = 'kur-' . $self->{name};
+
+	my $results = {};
+	foreach my $raw_entry ( @{$entries} ) {
+		# bounced here rather than left for the backend to judge, given the
+		# backend accepts ambiguous stuff like leading zero octet IPv4, and
+		# reduced to the canonical form so variant spellings dedupe
+		my $entry = $spec->{normalizer}->($raw_entry);
+		if ( !defined($entry) ) {
+			my $key = defined($raw_entry) ? $raw_entry : '';
+			$self->{stats}{errors}++;
+			$results->{$key}
+				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 ' . $spec->{noun} };
+			log_drek( 'err',
+				$spec->{log_label} . ' of "' . $key . '" failed... does not appear to be a IPv4 or IPv6 ' . $spec->{noun},
+				undef, $ident );
+			next;
+		}
+		my $expires = $ban_time ? time + $ban_time : 0;
+
+		# already banned, so just refresh it's timer... the backend ban is
+		# not re-ran, as not every backend takes re-adding an existing entry
+		# gracefully, but self_heal still gets its chance via _refresh_heal
+		if ( defined( $self->{ $spec->{hash} }{$entry} ) ) {
+			$self->_refresh_heal;
+			$self->{ $spec->{hash} }{$entry}{expires} = $expires;
+			$results->{$entry} = { 'status' => 'ok', 'refreshed' => 1 };
+			log_drek( 'info', 'refreshed ' . $spec->{log_label} . ' of ' . $entry . ' expires=' . $expires, undef, $ident );
+			next;
+		}
+
+		my $ban_method = $spec->{ban_method};
+		eval { $self->_backend_do( $ban_method, ban => $entry ); };
+		if ($@) {
+			$self->{stats}{errors}++;
+			$results->{$entry} = { 'status' => 'error', 'error' => $@ };
+			log_drek( 'err', $spec->{log_label} . ' of "' . $entry . '" failed... ' . $@, undef, $ident );
+		} else {
+			$self->{stats}{ $spec->{ban_stat} }++;
+			$self->{ $spec->{hash} }{$entry} = { 'banned_at' => time, 'expires' => $expires };
+			$results->{$entry} = { 'status' => 'ok' };
+			log_drek( 'info', 'banned ' . $spec->{infix} . $entry . ' expires=' . $expires, undef, $ident );
+		}
+	} ## end foreach my $raw_entry ( @{$entries} )
+
+	return $results;
+} ## end sub _ban_many
+
+# the shared body of _cmd_unban and _cmd_cidr_unban... checks presence via
+# the backend, unbans when present, and keeps the book and tablet straight
+# either way, returning whether it was actually banned
+sub _unban_one {
+	my ( $self, $entry, $spec ) = @_;
+
+	my $checkpoint_method = $spec->{checkpoint};
+
+	# check if it is actually present before trying to unban it... the
+	# backend book is compared in normalized form, as the state file restore
+	# path can seed it with non-canonical spellings the backend accepts but
+	# normalization refuses, such as leading zero octet IPv4, and those
+	# would otherwise be unremovable short of a flush
+	my @banned = $self->_backend_do( $spec->{list_method} );
+	my $present;
+	foreach my $banned_entry (@banned) {
+		my $normalized = $spec->{normalizer}->($banned_entry);
+		if ( ( defined($normalized) ? $normalized : $banned_entry ) eq $entry ) {
+			$present = $banned_entry;
+			last;
+		}
+	}
+	if ( !defined($present) ) {
+		# make sure no stale timer is left behind either way
+		if ( defined( delete( $self->{ $spec->{hash} }{$entry} ) ) ) {
+			$self->$checkpoint_method;
+		}
+		return 0;
+	}
+
+	# unbanned via the spelling the backend book actually carries, which for
+	# anything banned by this process is the canonical form anyway
+	eval { $self->_backend_do( $spec->{unban_method}, ban => $present ); };
+	if ($@) {
+		$self->{stats}{errors}++;
+		die($@);
+	}
+	$self->{stats}{ $spec->{unban_stat} }++;
+	# both spellings dropped from the book for the same reason the compare
+	# is normalized... deleting a absent key is a harmless no-op
+	delete( $self->{ $spec->{hash} }{$entry} );
+	delete( $self->{ $spec->{hash} }{$present} );
+	$self->$checkpoint_method;
+	log_drek( 'info', 'unbanned ' . $spec->{infix} . $entry, undef, 'kur-' . $self->{name} );
+
+	return 1;
+} ## end sub _unban_one
+
 sub _cmd_ban {
 	my ( $self, $request ) = @_;
+
+	$self->_refuse_when_stopping;
 
 	my $args = $request->{args};
 	if ( !defined($args) || ref( $args->{ips} ) ne 'ARRAY' || !@{ $args->{ips} } ) {
 		die('args.ips must be a array of one or more IPs');
 	}
 
-	my $ban_time = $self->{ban_time};
-	if ( defined( $args->{ban_time} ) ) {
-		if ( ref( $args->{ban_time} ) ne '' || $args->{ban_time} !~ /^[0-9]+$/ ) {
-			die('args.ban_time must be a non-negative int of seconds');
-		}
-		$ban_time = $args->{ban_time};
-	}
-
-	my $ident = 'kur-' . $self->{name};
-
-	my $results = {};
-	foreach my $raw_ip ( @{ $args->{ips} } ) {
-		# bounced here rather than left for the backend to judge, given the
-		# backend accepts ambiguous stuff like leading zero octet IPv4
-		my $ip = normalize_ip($raw_ip);
-		if ( !defined($ip) ) {
-			my $key = defined($raw_ip) ? $raw_ip : '';
-			$self->{stats}{errors}++;
-			$results->{$key}
-				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 IP' };
-			log_drek( 'err', 'ban of "' . $key . '" failed... does not appear to be a IPv4 or IPv6 IP', undef, $ident );
-			next;
-		}
-		my $expires = $ban_time ? time + $ban_time : 0;
-
-		# already banned, so just refresh it's timer
-		if ( defined( $self->{bans}{$ip} ) ) {
-			$self->{bans}{$ip}{expires} = $expires;
-			$results->{$ip} = { 'status' => 'ok', 'refreshed' => 1 };
-			log_drek( 'info', 'refreshed ban of ' . $ip . ' expires=' . $expires, undef, $ident );
-			next;
-		}
-
-		eval { $self->_backend_do( 'ban', ban => $ip ); };
-		if ($@) {
-			$self->{stats}{errors}++;
-			$results->{$ip} = { 'status' => 'error', 'error' => $@ };
-			log_drek( 'err', 'ban of "' . $ip . '" failed... ' . $@, undef, $ident );
-		} else {
-			$self->{stats}{bans}++;
-			$self->{bans}{$ip} = { 'banned_at' => time, 'expires' => $expires };
-			$results->{$ip} = { 'status' => 'ok' };
-			log_drek( 'info', 'banned ' . $ip . ' expires=' . $expires, undef, $ident );
-		}
-	} ## end foreach my $raw_ip ( @{ $args->{ips} } )
+	my $results = $self->_ban_many( $args->{ips}, $self->_resolve_ban_time($args), $family_spec{ip} );
 
 	$self->_checkpoint;
 
@@ -563,6 +734,8 @@ sub _cmd_ban {
 
 sub _cmd_unban {
 	my ( $self, $request ) = @_;
+
+	$self->_refuse_when_stopping;
 
 	my $args = $request->{args};
 	if ( !defined($args) || !defined( $args->{ip} ) || ref( $args->{ip} ) ne '' ) {
@@ -573,24 +746,7 @@ sub _cmd_unban {
 		die( 'args.ip, "' . $args->{ip} . '", does not appear to be a IPv4 or IPv6 IP' );
 	}
 
-	# check if it is actually present before trying to unban it
-	my @banned  = $self->_backend_do('list');
-	my $present = grep { $_ eq $ip } @banned;
-	if ( !$present ) {
-		# make sure no stale timer is left behind either way
-		if ( defined( delete( $self->{bans}{$ip} ) ) ) {
-			$self->_checkpoint;
-		}
-		return { 'ip' => $ip, 'was_banned' => 0 };
-	}
-
-	$self->_backend_do( 'unban', ban => $ip );
-	$self->{stats}{unbans}++;
-	delete( $self->{bans}{$ip} );
-	$self->_checkpoint;
-	log_drek( 'info', 'unbanned ' . $ip, undef, 'kur-' . $self->{name} );
-
-	return { 'ip' => $ip, 'was_banned' => 1 };
+	return { 'ip' => $ip, 'was_banned' => $self->_unban_one( $ip, $family_spec{ip} ) };
 } ## end sub _cmd_unban
 
 # reaches through the frontend to the actual backend object to see if it
@@ -647,6 +803,8 @@ sub _cidr_guard {
 sub _cmd_cidr_ban {
 	my ( $self, $request ) = @_;
 
+	$self->_refuse_when_stopping;
+
 	my $args = $request->{args};
 	if ( !defined($args) ) {
 		$args = {};
@@ -663,52 +821,7 @@ sub _cmd_cidr_ban {
 		die('args.cidrs must be a array of one or more CIDRs');
 	}
 
-	my $ban_time = $self->{ban_time};
-	if ( defined( $args->{ban_time} ) ) {
-		if ( ref( $args->{ban_time} ) ne '' || $args->{ban_time} !~ /^[0-9]+$/ ) {
-			die('args.ban_time must be a non-negative int of seconds');
-		}
-		$ban_time = $args->{ban_time};
-	}
-
-	my $ident = 'kur-' . $self->{name};
-
-	my $results = {};
-	foreach my $raw_cidr ( @{ $args->{cidrs} } ) {
-		# bounced here rather than left for the backend to judge, and reduced
-		# to the canonical network form so variant spellings dedupe
-		my $cidr = normalize_cidr($raw_cidr);
-		if ( !defined($cidr) ) {
-			my $key = defined($raw_cidr) ? $raw_cidr : '';
-			$self->{stats}{errors}++;
-			$results->{$key}
-				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 CIDR' };
-			log_drek( 'err', 'cidr ban of "' . $key . '" failed... does not appear to be a IPv4 or IPv6 CIDR',
-				undef, $ident );
-			next;
-		}
-		my $expires = $ban_time ? time + $ban_time : 0;
-
-		# already banned, so just refresh it's timer
-		if ( defined( $self->{cidr_bans}{$cidr} ) ) {
-			$self->{cidr_bans}{$cidr}{expires} = $expires;
-			$results->{$cidr} = { 'status' => 'ok', 'refreshed' => 1 };
-			log_drek( 'info', 'refreshed cidr ban of ' . $cidr . ' expires=' . $expires, undef, $ident );
-			next;
-		}
-
-		eval { $self->_backend_do( 'ban_cidr', ban => $cidr ); };
-		if ($@) {
-			$self->{stats}{errors}++;
-			$results->{$cidr} = { 'status' => 'error', 'error' => $@ };
-			log_drek( 'err', 'cidr ban of "' . $cidr . '" failed... ' . $@, undef, $ident );
-		} else {
-			$self->{stats}{cidr_bans}++;
-			$self->{cidr_bans}{$cidr} = { 'banned_at' => time, 'expires' => $expires };
-			$results->{$cidr} = { 'status' => 'ok' };
-			log_drek( 'info', 'banned cidr ' . $cidr . ' expires=' . $expires, undef, $ident );
-		}
-	} ## end foreach my $raw_cidr ( @{ $args->{cidrs} } )
+	my $results = $self->_ban_many( $args->{cidrs}, $self->_resolve_ban_time($args), $family_spec{cidr} );
 
 	$self->_checkpoint_cidr;
 
@@ -717,6 +830,8 @@ sub _cmd_cidr_ban {
 
 sub _cmd_cidr_unban {
 	my ( $self, $request ) = @_;
+
+	$self->_refuse_when_stopping;
 
 	my $args = $request->{args};
 	if ( !defined($args) ) {
@@ -736,24 +851,7 @@ sub _cmd_cidr_unban {
 		die( 'args.cidr, "' . $args->{cidr} . '", does not appear to be a IPv4 or IPv6 CIDR' );
 	}
 
-	# check if it is actually present before trying to unban it
-	my @banned  = $self->_backend_do('list_cidr');
-	my $present = grep { $_ eq $cidr } @banned;
-	if ( !$present ) {
-		# make sure no stale timer is left behind either way
-		if ( defined( delete( $self->{cidr_bans}{$cidr} ) ) ) {
-			$self->_checkpoint_cidr;
-		}
-		return { 'cidr' => $cidr, 'was_banned' => 0 };
-	}
-
-	$self->_backend_do( 'unban_cidr', ban => $cidr );
-	$self->{stats}{cidr_unbans}++;
-	delete( $self->{cidr_bans}{$cidr} );
-	$self->_checkpoint_cidr;
-	log_drek( 'info', 'unbanned cidr ' . $cidr, undef, 'kur-' . $self->{name} );
-
-	return { 'cidr' => $cidr, 'was_banned' => 1 };
+	return { 'cidr' => $cidr, 'was_banned' => $self->_unban_one( $cidr, $family_spec{cidr} ) };
 } ## end sub _cmd_cidr_unban
 
 sub _cmd_banned {
@@ -843,6 +941,8 @@ sub _cmd_status {
 sub _cmd_flush {
 	my ($self) = @_;
 
+	$self->_refuse_when_stopping;
+
 	# the backend flush clears both single IP and CIDR rules, so the CIDR
 	# tracking is cleared and checkpointed alongside the single IP tracking
 	$self->_backend_do('flush');
@@ -857,6 +957,8 @@ sub _cmd_flush {
 
 sub _cmd_re_init {
 	my ($self) = @_;
+
+	$self->_refuse_when_stopping;
 
 	$self->_backend_do('re_init');
 	log_drek( 'info', 're_init done', undef, 'kur-' . $self->{name} );
@@ -881,22 +983,9 @@ sub _cmd_checkpoint {
 sub _cmd_stop {
 	my ( $self, $ctx ) = @_;
 
-	my $ident = 'kur-' . $self->{name};
+	log_drek( 'info', 'stop requested, tearing the backend down', undef, 'kur-' . $self->{name} );
 
-	log_drek( 'info', 'stop requested, tearing the backend down', undef, $ident );
-
-	# keeps the ban sweeper from rescheduling so it's session can end
-	$self->{stopping} = 1;
-
-	# leave a fresh state CSV behind
-	$self->_checkpoint;
-	$self->_checkpoint_cidr;
-
-	eval { $self->_backend_do('teardown'); };
-	my $teardown_error = $@;
-	if ($teardown_error) {
-		log_drek( 'err', 'teardown failed... ' . $teardown_error, undef, $ident );
-	}
+	my $teardown_error = $self->_stop_guts;
 
 	$ctx->respond_result( { 'stopping' => 1, $teardown_error ? ( 'teardown_error' => $teardown_error ) : () } );
 	$ctx->close;
@@ -908,8 +997,30 @@ sub _cmd_stop {
 	return undef;
 } ## end sub _cmd_stop
 
+# the common guts of stopping... checkpoints both tablets, tears the backend
+# down, and returns any teardown error... shared by the stop command and the
+# signal handler
+sub _stop_guts {
+	my ($self) = @_;
+
+	# keeps the ban sweeper from rescheduling so it's session can end
+	$self->{stopping} = 1;
+
+	# leave a fresh state CSV behind
+	$self->_checkpoint;
+	$self->_checkpoint_cidr;
+
+	eval { $self->_backend_do('teardown'); };
+	my $teardown_error = $@;
+	if ($teardown_error) {
+		log_drek( 'err', 'teardown failed... ' . $teardown_error, undef, 'kur-' . $self->{name} );
+	}
+
+	return $teardown_error;
+} ## end sub _stop_guts
+
 # ran once a second by the sweeper session... expires timed bans and
-# handles the periodic checkpoint
+# handles the periodic checkpoint of both tablets
 sub _tick {
 	my ($self) = @_;
 
@@ -917,65 +1028,58 @@ sub _tick {
 
 	if ( $self->{checkpoint} && ( time - $self->{last_checkpoint} ) >= $self->{checkpoint} ) {
 		$self->_checkpoint;
+		$self->_checkpoint_cidr;
 	}
 
 	return;
 } ## end sub _tick
 
-# unbans timed bans that have expired... ran once a second via the sweeper
-# session started by start_server
+# unbans timed bans that have expired, both families... ran once a second
+# via the sweeper session started by start_server
 sub _sweep_bans {
 	my ($self) = @_;
+
+	foreach my $family ( 'ip', 'cidr' ) {
+		$self->_sweep_family( $family_spec{$family} );
+	}
+
+	return;
+} ## end sub _sweep_bans
+
+# the shared per family sweep... unbans anything whose sentence has been
+# served and checkpoints that family's tablet when anything changed
+sub _sweep_family {
+	my ( $self, $spec ) = @_;
 
 	my $ident   = 'kur-' . $self->{name};
 	my $now     = time;
 	my $changed = 0;
 
-	foreach my $ip ( keys( %{ $self->{bans} } ) ) {
-		my $entry = $self->{bans}{$ip};
+	foreach my $banned_entry ( keys( %{ $self->{ $spec->{hash} } } ) ) {
+		my $entry = $self->{ $spec->{hash} }{$banned_entry};
 		if ( !$entry->{expires} || $entry->{expires} > $now ) {
 			next;
 		}
 
-		eval { $self->_backend_do( 'unban', ban => $ip ); };
+		eval { $self->_backend_do( $spec->{unban_method}, ban => $banned_entry ); };
 		if ($@) {
 			$self->{stats}{errors}++;
-			log_drek( 'err', 'unbanning expired ban of "' . $ip . '" failed... ' . $@, undef, $ident );
+			log_drek( 'err', 'unbanning expired ' . $spec->{log_label} . ' of "' . $banned_entry . '" failed... ' . $@,
+				undef, $ident );
 		}
-		delete( $self->{bans}{$ip} );
-		$self->{stats}{expired}++;
+		delete( $self->{ $spec->{hash} }{$banned_entry} );
+		$self->{stats}{ $spec->{expired_stat} }++;
 		$changed = 1;
-		log_drek( 'info', 'ban of ' . $ip . ' expired', undef, $ident );
-	} ## end foreach my $ip ( keys( %{ $self->{bans} } ) )
+		log_drek( 'info', $spec->{log_label} . ' of ' . $banned_entry . ' expired', undef, $ident );
+	} ## end foreach my $banned_entry ( keys( %{ $self->{ $spec...}}))
 
 	if ($changed) {
-		$self->_checkpoint;
-	}
-
-	my $cidr_changed = 0;
-	foreach my $cidr ( keys( %{ $self->{cidr_bans} } ) ) {
-		my $entry = $self->{cidr_bans}{$cidr};
-		if ( !$entry->{expires} || $entry->{expires} > $now ) {
-			next;
-		}
-
-		eval { $self->_backend_do( 'unban_cidr', ban => $cidr ); };
-		if ($@) {
-			$self->{stats}{errors}++;
-			log_drek( 'err', 'unbanning expired cidr ban of "' . $cidr . '" failed... ' . $@, undef, $ident );
-		}
-		delete( $self->{cidr_bans}{$cidr} );
-		$self->{stats}{expired}++;
-		$cidr_changed = 1;
-		log_drek( 'info', 'cidr ban of ' . $cidr . ' expired', undef, $ident );
-	} ## end foreach my $cidr ( keys( %{ $self->{cidr_bans} ...}))
-
-	if ($cidr_changed) {
-		$self->_checkpoint_cidr;
+		my $checkpoint_method = $spec->{checkpoint};
+		$self->$checkpoint_method;
 	}
 
 	return;
-} ## end sub _sweep_bans
+} ## end sub _sweep_family
 
 # checkpoints the single IP ban state, tracking the time of the last
 # successful checkpoint so the periodic timer has something to measure against
@@ -990,8 +1094,8 @@ sub _checkpoint {
 	return;
 } ## end sub _checkpoint
 
-# checkpoints the CIDR ban state to its own sibling CSV, kept separate so the
-# single IP state format and its load path stay untouched
+# checkpoints the CIDR ban state to its own sibling CSV, kept separate so
+# the single IP tablet format stays as it was before CIDR support existed
 sub _checkpoint_cidr {
 	my ($self) = @_;
 
@@ -1008,9 +1112,9 @@ sub _checkpoint_cidr {
 sub _write_state {
 	my ( $self, $state_file, $bans, $now, $label ) = @_;
 
+	my $tmp_file = $state_file . '.tmp';
 	eval {
-		my $tmp = $state_file . '.tmp';
-		open( my $fh, '>', $tmp ) || die( 'open failed... ' . $! );
+		open( my $fh, '>', $tmp_file ) || die( 'open failed... ' . $! );
 		print $fh $label . ",time,ban_time_left\n";
 		foreach my $key ( sort( keys( %{$bans} ) ) ) {
 			my $left = 0;
@@ -1024,10 +1128,15 @@ sub _write_state {
 			}
 			print $fh $key . ',' . $now . ',' . $left . "\n";
 		} ## end foreach my $key ( sort( keys( %{$bans} ) ) )
-		close($fh);
-		rename( $tmp, $state_file ) || die( 'rename failed... ' . $! );
+		# checked as buffered print failures, a full filesystem for example,
+		# only surface here... skipping the rename keeps the previous good
+		# state file in place rather than replacing it with a truncated one
+		close($fh) || die( 'close failed... ' . $! );
+		rename( $tmp_file, $state_file ) || die( 'rename failed... ' . $! );
 	};
 	if ($@) {
+		unlink($tmp_file);
+		$self->{stats}{errors}++;
 		log_drek( 'err', 'checkpointing ' . $label . ' ban state to "' . $state_file . '" failed... ' . $@,
 			undef, 'kur-' . $self->{name} );
 		return 0;
@@ -1044,74 +1153,10 @@ sub _write_state {
 sub _load_bans {
 	my ($self) = @_;
 
-	my $state_file = $self->state_path;
-	if ( !-f $state_file ) {
-		return;
-	}
-
-	my $ident = 'kur-' . $self->{name};
-
-	my @lines;
-	eval {
-		open( my $fh, '<', $state_file ) || die( 'open failed... ' . $! );
-		@lines = <$fh>;
-		close($fh);
-	};
-	if ($@) {
-		log_drek( 'err', 'loading ban state from "' . $state_file . '" failed... ' . $@, undef, $ident );
-		return;
-	}
-
-	my $now         = time;
-	my $line_number = 0;
-	foreach my $line (@lines) {
-		$line_number++;
-		chomp($line);
-		if ( $line eq '' ) {
-			next;
-		}
-		if ( $line_number == 1 && $line =~ /^ip,/ ) {
-			# the header
-			next;
-		}
-
-		my @row = split( /,/, $line );
-		if ( @row != 3 || $row[0] eq '' || $row[1] !~ /^[0-9]+$/ || $row[2] !~ /^[0-9]+$/ ) {
-			log_drek( 'err', 'skipping malformed line ' . $line_number . ' in "' . $state_file . '"... "' . $line . '"',
-				undef, $ident );
-			next;
-		}
-		my ( $ip, $written, $left ) = @row;
-		# state files written before normalization existed may carry
-		# non-canonical forms
-		my $normalized = normalize_ip($ip);
-		if ( defined($normalized) ) {
-			$ip = $normalized;
-		}
-
-		my $expires = $left ? $written + $left : 0;
-
-		if ( $expires && $expires <= $now ) {
-			# expired while not running... the backend may still carry the rule
-			eval { $self->{backend_obj}->unban( ban => $ip ); };
-			$self->{stats}{expired}++;
-			log_drek( 'info', 'ban of ' . $ip . ' expired while not running', undef, $ident );
-			next;
-		}
-
-		eval { $self->_backend_do( 'ban', ban => $ip ); };
-		if ($@) {
-			log_drek( 'err', 're-banning "' . $ip . '" from saved state failed... ' . $@, undef, $ident );
-		}
-		# banned_at is not persisted, so the row's time stands in for it
-		$self->{bans}{$ip} = { 'banned_at' => $written, 'expires' => $expires };
-	} ## end foreach my $line (@lines)
-
-	# write a updated one back out so the file reflects what got restored
-	$self->_checkpoint;
+	$self->_load_state( $self->state_path, $family_spec{ip} );
 
 	return;
-} ## end sub _load_bans
+}
 
 # loads the persisted CIDR ban state, mirroring _load_bans but for CIDR... it
 # is skipped entirely when CIDR is not available for this instance so the
@@ -1124,7 +1169,16 @@ sub _load_cidr_bans {
 		return;
 	}
 
-	my $state_file = $self->cidr_state_path;
+	$self->_load_state( $self->cidr_state_path, $family_spec{cidr} );
+
+	return;
+} ## end sub _load_cidr_bans
+
+# the shared per family loader behind _load_bans and _load_cidr_bans...
+# parameterized the same way as the rest of the shared family helpers
+sub _load_state {
+	my ( $self, $state_file, $spec ) = @_;
+
 	if ( !-f $state_file ) {
 		return;
 	}
@@ -1138,7 +1192,8 @@ sub _load_cidr_bans {
 		close($fh);
 	};
 	if ($@) {
-		log_drek( 'err', 'loading cidr ban state from "' . $state_file . '" failed... ' . $@, undef, $ident );
+		log_drek( 'err', 'loading ' . $spec->{infix} . 'ban state from "' . $state_file . '" failed... ' . $@,
+			undef, $ident );
 		return;
 	}
 
@@ -1150,7 +1205,7 @@ sub _load_cidr_bans {
 		if ( $line eq '' ) {
 			next;
 		}
-		if ( $line_number == 1 && $line =~ /^cidr,/ ) {
+		if ( $line_number == 1 && $line =~ /^$spec->{label},/ ) {
 			# the header
 			next;
 		}
@@ -1161,36 +1216,49 @@ sub _load_cidr_bans {
 				undef, $ident );
 			next;
 		}
-		my ( $cidr, $written, $left ) = @row;
-		# state files may carry non-canonical forms
-		my $normalized = normalize_cidr($cidr);
+		my ( $banned_entry, $written, $left ) = @row;
+		# state files written before normalization existed may carry
+		# non-canonical forms
+		my $normalized = $spec->{normalizer}->($banned_entry);
 		if ( defined($normalized) ) {
-			$cidr = $normalized;
+			$banned_entry = $normalized;
 		}
 
 		my $expires = $left ? $written + $left : 0;
 
 		if ( $expires && $expires <= $now ) {
 			# expired while not running... the backend may still carry the rule
-			eval { $self->{backend_obj}->unban_cidr( ban => $cidr ); };
-			$self->{stats}{expired}++;
-			log_drek( 'info', 'cidr ban of ' . $cidr . ' expired while not running', undef, $ident );
+			eval { $self->_backend_do( $spec->{unban_method}, ban => $banned_entry ); };
+			if ($@) {
+				log_drek( 'err',
+					'unbanning expired ' . $spec->{log_label} . ' of "' . $banned_entry . '" failed... ' . $@,
+					undef, $ident );
+			}
+			$self->{stats}{ $spec->{expired_stat} }++;
+			log_drek( 'info', $spec->{log_label} . ' of ' . $banned_entry . ' expired while not running', undef, $ident );
 			next;
 		}
 
-		eval { $self->_backend_do( 'ban_cidr', ban => $cidr ); };
+		eval { $self->_backend_do( $spec->{ban_method}, ban => $banned_entry ); };
 		if ($@) {
-			log_drek( 'err', 're-banning cidr "' . $cidr . '" from saved state failed... ' . $@, undef, $ident );
+			# not recorded in the book on failure, matching how a live ban
+			# behaves... a book claiming a ban the firewall does not carry
+			# would just feed the sweeper a doomed unban later
+			log_drek( 'err',
+				're-banning ' . $spec->{infix} . '"' . $banned_entry . '" from saved state failed... ' . $@,
+				undef, $ident );
+			next;
 		}
 		# banned_at is not persisted, so the row's time stands in for it
-		$self->{cidr_bans}{$cidr} = { 'banned_at' => $written, 'expires' => $expires };
+		$self->{ $spec->{hash} }{$banned_entry} = { 'banned_at' => $written, 'expires' => $expires };
 	} ## end foreach my $line (@lines)
 
 	# write a updated one back out so the file reflects what got restored
-	$self->_checkpoint_cidr;
+	my $checkpoint_method = $spec->{checkpoint};
+	$self->$checkpoint_method;
 
 	return;
-} ## end sub _load_cidr_bans
+} ## end sub _load_state
 
 =head1 ERRORS CODES / ERROR FLAGS
 

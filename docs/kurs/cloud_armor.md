@@ -21,12 +21,12 @@ project  = "my-project"
 Cloud Armor allows **at most 10 source IP ranges per rule**, and the
 kur does not shard across rules — the 11th concurrently banned IP
 makes the `gcloud` update fail and the ban error. A banned CIDR
-range consumes a slot exactly like a single IP. Worse, the failed
-ban stays in the kur's book, so every following mutation re-renders
-the over-limit list and keeps failing until an unban, `flush`, or
-`re_init` trims it. This backend is for *small, curated* ban sets at
-the edge (a handful of abusers on `ban_time = 0`, say), not volume
-banning. For volume, block at the instances or use a different edge.
+range consumes a slot exactly like a single IP. The failed ban is
+rolled back out of the ban set, so it does not wedge later updates —
+but the limit is still the limit. This backend is for *small,
+curated* ban sets at the edge (a handful of abusers on
+`ban_time = 0`, say), not volume banning. For volume, block at the
+instances or use a different edge.
 
 ## GCP-side setup — required first
 

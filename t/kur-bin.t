@@ -25,9 +25,13 @@ like( $output, qr/Firewall ban manager worker/, '--help prints the POD' );
 
 $output = `$kur 2>&1`;
 isnt( $? >> 8, 0, 'no args exits nonzero' );
-like( $output, qr/name is undef/, 'no args complains about the name' );
+like( $output, qr/--name is required/, 'no args complains about the name' );
 
-$output = `$kur --option nope 2>&1`;
+$output = `$kur --name testy 2>&1`;
+isnt( $? >> 8, 0, 'no backend exits nonzero' );
+like( $output, qr/--backend is required/, 'no backend complains about the backend' );
+
+$output = `$kur --name testy --backend dummy --option nope 2>&1`;
 isnt( $? >> 8, 0, 'malformed --option exits nonzero' );
 like( $output, qr/not in the form key=value/, 'malformed --option error message' );
 

@@ -4,8 +4,6 @@ use 5.006;
 use strict;
 use warnings;
 use Ereshkigal::App -command;
-use Ereshkigal::Client ();
-use JSON::MaybeXS      ();
 
 =head1 NAME
 
@@ -88,13 +86,13 @@ sub execute {
 		$opts->{backend} = $opt->backend;
 	}
 	if ( defined( $opt->fan_out ) ) {
-		$opts->{fan_out} = [ split( /\s*,\s*/, $opt->fan_out ) ];
+		$opts->{fan_out} = $self->_split_comma_list( 'fan-out', $opt->fan_out );
 	}
 	if ( defined( $opt->ports ) ) {
-		$opts->{ports} = [ split( /\s*,\s*/, $opt->ports ) ];
+		$opts->{ports} = $self->_split_comma_list( 'ports', $opt->ports );
 	}
 	if ( defined( $opt->protocols ) ) {
-		$opts->{protocols} = [ split( /\s*,\s*/, $opt->protocols ) ];
+		$opts->{protocols} = $self->_split_comma_list( 'protocols', $opt->protocols );
 	}
 	if ( defined( $opt->prefix ) ) {
 		$opts->{prefix} = $opt->prefix;
@@ -120,13 +118,27 @@ sub execute {
 		$opts->{options} = \%backend_options;
 	} ## end if ( defined( $opt->option ) )
 
-	my $client = Ereshkigal::Client->new( 'socket' => $self->app->global_options->{socket} );
-	my $result = $client->call_ok( 'add_kur', { 'name' => $args->[0], 'opts' => $opts } );
-
-	print JSON::MaybeXS->new( 'pretty' => 1, 'canonical' => 1 )->encode($result);
+	$self->run_command( 'add_kur', { 'name' => $args->[0], 'opts' => $opts } );
 
 	return;
 } ## end sub execute
+
+# split a comma seperated option value into a arrayref, trimming the ends
+# and dropping empty elements so the likes of ",22" or "22, 23," come out
+# clean... a option that yields nothing is a usage error
+sub _split_comma_list {
+	my ( $self, $option_name, $option_value ) = @_;
+
+	$option_value =~ s/^\s+//;
+	$option_value =~ s/\s+$//;
+
+	my @elements = grep { length } split( /\s*,\s*/, $option_value );
+	if ( !@elements ) {
+		$self->usage_error( '--' . $option_name . ' must contain at least one item' );
+	}
+
+	return \@elements;
+} ## end sub _split_comma_list
 
 =head1 AUTHOR
 

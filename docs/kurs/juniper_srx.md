@@ -53,10 +53,11 @@ address-set.)
 
 - `ports` / `protocols` — **not supported**; specifying either is a
   fatal error at kur startup. Scoping lives on the policy.
-- `enable_cidr` — nominally supported, but currently broken
-  upstream: the generated object name keeps the range's `/`, which
-  Junos rejects as an identifier, so CIDR bans fail at commit. Leave
-  it off for this kur until the backend is fixed.
+- `enable_cidr` — supported; a banned range becomes its own address
+  object (the `/` flattened to `-` in the object name) in the same
+  address-set. Needs Net::Firewall::BlockerHelper newer than 0.1.0's
+  2026-07-13 release, where CIDR object names were invalid Junos
+  identifiers.
 - `prefix` — builds the default address-set name and per-IP object
   names.
 

@@ -273,6 +273,11 @@ is_deeply( [ $ereshkigal->_real_kur_names ],             [ 'smtp', 'sshd' ], 'fa
 is_deeply( [ $ereshkigal->_expand_kur_targets('gate') ], [ 'sshd', 'smtp' ], 'a fan_out kur expands to it\'s members' );
 is_deeply( [ $ereshkigal->_expand_kur_targets('sshd') ], ['sshd'], 'a plain kur expands to it\'s self' );
 
+# removal of a fan_out member is refused so a gate can not be left with a
+# dangling member, matching what config load refuses
+throws_ok { $ereshkigal->_cmd_remove_kur( { 'args' => { 'name' => 'sshd' } } ) }
+qr/is a fan_out member of "gate"/, 'removing a fan_out member is refused';
+
 my $summary = $ereshkigal->_kur_summary;
 is_deeply(
 	$summary->{gate},

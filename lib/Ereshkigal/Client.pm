@@ -49,7 +49,7 @@ Initiates the object. Will die on errors.
     - socket :: Path of the unix socket to connect to. Must be specified.
         Default :: undef
 
-    - timeout :: Timeout in seconds for a call.
+    - timeout :: Timeout in seconds for a call. 0 means no timeout.
         Default :: 30
 
 =cut
@@ -59,6 +59,11 @@ sub new {
 
 	if ( !defined( $opts{socket} ) ) {
 		die('No socket specified');
+	}
+
+	# fractional seconds would silently truncate going through alarm
+	if ( defined( $opts{timeout} ) && $opts{timeout} !~ /^\d+$/ ) {
+		die('timeout must be a non-negative integer');
 	}
 
 	my $self = {
@@ -96,13 +101,17 @@ sub call {
 
 	my $response;
 	eval {
+		# a write to a peer that died would otherwise raise SIGPIPE and kill
+		# the whole process... ignored, the write fails with EPIPE and that
+		# surfaces through the normal error paths
+		local $SIG{PIPE} = 'IGNORE';
 		local $SIG{ALRM} = sub { die( 'timed out after ' . $self->{timeout} . " seconds\n" ); };
 		alarm( $self->{timeout} );
 
 		my $sock = IO::Socket::UNIX->new(
 			'Type' => IO::Socket::UNIX::SOCK_STREAM(),
 			'Peer' => $self->{socket},
-		) || die( 'Failed to connect to "' . $self->{socket} . '"... ' . $! );
+		) || die( 'Failed to connect to "' . $self->{socket} . '"... ' . $! . "\n" );
 
 		my $request = { 'command' => $command };
 		if ( defined($args) ) {
@@ -113,6 +122,11 @@ sub call {
 
 		# auth state is per connection, so complete the ownership challenge
 		# on this same connection and resend
+		#
+		# matched against the error prose as the JSONUnix auth_required gate
+		# answers with no code field... only it's permission policy denials
+		# and Ereshkigal's own _authorize carry a machine readable code, and
+		# neither of those is the response being caught here
 		if (   defined( $response->{status} )
 			&& $response->{status} eq 'error'
 			&& defined( $response->{error} )
@@ -142,12 +156,12 @@ sub _send_request {
 
 	my $line = <$sock>;
 	if ( !defined($line) ) {
-		die( 'No response read from "' . $self->{socket} . '"' );
+		die( 'No response read from "' . $self->{socket} . '"' . "\n" );
 	}
 
 	my $response = decode_json($line);
 	if ( ref($response) ne 'HASH' ) {
-		die('Response is not a JSON object');
+		die( 'Response is not a JSON object' . "\n" );
 	}
 
 	return $response;
@@ -162,18 +176,23 @@ sub _authenticate {
 
 	my $start = $self->_send_request( $sock, { 'command' => 'auth_start' } );
 	if ( !defined( $start->{status} ) || $start->{status} ne 'ok' ) {
-		die( 'auth_start failed... ' . ( defined( $start->{error} ) ? $start->{error} : 'unknown error' ) );
+		die( 'auth_start failed... ' . ( defined( $start->{error} ) ? $start->{error} : 'unknown error' ) . "\n" );
 	}
 	my $cookie   = $start->{result}{cookie};
 	my $temp_dir = $start->{result}{temp_dir};
 	if ( !defined($cookie) || !defined($temp_dir) ) {
-		die('auth_start did not return a cookie and temp_dir');
+		die( 'auth_start did not return a cookie and temp_dir' . "\n" );
 	}
 
 	my ( $cookie_fh, $cookie_file )
 		= File::Temp::tempfile( 'ereshkigal-auth-XXXXXXXX', 'DIR' => $temp_dir, 'UNLINK' => 0 );
-	print $cookie_fh $cookie;
-	close($cookie_fh);
+	# checked so a full filesystem or unwritable temp_dir surfaces here as
+	# the actual cause rather than as a confusing auth_verify failure
+	if ( !print( $cookie_fh $cookie ) || !close($cookie_fh) ) {
+		my $write_error = $!;
+		unlink($cookie_file);
+		die( 'Failed to write the auth cookie to "' . $cookie_file . '"... ' . $write_error . "\n" );
+	}
 
 	my $verify;
 	eval {
@@ -187,7 +206,7 @@ sub _authenticate {
 		die($verify_error);
 	}
 	if ( !defined( $verify->{status} ) || $verify->{status} ne 'ok' ) {
-		die( 'auth_verify failed... ' . ( defined( $verify->{error} ) ? $verify->{error} : 'unknown error' ) );
+		die( 'auth_verify failed... ' . ( defined( $verify->{error} ) ? $verify->{error} : 'unknown error' ) . "\n" );
 	}
 
 	return;
@@ -217,7 +236,8 @@ method taking a whole hash of sockets rather than using a per socket object.
 
     - timeout :: Timeout in seconds for the whole fan out, bounding it as a
           whole rather than each socket individually, so the wall time is
-          the slowest socket capped at one timeout instead of the sum.
+          the slowest socket capped at one timeout instead of the sum. 0
+          means no timeout.
         Default :: 30
 
 The return is a hash keyed the same as sockets, each value being either
@@ -242,6 +262,11 @@ sub call_many {
 		die('No command specified');
 	}
 	my $timeout = defined( $opts{timeout} ) ? $opts{timeout} : 30;
+
+	# a write to a peer that died would otherwise raise SIGPIPE and kill
+	# the whole process... ignored, the write fails with EPIPE and that
+	# lands in that socket's error answer like any other failure
+	local $SIG{PIPE} = 'IGNORE';
 
 	my $request = { 'command' => $opts{command} };
 	if ( defined( $opts{args} ) ) {
@@ -282,11 +307,15 @@ sub call_many {
 	};
 
 	# one select loop over all the connections against a single shared
-	# deadline... no SIGALRM as one alarm can't supervise N conversations
-	my $deadline = time + $timeout;
+	# deadline... no SIGALRM as one alarm can't supervise N conversations,
+	# and a timeout of 0 means no deadline at all
+	my $deadline = $timeout ? time + $timeout : undef;
 	while (%conns) {
-		my $remaining = $deadline - time;
-		last if $remaining <= 0;
+		my $remaining;
+		if ( defined($deadline) ) {
+			$remaining = $deadline - time;
+			last if $remaining <= 0;
+		}
 
 		my ( $readable, $writable ) = IO::Select->select( $readers, $writers, undef, $remaining );
 

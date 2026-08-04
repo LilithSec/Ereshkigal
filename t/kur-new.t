@@ -96,7 +96,15 @@ is_deeply( $kur->{ports},     ['22'],  'ports merged' );
 is_deeply( $kur->{protocols}, ['tcp'], 'protocols merged' );
 is_deeply(
 	$kur->{stats},
-	{ 'bans' => 0, 'unbans' => 0, 'cidr_bans' => 0, 'cidr_unbans' => 0, 'errors' => 0, 'expired' => 0 },
+	{
+		'bans'         => 0,
+		'unbans'       => 0,
+		'cidr_bans'    => 0,
+		'cidr_unbans'  => 0,
+		'errors'       => 0,
+		'expired'      => 0,
+		'cidr_expired' => 0,
+	},
 	'stats initialized to zeros'
 );
 isa_ok( $kur->{backend_obj}, 'Net::Firewall::BlockerHelper', 'backend_obj' );

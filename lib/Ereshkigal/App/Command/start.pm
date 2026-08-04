@@ -69,6 +69,25 @@ sub execute {
 	$self->_wait_for_pid_clear( $ereshkigal->pid_path );
 
 	if ( $opt->foreground ) {
+		# the daemonize branch gets this from daemonize() itself, so make sure
+		# the foreground branch does not clobber the PID file of a live manager
+		if ( -e $ereshkigal->pid_path && open( my $old_pid_fh, '<', $ereshkigal->pid_path ) ) {
+			my $old_pid = <$old_pid_fh>;
+			close($old_pid_fh);
+			if ( defined($old_pid) && $old_pid =~ /^\s*([0-9]+)\s*$/ ) {
+				$old_pid = $1;
+				# kill 0 is true while the process exists, and EPERM means it
+				# exists but is not ours to signal
+				if ( kill( 0, $old_pid ) || $!{EPERM} ) {
+					die(      'A manager already appears to be running with PID '
+							. $old_pid
+							. ' per the PID file "'
+							. $ereshkigal->pid_path
+							. '"' );
+				}
+			} ## end if ( defined($old_pid) && $old_pid =~ /^\s*([0-9]+)\s*$/...)
+		} ## end if ( -e $ereshkigal->pid_path && open( my...))
+
 		open( my $pid_fh, '>', $ereshkigal->pid_path )
 			|| die( 'Failed to open the PID file "' . $ereshkigal->pid_path . '"... ' . $! );
 		print $pid_fh $$;
@@ -100,7 +119,7 @@ sub _wait_for_pid_clear {
 		my $pid = <$pid_fh>;
 		close($pid_fh);
 
-		last if !defined($pid) || $pid !~ /([0-9]+)/;
+		last if !defined($pid) || $pid !~ /^\s*([0-9]+)\s*$/;
 		$pid = $1;
 
 		# kill 0 is true while the process exists (or exists but is ours to

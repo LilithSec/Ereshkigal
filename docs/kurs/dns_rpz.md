@@ -115,10 +115,6 @@ Records removed server-side stay gone until `re_init`.
 - RPZ acts on the resolver evaluating the policy; secondaries
   serving the zone lag by transfer time.
 - Keep `ttl` low; it bounds how long lifted bans linger in caches.
-- Unlike the [nsupdate](nsupdate.md) backend, `server`, `ttl`, and
-  `nsupdate` are not validated before being interpolated into the
-  shell pipeline — they come from the root-owned config, but treat
-  them as code accordingly.
 - Errors carry Error::Helper flags (`zoneInvalid`,
   `keyfileInvalid`, `triggerInvalid`, …) — [`Net::Firewall::BlockerHelper::backends::dns_rpz`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::dns_rpz) has the full
   table.

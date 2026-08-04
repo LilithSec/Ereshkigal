@@ -188,6 +188,15 @@ if ($version) {
 	exit 42;
 }
 
+# both are documented as required, so bounce their absence as a usage error
+# here rather than as internal errors from the layers below
+if ( !defined($name) ) {
+	pod2usage( -exitval => 255, -verbose => 1, -output => \*STDERR, -message => 'kur: --name is required' );
+}
+if ( !defined($backend) ) {
+	pod2usage( -exitval => 255, -verbose => 1, -output => \*STDERR, -message => 'kur: --backend is required' );
+}
+
 my %backend_options;
 foreach my $key_value (@options) {
 	my ( $key, $value ) = split( /=/, $key_value, 2 );

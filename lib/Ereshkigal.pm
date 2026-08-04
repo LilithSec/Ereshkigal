@@ -180,6 +180,7 @@ sub new {
 		errorString   => "",
 		errorExtra    => {
 			all_errors_fatal => 1,
+			all_fatal        => 1,
 			flags            => {
 				1 => 'configReadFailed',
 				2 => 'configParseFailed',
@@ -257,6 +258,16 @@ sub new {
 		}
 	}
 	if ( defined( $config->{socket_mode} ) ) {
+		# vetted before oct is trusted with it, as oct hands back 0 for
+		# anything unparseable, which would leave the socket unusable by
+		# everyone rather than erroring
+		if ( '' . $config->{socket_mode} !~ /^0[0-7]{1,4}$/ ) {
+			$self->{perror} = 1;
+			$self->{error}  = 2;
+			$self->{errorString}
+				= 'socket_mode, "' . $config->{socket_mode} . '", is not a octal mode string such as "0660"';
+			$self->warn;
+		}
 		$self->{socket_mode} = oct( '' . $config->{socket_mode} );
 	}
 
@@ -727,6 +738,9 @@ sub _authorize {
 	}
 	$username = '' if !defined($username);
 
+	# no kurs named means a manager level command... untargeted commands on a
+	# manager with zero real kurs also land here, deliberately, as with no
+	# per-kur lists to expand the global lists are all there is to check
 	if ( !@kurs ) {
 		if ( $self->_user_in_lists( $ctx, $username, $self->{authed_users}, $self->{authed_groups} ) ) {
 			return;
@@ -1011,6 +1025,16 @@ sub _poe_remove_kur {
 		}
 	}
 
+	# the reaped handler only cleans these up while the registry entry is
+	# still around, which it is about to not be, so they are cleaned here...
+	# otherwise every add/remove cycle leaks a wheel_to_kur entry
+	if ( defined( $entry->{wheel} ) ) {
+		delete( $self->{wheel_to_kur}{ $entry->{wheel}->ID } );
+	}
+	if ( defined( $entry->{pid} ) ) {
+		delete( $self->{pid_to_kur}{ $entry->{pid} } );
+	}
+
 	delete( $self->{kurs}{$name} );
 
 	log_drek( 'info', 'removed kur "' . $name . '"' );
@@ -1123,12 +1147,14 @@ sub _cmd_status_kur {
 	}
 	my $name = $args->{name};
 
+	# authorized before existence is checked, so an unauthorized caller can
+	# not use the difference in errors to enumerate kur names
+	$self->_authorize( $ctx, $name );
+
 	my $entry = $self->{kurs}{$name};
 	if ( !defined($entry) ) {
 		die( 'No such kur instance, "' . $name . '"' );
 	}
-
-	$self->_authorize( $ctx, $name );
 
 	# a fan_out kur has no process of it's own, so it's status is it's
 	# member list plus each member's status
@@ -1150,7 +1176,10 @@ sub _cmd_status_kur {
 	};
 
 	if ( $status->{running} ) {
-		$status->{status} = $self->_kur_client($name)->call_ok('status');
+		# via _fan_out rather than a bare call_ok so a live process with a
+		# wedged socket degrades to a per-kur error entry, matching how
+		# status_all and the fan_out branch above behave
+		$status->{status} = $self->_fan_out( [$name], 'status' )->{$name};
 	}
 
 	return $status;
@@ -1177,63 +1206,16 @@ sub _cmd_banned {
 sub _cmd_ban {
 	my ( $self, $request, $ctx ) = @_;
 
-	my $args = $request->{args};
-	if ( !defined($args) || ref( $args->{ips} ) ne 'ARRAY' || !@{ $args->{ips} } ) {
-		die('args.ips must be a array of one or more IPs');
-	}
-
-	# pre-flight the IPs so garbage is bounced here instead of being fanned
-	# out just for every kur to bounce it, and so what is fanned out is the
-	# canonical form... variant spellings of the same IP also dedupe here
-	my @ips;
-	my %seen;
-	my $rejected = {};
-	foreach my $raw_ip ( @{ $args->{ips} } ) {
-		my $ip = normalize_ip($raw_ip);
-		if ( !defined($ip) ) {
-			my $key = defined($raw_ip) ? $raw_ip : '';
-			$rejected->{$key}
-				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 IP' };
-			next;
+	return $self->_cmd_ban_common(
+		$request, $ctx,
+		{
+			'arg_key'    => 'ips',
+			'noun'       => 'IP',
+			'noun_long'  => 'IPv4 or IPv6 IP',
+			'normalizer' => \&normalize_ip,
+			'command'    => 'ban',
 		}
-		if ( !$seen{$ip} ) {
-			$seen{$ip} = 1;
-			push( @ips, $ip );
-		}
-	} ## end foreach my $raw_ip ( @{ $args->{ips} } )
-	if ( !@ips ) {
-		die('None of the IPs in args.ips appear to be a IPv4 or IPv6 IP');
-	}
-
-	my @targets;
-	if ( defined( $args->{kur} ) ) {
-		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
-			die( 'No such kur instance, "' . $args->{kur} . '"' );
-		}
-		# authorization is checked against the requested name... for a
-		# fan_out kur being authorized for the gateway is the grant, which
-		# is what makes one usable as a single point of contact
-		$self->_authorize( $ctx, $args->{kur} );
-		@targets = $self->_expand_kur_targets( $args->{kur} );
-	} else {
-		@targets = $self->_real_kur_names;
-		if ( !@targets ) {
-			die('No kur instances');
-		}
-		$self->_authorize( $ctx, @targets );
-	}
-
-	my $kur_args = { 'ips' => \@ips };
-	if ( defined( $args->{ban_time} ) ) {
-		$kur_args->{ban_time} = $args->{ban_time};
-	}
-
-	my $response = { 'kurs' => $self->_fan_out( \@targets, 'ban', $kur_args ) };
-	if ( %{$rejected} ) {
-		$response->{rejected} = $rejected;
-	}
-
-	return $response;
+	);
 } ## end sub _cmd_ban
 
 sub _cmd_unban {
@@ -1267,42 +1249,41 @@ sub _cmd_unban {
 sub _cmd_cidr_ban {
 	my ( $self, $request, $ctx ) = @_;
 
-	my $args = $request->{args};
-	if ( !defined($args) || ref( $args->{cidrs} ) ne 'ARRAY' || !@{ $args->{cidrs} } ) {
-		die('args.cidrs must be a array of one or more CIDRs');
+	return $self->_cmd_ban_common(
+		$request, $ctx,
+		{
+			'arg_key'    => 'cidrs',
+			'noun'       => 'CIDR',
+			'noun_long'  => 'IPv4 or IPv6 CIDR',
+			'normalizer' => \&normalize_cidr,
+			'command'    => 'cidr_ban',
+		}
+	);
+} ## end sub _cmd_cidr_ban
+
+# the shared body of _cmd_ban and _cmd_cidr_ban, which differ only in the
+# args key, the normalizer, the kur command, and the noun used in errors
+sub _cmd_ban_common {
+	my ( $self, $request, $ctx, $spec ) = @_;
+
+	my $args    = $request->{args};
+	my $arg_key = $spec->{arg_key};
+	if ( !defined($args) || ref( $args->{$arg_key} ) ne 'ARRAY' || !@{ $args->{$arg_key} } ) {
+		die( 'args.' . $arg_key . ' must be a array of one or more ' . $spec->{noun} . 's' );
 	}
 
-	# pre-flight the CIDRs so garbage is bounced here instead of being fanned
-	# out just for every kur to bounce it, and so what is fanned out is the
-	# canonical network form... variant spellings of the same range dedupe here
-	my @cidrs;
-	my %seen;
-	my $rejected = {};
-	foreach my $raw_cidr ( @{ $args->{cidrs} } ) {
-		my $cidr = normalize_cidr($raw_cidr);
-		if ( !defined($cidr) ) {
-			my $key = defined($raw_cidr) ? $raw_cidr : '';
-			$rejected->{$key}
-				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 CIDR' };
-			next;
-		}
-		if ( !$seen{$cidr} ) {
-			$seen{$cidr} = 1;
-			push( @cidrs, $cidr );
-		}
-	} ## end foreach my $raw_cidr ( @{ $args->{cidrs} } )
-	if ( !@cidrs ) {
-		die('None of the CIDRs in args.cidrs appear to be a IPv4 or IPv6 CIDR');
-	}
-
+	# targets are resolved and authorization checked before anything is done
+	# with the payload, so an unauthorized caller can neither enumerate kur
+	# names nor burn cycles on validation
 	my @targets;
 	if ( defined( $args->{kur} ) ) {
+		# authorization is checked against the requested name... for a
+		# fan_out kur being authorized for the gateway is the grant, which
+		# is what makes one usable as a single point of contact
+		$self->_authorize( $ctx, $args->{kur} );
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
 			die( 'No such kur instance, "' . $args->{kur} . '"' );
 		}
-		# authorization is checked against the requested name, same as ban, so
-		# a fan_out kur grant covers the fanned command
-		$self->_authorize( $ctx, $args->{kur} );
 		@targets = $self->_expand_kur_targets( $args->{kur} );
 	} else {
 		@targets = $self->_real_kur_names;
@@ -1312,18 +1293,41 @@ sub _cmd_cidr_ban {
 		$self->_authorize( $ctx, @targets );
 	}
 
-	my $kur_args = { 'cidrs' => \@cidrs };
+	# pre-flight the entries so garbage is bounced here instead of being
+	# fanned out just for every kur to bounce it, and so what is fanned out
+	# is the canonical form... variant spellings also dedupe here
+	my @entries;
+	my %seen;
+	my $rejected = {};
+	foreach my $raw_entry ( @{ $args->{$arg_key} } ) {
+		my $entry = $spec->{normalizer}->($raw_entry);
+		if ( !defined($entry) ) {
+			my $key = defined($raw_entry) ? $raw_entry : '';
+			$rejected->{$key}
+				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a ' . $spec->{noun_long} };
+			next;
+		}
+		if ( !$seen{$entry} ) {
+			$seen{$entry} = 1;
+			push( @entries, $entry );
+		}
+	} ## end foreach my $raw_entry ( @{ $args->{$arg_key} } )
+	if ( !@entries ) {
+		die( 'None of the ' . $spec->{noun} . 's in args.' . $arg_key . ' appear to be a ' . $spec->{noun_long} );
+	}
+
+	my $kur_args = { $arg_key => \@entries };
 	if ( defined( $args->{ban_time} ) ) {
 		$kur_args->{ban_time} = $args->{ban_time};
 	}
 
-	my $response = { 'kurs' => $self->_fan_out( \@targets, 'cidr_ban', $kur_args ) };
+	my $response = { 'kurs' => $self->_fan_out( \@targets, $spec->{command}, $kur_args ) };
 	if ( %{$rejected} ) {
 		$response->{rejected} = $rejected;
 	}
 
 	return $response;
-} ## end sub _cmd_cidr_ban
+} ## end sub _cmd_ban_common
 
 sub _cmd_cidr_unban {
 	my ( $self, $request ) = @_;
@@ -1355,12 +1359,13 @@ sub _cmd_checkpoint {
 
 	my @targets;
 	if ( defined($args) && defined( $args->{kur} ) ) {
+		# like ban, authorization is against the requested name, so a
+		# fan_out kur grant covers the fanned command... and it comes before
+		# the existence check so kur names can not be enumerated
+		$self->_authorize( $ctx, $args->{kur} );
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
 			die( 'No such kur instance, "' . $args->{kur} . '"' );
 		}
-		# like ban, authorization is against the requested name, so a
-		# fan_out kur grant covers the fanned command
-		$self->_authorize( $ctx, $args->{kur} );
 		@targets = $self->_expand_kur_targets( $args->{kur} );
 	} else {
 		@targets = $self->_real_kur_names;
@@ -1417,6 +1422,24 @@ sub _cmd_remove_kur {
 	my $entry = $self->{kurs}{$name};
 	if ( !defined($entry) ) {
 		die( 'No such kur instance, "' . $name . '"' );
+	}
+
+	# config load refuses a fan_out naming a unknown kur, so removal can not
+	# be allowed to create that same dangling state at runtime... remove the
+	# gate first, or the member stays
+	my @gates_using;
+	foreach my $other_name ( sort( keys( %{ $self->{kurs} } ) ) ) {
+		my $fan_out = $self->{kurs}{$other_name}{opts}{fan_out};
+		if ( defined($fan_out) && grep { $_ eq $name } @{$fan_out} ) {
+			push( @gates_using, $other_name );
+		}
+	}
+	if (@gates_using) {
+		die(      'The kur "'
+				. $name
+				. '" is a fan_out member of "'
+				. join( '", "', @gates_using )
+				. '"... remove the fan_out kur first' );
 	}
 
 	$entry->{enabled} = 0;

@@ -86,8 +86,8 @@ Every ban carries a term, the resolved `ban_time`, although a `0` means
 eternal residence. Each kur runs a sweeper, a once-a-second check
 that releases any soul whose sentence has been served: the IP is
 unbanned from the backend, dropped from the books, and counted in the
-`expired` stat. Re-banning an IP that is already below just refreshes
-its sentence.
+`expired` stat (`cidr_expired` for ranges). Re-banning an IP that is
+already below just refreshes its sentence.
 
 ## The clay tablets
 

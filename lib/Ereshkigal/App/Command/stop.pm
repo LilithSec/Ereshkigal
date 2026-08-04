@@ -4,8 +4,6 @@ use 5.006;
 use strict;
 use warnings;
 use Ereshkigal::App -command;
-use Ereshkigal::Client ();
-use JSON::MaybeXS      ();
 
 =head1 NAME
 
@@ -48,13 +46,10 @@ sub validate_args {
 sub execute {
 	my ( $self, $opt, $args ) = @_;
 
-	my $client = Ereshkigal::Client->new( 'socket' => $self->app->global_options->{socket} );
-	my $result = $client->call_ok('stop');
-
-	print JSON::MaybeXS->new( 'pretty' => 1, 'canonical' => 1 )->encode($result);
+	$self->run_command('stop');
 
 	return;
-} ## end sub execute
+}
 
 =head1 AUTHOR
 

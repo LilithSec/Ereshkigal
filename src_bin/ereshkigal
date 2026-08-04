@@ -16,13 +16,20 @@ ereshkigal status [B<--all>] [<kur>]
 
 ereshkigal banned
 
-ereshkigal ban [B<--kur>=<kur>] <IP> [<IP> ...]
+ereshkigal ban [B<--kur>=<kur>] [B<--ban-time>=<seconds>] <IP> [<IP> ...]
 
 ereshkigal unban B<--all>|<IP>
 
-ereshkigal add <kur> B<--backend>=<backend> [B<--ports>=<ports>]
-[B<--protocols>=<protocols>] [B<--prefix>=<prefix>] [B<--option> <key>=<value>]
-[B<--self-heal> <0/1>]
+ereshkigal cidr-ban [B<--kur>=<kur>] [B<--ban-time>=<seconds>] <CIDR> [<CIDR> ...]
+
+ereshkigal cidr-unban <CIDR>
+
+ereshkigal checkpoint [<kur>]
+
+ereshkigal add <kur> B<--backend>=<backend>|B<--fan-out>=<kurs>
+[B<--ports>=<ports>] [B<--protocols>=<protocols>] [B<--prefix>=<prefix>]
+[B<--option> <key>=<value>] [B<--self-heal> <0/1>]
+[B<--ban-time>=<seconds>] [B<--checkpoint>=<seconds>]
 
 ereshkigal remove <kur>
 
@@ -39,6 +46,13 @@ C</var/run/ereshkigal/socket>.
 
 See L<Ereshkigal> for the config file format and
 C<ereshkigal help <command>> for the various commands.
+
+=head1 EXIT CODES
+
+    0 - clean success
+    1 - transport or server error, printed to STDERR
+    2 - the command completed, but the result carries per-kur,
+        per-IP, or per-CIDR failures
 
 =cut
 

@@ -124,9 +124,10 @@ status response under `kurs`:
 
 - A gate's membership is frozen in its definition. `ereshkigal add`
   and `remove` raise and tear down real kurs, but do not edit
-  existing gates — removing a member kur leaves the gate pointing at
-  a name that no longer runs, and commands through the gate will
-  report `not running` for it until the member is added back.
+  existing gates — and removing a kur that is a gate's member is
+  refused outright (`is a fan_out member of ...`), since config load
+  would never have allowed the dangling membership it leaves behind.
+  Remove the gate first if the member really has to go.
 - Gates can themselves be added at runtime (`ereshkigal add <name>
   --fan-out a,b`); members must already exist at that moment.
 - Since a gate has no process, there is nothing to restart, no PID,

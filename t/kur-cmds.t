@@ -141,4 +141,28 @@ is_deeply( $result->{banned}, ['3.3.3.3'], 'previously banned IPs still listed a
 throws_ok { $kur->_backend_do('ban') } qr/Nothing specified for the value ban/,
 	'_backend_do dies on a backend error even when the backend just warns';
 
+#
+# unban of a non-canonical spelling the backend book carries... the state
+# restore path can seed the book with spellings the backend accepts but
+# normalization refuses, and those have to still be findable via the
+# canonical form
+#
+
+$kur->{backend_obj}->ban( 'ban' => '2001:DB8:0:0:0:0:0:99' );
+$kur->{bans}{'2001:db8::99'} = { 'banned_at' => time, 'expires' => 0 };
+$result = $kur->_cmd_unban( { 'args' => { 'ip' => '2001:db8::99' } } );
+is( $result->{was_banned}, 1, 'non-canonical backend book entry found via the canonical form' );
+is( ( grep { $_ =~ /99/ } @{ $kur->_cmd_banned->{banned} } ), 0, 'and the backend book entry is gone' );
+
+#
+# stopping refuses backend-mutating commands
+#
+
+$kur->{stopping} = 1;
+throws_ok { $kur->_cmd_ban( { 'args' => { 'ips' => ['4.4.4.4'] } } ) } qr/stopping/, 'ban refused while stopping';
+throws_ok { $kur->_cmd_unban( { 'args' => { 'ip' => '3.3.3.3' } } ) } qr/stopping/, 'unban refused while stopping';
+throws_ok { $kur->_cmd_flush } qr/stopping/, 'flush refused while stopping';
+throws_ok { $kur->_cmd_re_init } qr/stopping/, 're_init refused while stopping';
+$kur->{stopping} = 0;
+
 done_testing;

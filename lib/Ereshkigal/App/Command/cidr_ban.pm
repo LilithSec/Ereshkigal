@@ -4,8 +4,6 @@ use 5.006;
 use strict;
 use warnings;
 use Ereshkigal::App -command;
-use Ereshkigal::Client ();
-use JSON::MaybeXS      ();
 
 =head1 NAME
 
@@ -68,6 +66,9 @@ sub validate_args {
 	if ( !@{$args} ) {
 		$self->usage_error('at least one CIDR must be specified');
 	}
+	if ( defined( $opt->ban_time ) && $opt->ban_time !~ /^[0-9]+$/ ) {
+		$self->usage_error('--ban-time must be a non-negative integer of seconds');
+	}
 
 	return;
 }
@@ -83,10 +84,7 @@ sub execute {
 		$ban_args->{ban_time} = $opt->ban_time;
 	}
 
-	my $client = Ereshkigal::Client->new( 'socket' => $self->app->global_options->{socket} );
-	my $result = $client->call_ok( 'cidr_ban', $ban_args );
-
-	print JSON::MaybeXS->new( 'pretty' => 1, 'canonical' => 1 )->encode($result);
+	$self->run_command( 'cidr_ban', $ban_args );
 
 	return;
 } ## end sub execute
