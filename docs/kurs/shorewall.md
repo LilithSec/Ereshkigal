@@ -56,15 +56,17 @@ IPv4 IPs go through the `shorewall` command, IPv6 through
 | `ban`      | `<shorewall[6]_cmd> <type> <ip>`                                |
 | `unban`    | `<shorewall[6]_cmd> allow <ip>`                                 |
 | `list`     | no command — the kur's own ban book                             |
-| `check`    | `shorewall show dynamic` exits 0                                |
+| `check`    | `shorewall show dynamic` exits 0; plus `shorewall6 show dynamic` when any IPv6 ban exists |
 | `flush`    | `allow` per banned IP                                           |
 | `re_init`  | teardown (best effort), init, re-`drop` every banned IP         |
 | `teardown` | `allow` per banned IP (ban book kept for re_init)               |
 
 ## self_heal and reloads
 
-`check` only verifies the `shorewall` command answers (IPv4 side
-only — `shorewall6` is never probed). A `shorewall restart` clears
+`check` only verifies the `shorewall` command answers — and
+`shorewall6` too, but only while something IPv6 is actually banned,
+so hosts without shorewall6 installed are not flagged unhealthy. A
+`shorewall restart` clears
 the dynamic blacklist without failing `check`, so the recovery path
 for a restart is `re_init` via the kur socket, or a kur restart
 re-banning from the tablet. If Shorewall restarts are part of your

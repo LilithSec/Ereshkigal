@@ -87,7 +87,11 @@ scanner but no session ever exists.
 
 Both are **TCP only**: the generated rules always say `-p tcp`, and
 non-tcp protocols (and the implicit udp when only ports are
-configured) are skipped rather than emitted. Both also require the
+configured) are skipped rather than emitted. `delude` is additionally
+**IPv4 only** — xtables-addons provides no IPv6 DELUDE, so the
+ip6tables rule falls back to plain DROP; banned IPv6 IPs are still
+blocked, just silently dropped rather than deluded (TARPIT does
+exist for IPv6 and is used as-is). Both also require the
 crafted replies to escape connection tracking, so with these types
 the backend additionally builds a chain in the **raw table**, jumped
 from `PREROUTING`, holding `-j CT --notrack` rules that mirror the

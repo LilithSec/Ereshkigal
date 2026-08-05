@@ -1,7 +1,8 @@
 # opnsense — an OPNsense firewall alias
 
 Blocks on an OPNsense firewall by adding IPs to a firewall alias via
-the `alias_util` REST API, driven with `curl(1)`. One alias holds
+the `alias_util` REST API, driven with
+[LWP::UserAgent](https://metacpan.org/pod/LWP::UserAgent). One alias holds
 both IPv4 and IPv6 — OPNsense host aliases are family agnostic. The
 alias and the rule that blocks on it are yours to create; the kur
 manages membership only.
@@ -28,7 +29,10 @@ secret = "someAPIsecret"
 
 ## Requirements
 
-- `curl` in the `PATH` of the kur process.
+- [LWP::UserAgent](https://metacpan.org/pod/LWP::UserAgent), plus
+  [LWP::Protocol::https](https://metacpan.org/pod/LWP::Protocol::https)
+  for the default https scheme. Both are only loaded at run time, so
+  they are only needed on hosts actually running this kur.
 
 ## Settings
 
@@ -47,13 +51,13 @@ secret = "someAPIsecret"
 | `secret`   | *(required)*      | API secret (basic auth password)                      |
 | `alias`    | `<prefix>_<name>` | the pre-existing alias the IPs are added to           |
 | `scheme`   | `https`           | `https` or `http`                                     |
-| `insecure` | `0`               | adds `-k` to curl, accepting self-signed certificates |
-| `curl_cmd` | `curl -s`         | the curl binary plus base arguments                   |
+| `insecure` | `0`               | disables certificate verification, accepting self-signed certificates |
+| `timeout`  | `30`              | HTTP timeout in seconds                               |
 
 ## What each operation runs
 
-All calls are
-`curl -s [-k] -u '<key>:<secret>' -H 'Content-Type: application/json' ...`:
+All calls are HTTP requests authenticated via basic auth with
+`<key>:<secret>`, bodies sent as `Content-Type: application/json`:
 
 | operation  | call                                                                  |
 |------------|---------------------------------------------------------------------------|
@@ -80,11 +84,9 @@ by hand stay removed until `re_init`.
 - **teardown and flush empty the whole alias.** If anything besides
   this kur feeds the same alias (another kur, hand-curated entries),
   those entries are flushed too — give each kur its own alias.
-- `insecure = 1` is `curl -k`: encrypted, unauthenticated. Give the
-  firewall a real certificate if the path matters.
-- The key and secret appear on curl's command line, which is visible
-  to local `ps` — on a multi-user box, weigh that; the kur host is
-  usually single-purpose enough not to care.
+- `insecure = 1` skips certificate verification: encrypted,
+  unauthenticated. Give the firewall a real certificate if the path
+  matters.
 - Errors carry Error::Helper flags (`hostNotDefined`,
   `apiKeyNotDefined`, `apiSecretNotDefined`, …) — [`Net::Firewall::BlockerHelper::backends::opnsense`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::opnsense) has the full
   table.

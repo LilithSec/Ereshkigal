@@ -109,7 +109,7 @@ probe.)
 - Rules scale per IP × per protocol: banning 1000 IPs over tcp+udp
   means 2000 ufw rules. ufw is fine with that but `ufw status
   numbered` gets long; for very large ban volumes a set-based backend
-  (or [route](route.md)) stays tidier.
+  (or [linux_ip_route](linux_ip_route.md)) stays tidier.
 - `ufw prepend` puts ban rules ahead of allow rules — that ordering
   is the point, and also means the bans show at the top of `ufw
   status`.

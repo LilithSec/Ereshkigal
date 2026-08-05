@@ -103,7 +103,7 @@ enable_cidr = false         # ...but not through this one
 
 Enabling it is only half the story — the backend has to be able to
 carry ranges. Table and set based backends (`pf`, `ipfw`, `ufw`,
-`npf`, `route`, `shorewall`, and most of the appliance and cloud
+`npf`, `linux_ip_route`, `shorewall`, and most of the appliance and cloud
 backends) can; `iptables`, `nftables`, `firewalld`, `xdp`,
 `hosts_deny`, `dns_rpz`, `nsupdate`, `abuseipdb`, and `netscaler` can
 not. A kur that has `enable_cidr` set on a backend that can not carry
@@ -141,7 +141,7 @@ option and the host setup each needs; the short version...
 - **shorewall** — `type` (`drop`/`reject`), `shorewall_cmd`,
   `shorewall6_cmd`.
 - **npf** — `table` (the npf table, pre-declared in npf.conf).
-- **route** — `blocktype` (`blackhole`/`unreachable`/`prohibit`).
+- **linux_ip_route** — `blocktype` (`blackhole`/`unreachable`/`prohibit`).
 - **xdp** — `interfaces` (required), `mode` (`src`/`dst`),
   `xdp_mode`, `xdp_filter_cmd`.
 - **hosts_deny** — `file`, `daemon`.
@@ -150,7 +150,7 @@ option and the host setup each needs; the short version...
 - **routeros_api** — `host`+`user`+`password` (required), `scheme`,
   `insecure`, `list4`/`list6`, `timeout`.
 - **opnsense** — `host`+`key`+`secret` (required), `alias`,
-  `scheme`, `insecure`, `curl_cmd`.
+  `scheme`, `insecure`, `timeout`.
 - **pfsense** — `host`+`key` (required), `alias`, `timeout`,
   `insecure`.
 - **vyos** — `host`+`key` (required), `group`, `timeout`,
@@ -194,7 +194,7 @@ option and the host setup each needs; the short version...
 - **abuseipdb** — `key` (required), `categories`, `comment`,
   `timeout`; reporting only, blocks nothing itself.
 - **file_reload** — `file` (required), `format`, `header`, `footer`,
-  `reload`, `check`, `remove_on_teardown`.
+  `reload`, `check`, `remove_on_teardown`, `blank_reload_error`.
 - **shell** — `init`, `teardown`, `ban`, `unban` (required commands),
   `check`, `flush` (optional).
 - **dummy** — takes none; an underworld of pure imagination that just

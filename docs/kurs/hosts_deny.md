@@ -84,10 +84,11 @@ nothing to verify and check always passes.
 
 ## Gotchas
 
-- The rewrite is a direct write, not a tmp+rename — a crash
-  mid-write can leave a truncated file. Rare, but this is
-  `/etc/hosts.deny`; keep a backup if other critical rules live in
-  it.
+- The rewrite is atomic: new contents go to a temp file in the same
+  directory and are renamed into place (mode preserved), so a partial
+  file can never be seen. Updates serialize under an exclusive flock
+  on `<file>.lock` — created if needed and left in place, so don't be
+  surprised by a `hosts.deny.lock` living next to the file.
 - Because refusal happens post-handshake in the daemon, this blocks
   logins, not packets — no protection against floods, and nothing
   like `kill` exists (established sessions are untouched).

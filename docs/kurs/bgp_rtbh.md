@@ -6,7 +6,8 @@ or, with `announce_type = "flowspec"`, as a BGP FlowSpec rule
 discarding traffic from the source. Routers that honor the
 announcement drop the traffic — at your edge, or with a transit
 provider that accepts them, before it ever reaches your link. The
-[route](route.md) backend scaled from one host to the whole network.
+[linux_ip_route](linux_ip_route.md) backend scaled from one host to
+the whole network.
 
 ```toml
 [kur.ddos]

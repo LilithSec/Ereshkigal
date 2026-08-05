@@ -68,18 +68,20 @@ semantics everything else in Ereshkigal assumes.
 | `ban`      | `xdp-filter ip <ip> -m <mode>`                                 |
 | `unban`    | `xdp-filter ip <ip> -m <mode> -r`                              |
 | `list`     | no command — the kur's own ban book                            |
-| `check`    | `xdp-filter status` exits 0                                    |
+| `check`    | `xdp-filter status` exits 0 and lists every configured interface as loaded |
 | `flush`    | `xdp-filter ip <ip> -m <mode> -r` per banned IP                |
 | `re_init`  | teardown (best effort), init, re-add every banned IP           |
 | `teardown` | `xdp-filter unload <iface>` per interface (ban book kept)      |
 
 ## self_heal
 
-`check` is a global `xdp-filter status` probe — it confirms
-xdp-filter is answering, not that this kur's interfaces still carry
-the program or that the map still holds the IPs. An externally
-unloaded program is healed by `re_init` (or a kur restart), not
-automatically.
+`check` runs the global `xdp-filter status` and requires each of
+this kur's configured interfaces to show as loaded in its output —
+the status exits 0 even with an interface unloaded, so the exit code
+alone would miss it. An externally unloaded interface therefore
+fails `check` and self_heal re_inits on the next ban/unban. What
+`check` cannot see is the map's contents: IPs removed from the map
+by hand stay gone until `re_init`.
 
 ## Gotchas
 

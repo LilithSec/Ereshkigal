@@ -1,4 +1,4 @@
-# route — null routes via iproute2
+# linux_ip_route — null routes via iproute2
 
 Blocks whole IPs by adding unreachable/blackhole routes with `ip(8)`. No
 firewall required at all, traffic dies in the routing decision before
@@ -8,7 +8,7 @@ from this IP everywhere" hammer.
 
 ```toml
 [kur.blocklist]
-backend  = "route"
+backend  = "linux_ip_route"
 ban_time = 0
 
 [kur.blocklist.options]
@@ -75,7 +75,7 @@ blocktype:
 | `ban`      | `CMD route add BT <ip>`                                                  |
 | `unban`    | `CMD route del BT <ip>`                                                  |
 | `list`     | no command — the kur's own ban book                                      |
-| `check`    | `CMD route show BT <ip>` per banned IP; missing = unhealthy              |
+| `check`    | `CMD route show type BT <ip>` per banned IP; missing = unhealthy         |
 | `flush`    | `CMD route del BT <ip>` for every banned IP                              |
 | `re_init`  | teardown (best effort), init, re-add every route                         |
 | `teardown` | `CMD route del BT <ip>` per IP, failures tolerated (ban book kept)       |
@@ -107,5 +107,8 @@ external wipe should not error.
 - On the plus side, this backend coexists with anything — pf-oriented
   hosts, firewalld hosts, hosts with no firewall at all.
 - IPv6 addresses are lowercased on ban.
+- Banned ranges must have the host bits zeroed (`192.0.2.0/24`, not
+  `192.0.2.4/24`) — iproute2 rejects the latter with "Invalid prefix
+  for given prefix length", surfacing as a `banCidrFailed` error.
 - Errors carry Error::Helper flags (`blocktypeInvalid`,
-  `portsNotSupported`, …) — [`Net::Firewall::BlockerHelper::backends::route`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::route) has the full table.
+  `portsNotSupported`, …) — [`Net::Firewall::BlockerHelper::backends::linux_ip_route`](https://metacpan.org/pod/Net::Firewall::BlockerHelper::backends::linux_ip_route) has the full table.

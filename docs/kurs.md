@@ -38,8 +38,8 @@ Local packet filters...
 - [shorewall](kurs/shorewall.md) — Shorewall's dynamic blacklist
 - [npf](kurs/npf.md) — npf on NetBSD; the table and rule npf.conf
   must declare
-- [route](kurs/route.md) — null routes via iproute2; no firewall
-  needed at all
+- [linux_ip_route](kurs/linux_ip_route.md) — null routes via
+  iproute2; no firewall needed at all
 - [xdp](kurs/xdp.md) — XDP/eBPF drops before the network stack,
   via xdp-filter
 - [hosts_deny](kurs/hosts_deny.md) — TCP wrappers; a marked

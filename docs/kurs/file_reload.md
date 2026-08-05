@@ -13,6 +13,7 @@ backend = "file_reload"
 file   = "/etc/nginx/blocklist.conf"
 format = "deny %%%BAN%%%;"
 reload = "nginx -s reload"
+blank_reload_error = 0
 ```
 
 ## How it works
@@ -48,6 +49,7 @@ which makes every operation idempotent and leaves no partial state.
 | `reload`             | *(unset)*    | command run after each write; unset = just write the file     |
 | `check`              | *(unset)*    | health probe command, exit 0 = healthy; unset = file-exists   |
 | `remove_on_teardown` | `1`          | teardown unlinks the file; `0` = render it empty and leave it |
+| `blank_reload_error` | `1`          | a reload producing no output is a failure even on exit 0; `0` for hooks silent on success |
 
 ## What each operation does
 
@@ -64,7 +66,12 @@ which makes every operation idempotent and leaves no partial state.
 
 A failing reload command fails the operation that triggered it, so a
 broken hook surfaces as ban/unban errors rather than silently
-leaving the consumer stale.
+leaving the consumer stale. By default a reload that produces **no
+output at all** is also treated as a failure, even with a zero exit
+(`blank_reload_error`) — most reload hooks that are silent are silent
+because they never ran. For hooks genuinely quiet on success
+(`nginx -s reload`, `postmap`, `systemctl reload ...`), set
+`blank_reload_error = 0` as the recipes below do.
 
 ## Recipes
 
@@ -75,6 +82,7 @@ leaving the consumer stale.
 file   = "/etc/nginx/blocklist.conf"
 format = "deny %%%BAN%%%;"
 reload = "nginx -s reload"
+blank_reload_error = 0
 ```
 
 **Postfix client access map:**
@@ -83,6 +91,7 @@ reload = "nginx -s reload"
 file   = "/usr/local/etc/postfix/client_access"
 format = "%%%BAN%%% REJECT"
 reload = "postmap /usr/local/etc/postfix/client_access"
+blank_reload_error = 0
 ```
 
 **ipset via restore file** (when you want the admin to own the
@@ -93,6 +102,7 @@ file   = "/var/db/kur/web.ipset"
 header = "flush kur_web"
 format = "add kur_web %%%BAN%%%"
 reload = "ipset restore -exist -f /var/db/kur/web.ipset"
+blank_reload_error = 0
 ```
 
 **External Dynamic List** for PAN-OS/FortiGate to poll — bare IPs,
