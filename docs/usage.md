@@ -12,6 +12,12 @@ Data commands print their result as pretty JSON and exit 0; errors
 print the server's error text and exit nonzero, so the CLI scripts
 cleanly.
 
+Every subcommand takes `--help` (or `-h`), which explains what it does,
+what it will do to the firewall, and the shape of its options —
+`ereshkigal help <command>` prints the same thing. Read
+`ereshkigal unban --help` and `ereshkigal clear-retries --help` before
+reaching for either; both can undo a lot of blocking in one go.
+
 ## Raising and quieting the underworlds
 
 ```shell

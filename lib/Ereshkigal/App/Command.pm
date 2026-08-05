@@ -148,7 +148,7 @@ sub _help_text {
 	$description = "\n" . $description if ( length($description) );
 
 	return join( "\n", $self->usage->leader_text, $description, $self->usage->option_text ) . "\n";
-} ## end sub _help_text
+}
 
 =head1 AUTHOR
 

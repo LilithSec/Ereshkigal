@@ -77,6 +77,42 @@ usage_error_ok(
 
 usage_error_ok( ['bogus'], qr/bogus/i, 'unknown subcommand' );
 
+#
+# --help works on every command, exits 0, and answers before validate_args
+# gets to complain about missing args... it also has to agree with what the
+# built in help command renders
+#
+
+foreach my $command (
+	'status',        'banned', 'ban',    'unban',      'cidr-ban', 'cidr-unban',
+	'clear-retries', 'add',    'remove', 'checkpoint', 'start',    'stop'
+	)
+{
+	foreach my $flag ( '--help', '-h' ) {
+		my $result = test_app( 'Ereshkigal::App' => [ $command, $flag ] );
+		is( $result->exit_code, 0, $command . ' ' . $flag . ' exits 0' );
+		like( $result->stdout, qr/\Q$command\E/,            $command . ' ' . $flag . ' names the command' );
+		like( $result->stdout, qr/show this help and exit/, $command . ' ' . $flag . ' lists the help option' );
+	}
+
+	# the description is the point of the exercise... every command has to
+	# carry more than a single terse line
+	my $help = test_app( 'Ereshkigal::App' => [ 'help', $command ] );
+	my @body = grep { /\S/ } split( /\n/, $help->stdout );
+	cmp_ok( scalar(@body), '>=', 6, $command . ' help says more than a line or two' );
+
+	my $flagged = test_app( 'Ereshkigal::App' => [ $command, '--help' ] );
+	is( $flagged->stdout, $help->stdout, $command . ' --help agrees with help ' . $command );
+} ## end foreach my $command ( 'status', 'banned', 'ban'...)
+
+# the dangerous ones say so
+foreach
+	my $pair ( [ 'clear-retries', qr/BEWARE/ ], [ 'unban', qr/no confirmation/ ], [ 'stop', qr/stops being enforced/ ] )
+{
+	my $result = test_app( 'Ereshkigal::App' => [ $pair->[0], '--help' ] );
+	like( $result->stdout, $pair->[1], $pair->[0] . ' help warns about what it does' );
+}
+
 # -s reaches the client for every client command
 foreach my $command ( 'stop', 'status', 'banned' ) {
 	usage_error_ok( [ '-s', $dir . '/nothere.sock', $command ], qr/Failed to connect/, $command . ' honors -s' );
