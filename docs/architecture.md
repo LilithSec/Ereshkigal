@@ -89,6 +89,20 @@ unbanned from the backend, dropped from the books, and counted in the
 `expired` stat (`cidr_expired` for ranges). Re-banning an IP that is
 already below just refreshes its sentence.
 
+Should the backend refuse the release — a remote API briefly
+unreachable, say — the soul still leaves the books, but the firewall
+side is remembered in a retry list rather than left banished forever.
+The sweeper retries it, backing off by doubling from one second to a
+cap of sixty, until the backend takes it. Nothing else will clear it
+while the backend is still refusing: a hand `unban` goes to that same
+backend and fails the same way, leaving the retry pending. An entry
+leaves the list only once its rule is genuinely gone — the retry
+lands, or a `flush`/`re_init` succeeds — or once it is wanted again,
+a re-ban cancelling the retry without touching the backend, since the
+rule never actually left. The list lives only in memory, so a kur
+that dies with entries pending leaves them to the next `re_init` or
+`flush`.
+
 ## The clay tablets
 
 Each kur checkpoints its banishments to
@@ -107,3 +121,12 @@ happen.
 - on demand via the `checkpoint` command
 
 Writes to the file are done in an atomic manner.
+
+On the way back up a tablet is read row by row, and anything that does
+not parse — a bad field count, a non-numeric time, or an address that
+is not a valid IP or range — is logged and skipped rather than
+restored. Addresses are normalized before being booked, exactly as a
+live ban is, so the ban book only ever holds canonical spellings and
+every restored ban can be named by a later `unban`. A row whose
+sentence ran out while the kur was down is unbanned rather than
+re-banned, in case the firewall still carries the rule.

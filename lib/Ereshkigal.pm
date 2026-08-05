@@ -624,6 +624,8 @@ sub _check_kur_def {
 		$error = 'The authed_users for the kur "' . $name . '" is ' . _authed_list_error( $def->{authed_users} );
 	} elsif ( defined( $def->{authed_groups} ) && defined( _authed_list_error( $def->{authed_groups} ) ) ) {
 		$error = 'The authed_groups for the kur "' . $name . '" is ' . _authed_list_error( $def->{authed_groups} );
+	} elsif ( defined( $def->{options} ) && defined( _options_error( $def->{options} ) ) ) {
+		$error = 'The options for the kur "' . $name . '" is ' . _options_error( $def->{options} );
 	}
 
 	if ( defined($error) ) {
@@ -691,6 +693,28 @@ sub _authed_list_error {
 
 	return undef;
 } ## end sub _authed_list_error
+
+# returns a error string if the passed backend options hash carries anything
+# _build_kur_cmd can not hand to the kur bin, undef otherwise... values must
+# be plain scalars, except interfaces, which may also be a array of them
+sub _options_error {
+	my ($options) = @_;
+
+	if ( ref($options) ne 'HASH' ) {
+		return 'not a hash';
+	}
+	foreach my $key ( keys( %{$options} ) ) {
+		my $value = $options->{$key};
+		next if ( ref($value) eq '' );
+		if ( $key eq 'interfaces' && ref($value) eq 'ARRAY' && !grep { ref($_) ne '' } @{$value} ) {
+			next;
+		}
+		return 'carrying a non-scalar value for the option "' . $key
+			. '"... only interfaces may be a array, and only of plain scalars';
+	}
+
+	return undef;
+} ## end sub _options_error
 
 # checks if the user is in the passed users list or a member of one of the
 # passed groups... group membership (primary and secondary) comes from the
@@ -883,9 +907,16 @@ sub _build_kur_cmd {
 
 	if ( ref( $def->{options} ) eq 'HASH' ) {
 		foreach my $key ( sort( keys( %{ $def->{options} } ) ) ) {
-			push( @cmd, '--option', $key . '=' . $def->{options}{$key} );
-		}
-	}
+			my $value = $def->{options}{$key};
+			# interfaces is the one array valued option, riding its own flag
+			# so the kur bin can rebuild the array
+			if ( $key eq 'interfaces' ) {
+				push( @cmd, '--interfaces', ref($value) eq 'ARRAY' ? join( ',', @{$value} ) : $value );
+			} else {
+				push( @cmd, '--option', $key . '=' . $value );
+			}
+		} ## end foreach my $key ( sort( keys( %{ $def->{options...}})))
+	} ## end if ( ref( $def->{options} ) eq 'HASH' )
 
 	return @cmd;
 } ## end sub _build_kur_cmd
@@ -1188,10 +1219,15 @@ sub _cmd_status_kur {
 
 	if ( $status->{running} ) {
 		# via _fan_out rather than a bare call_ok so a live process with a
-		# wedged socket degrades to a per-kur error entry, matching how
-		# status_all and the fan_out branch above behave
-		$status->{status} = $self->_fan_out( [$name], 'status' )->{$name};
-	}
+		# wedged socket degrades to a error entry, reported under the same
+		# error key status_all uses rather than nested inside status
+		my $answer = $self->_fan_out( [$name], 'status' )->{$name};
+		if ( defined( $answer->{error} ) ) {
+			$status->{error} = $answer->{error};
+		} else {
+			$status->{status} = $answer;
+		}
+	} ## end if ( $status->{running} )
 
 	return $status;
 } ## end sub _cmd_status_kur
@@ -1307,11 +1343,15 @@ sub _cmd_ban_common {
 		@targets = $self->_expand_kur_targets( $args->{kur} );
 	} else {
 		@targets = $self->_real_kur_names;
+		# authorized before the empty check, matching every other untargeted
+		# command... with zero real kurs this is the manager level check, so
+		# an unauthorized caller is refused rather than being told what the
+		# manager is carrying
+		$self->_authorize( $ctx, @targets );
 		if ( !@targets ) {
 			die('No kur instances');
 		}
-		$self->_authorize( $ctx, @targets );
-	}
+	} ## end else [ if ( defined( $args->{kur} ) ) ]
 
 	# pre-flight the entries so garbage is bounced here instead of being
 	# fanned out just for every kur to bounce it, and so what is fanned out

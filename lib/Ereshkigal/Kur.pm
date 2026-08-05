@@ -126,28 +126,30 @@ sub new {
 			fatal_flags      => {},
 			perror_not_fatal => 0,
 		},
-		name             => undef,
-		backend          => undef,
-		ports            => [],
-		protocols        => [],
-		prefix           => undef,
-		options          => undef,
-		self_heal        => undef,
-		ban_time         => 600,
-		checkpoint       => 60,
-		enable_cidr      => 0,
-		cidr_silent_drop => 0,
-		run_base_dir     => '/var/run/ereshkigal',
-		cache_base_dir   => '/var/cache/ereshkigal',
-		backend_obj      => undef,
-		cidr_supported   => 0,
-		server           => undef,
-		started          => undef,
-		stopping         => 0,
-		bans             => {},
-		cidr_bans        => {},
-		last_checkpoint  => 0,
-		stats            => {
+		name               => undef,
+		backend            => undef,
+		ports              => [],
+		protocols          => [],
+		prefix             => undef,
+		options            => undef,
+		self_heal          => undef,
+		ban_time           => 600,
+		checkpoint         => 60,
+		enable_cidr        => 0,
+		cidr_silent_drop   => 0,
+		run_base_dir       => '/var/run/ereshkigal',
+		cache_base_dir     => '/var/cache/ereshkigal',
+		backend_obj        => undef,
+		cidr_supported     => 0,
+		server             => undef,
+		started            => undef,
+		stopping           => 0,
+		bans               => {},
+		cidr_bans          => {},
+		unban_retries      => {},
+		cidr_unban_retries => {},
+		last_checkpoint    => 0,
+		stats              => {
 			bans         => 0,
 			unbans       => 0,
 			cidr_bans    => 0,
@@ -175,7 +177,7 @@ sub new {
 	# literal strings true/false, which are both truthy in Perl, so those are
 	# folded down before the truthiness of the value is trusted
 	foreach my $toggle ( 'enable_cidr', 'cidr_silent_drop' ) {
-		if ( !defined( $self->{$toggle} ) || $self->{$toggle} =~ /\A(?:0|false|no|off)\z/i ) {
+		if ( !defined( $self->{$toggle} ) || $self->{$toggle} =~ /\A(?:|0|false|no|off)\z/i ) {
 			$self->{$toggle} = 0;
 		} else {
 			$self->{$toggle} = 1;
@@ -536,6 +538,7 @@ my %family_spec = (
 		'unban_method' => 'unban',
 		'list_method'  => 'list',
 		'hash'         => 'bans',
+		'retry_hash'   => 'unban_retries',
 		'ban_stat'     => 'bans',
 		'unban_stat'   => 'unbans',
 		'expired_stat' => 'expired',
@@ -551,6 +554,7 @@ my %family_spec = (
 		'unban_method' => 'unban_cidr',
 		'list_method'  => 'list_cidr',
 		'hash'         => 'cidr_bans',
+		'retry_hash'   => 'cidr_unban_retries',
 		'ban_stat'     => 'cidr_bans',
 		'unban_stat'   => 'cidr_unbans',
 		'expired_stat' => 'cidr_expired',
@@ -607,8 +611,13 @@ sub _refresh_heal {
 		eval { $self->_backend_do('re_init'); };
 		if ($@) {
 			log_drek( 'err', 're_init during refresh self heal failed... ' . $@, undef, 'kur-' . $self->{name} );
+		} else {
+			# re_init re-bans only what the book carries, so anything pending
+			# a unban retry is no longer in the firewall
+			$self->{unban_retries}      = {};
+			$self->{cidr_unban_retries} = {};
 		}
-	}
+	} ## end if ( !$@ && !$healthy )
 
 	return;
 } ## end sub _refresh_heal
@@ -664,6 +673,20 @@ sub _ban_many {
 			next;
 		}
 
+		# a pending unban retry means the firewall still carries it, so the
+		# backend is not asked to re-add what it already has... the retry is
+		# cancelled and the entry booked fresh
+		if ( defined( $self->{ $spec->{retry_hash} }{$entry} ) ) {
+			delete( $self->{ $spec->{retry_hash} }{$entry} );
+			$self->{stats}{ $spec->{ban_stat} }++;
+			$self->{ $spec->{hash} }{$entry} = { 'banned_at' => time, 'expires' => $expires };
+			$results->{$entry} = { 'status' => 'ok' };
+			log_drek( 'info',
+				'banned ' . $spec->{infix} . $entry . ' expires=' . $expires . ', cancelling pending unban retry',
+				undef, $ident );
+			next;
+		} ## end if ( defined( $self->{ $spec->{retry_hash}...}))
+
 		my $ban_method = $spec->{ban_method};
 		eval { $self->_backend_do( $ban_method, ban => $entry ); };
 		if ($@) {
@@ -694,11 +717,10 @@ sub _unban_one {
 
 	my $checkpoint_method = $spec->{checkpoint};
 
-	# check if it is actually present before trying to unban it... the
-	# backend book is compared in normalized form, as the state file restore
-	# path can seed it with non-canonical spellings the backend accepts but
-	# normalization refuses, such as leading zero octet IPv4, and those
-	# would otherwise be unremovable short of a flush
+	# check if it is actually present before trying to unban it... what the
+	# backend lists back is compared in normalized form, as a firewall may
+	# well render an entry differently to how it was handed over, IPv6
+	# especially, and that spelling is what it wants back to remove it
 	my @banned = $self->_backend_do( $spec->{list_method} );
 	my $present;
 	foreach my $banned_entry (@banned) {
@@ -724,10 +746,11 @@ sub _unban_one {
 		die($@);
 	}
 	$self->{stats}{ $spec->{unban_stat} }++;
-	# both spellings dropped from the book for the same reason the compare
-	# is normalized... deleting a absent key is a harmless no-op
+	# the book and the retry list are both keyed by the canonical form, that
+	# being the only form either ever carries, so the backend's spelling is
+	# not a key to worry about here... a pending unban retry is now moot
 	delete( $self->{ $spec->{hash} }{$entry} );
-	delete( $self->{ $spec->{hash} }{$present} );
+	delete( $self->{ $spec->{retry_hash} }{$entry} );
 	$self->$checkpoint_method;
 	log_drek( 'info', 'unbanned ' . $spec->{infix} . $entry, undef, 'kur-' . $self->{name} );
 
@@ -981,10 +1004,13 @@ sub _cmd_flush {
 	$self->_refuse_when_stopping;
 
 	# the backend flush clears both single IP and CIDR rules, so the CIDR
-	# tracking is cleared and checkpointed alongside the single IP tracking
+	# tracking is cleared and checkpointed alongside the single IP tracking,
+	# and pending unban retries are moot
 	$self->_backend_do('flush');
-	$self->{bans}      = {};
-	$self->{cidr_bans} = {};
+	$self->{bans}               = {};
+	$self->{cidr_bans}          = {};
+	$self->{unban_retries}      = {};
+	$self->{cidr_unban_retries} = {};
 	$self->_checkpoint;
 	$self->_checkpoint_cidr;
 	log_drek( 'info', 'flushed all bans', undef, 'kur-' . $self->{name} );
@@ -999,7 +1025,11 @@ sub _cmd_re_init {
 
 	$self->_refuse_when_stopping;
 
+	# re_init tears down and re-bans only what the book carries, so anything
+	# pending a unban retry is no longer in the firewall
 	$self->_backend_do('re_init');
+	$self->{unban_retries}      = {};
+	$self->{cidr_unban_retries} = {};
 	log_drek( 'info', 're_init done', undef, 'kur-' . $self->{name} );
 
 	return { 're_init' => 1 };
@@ -1108,14 +1138,65 @@ sub _sweep_family {
 		eval { $self->_backend_do( $spec->{unban_method}, ban => $banned_entry ); };
 		if ($@) {
 			$self->{stats}{errors}++;
-			log_drek( 'err', 'unbanning expired ' . $spec->{log_label} . ' of "' . $banned_entry . '" failed... ' . $@,
-				undef, $ident );
-		}
+			# the sentence is still considered served... the firewall side is
+			# left to the retry loop below rather than staying orphaned there
+			$self->{ $spec->{retry_hash} }{$banned_entry} = {
+				'first_tried' => $now,
+				'last_tried'  => $now,
+				'times_tried' => 1,
+				'next_try'    => $now + 1,
+				'delay'       => 2,
+			};
+			log_drek(
+				'err',
+				'unbanning expired '
+					. $spec->{log_label} . ' of "'
+					. $banned_entry
+					. '" failed, will retry... '
+					. $@,
+				undef,
+				$ident
+			);
+		} ## end if ($@)
 		delete( $self->{ $spec->{hash} }{$banned_entry} );
 		$self->{stats}{ $spec->{expired_stat} }++;
 		$changed = 1;
 		log_drek( 'info', $spec->{log_label} . ' of ' . $banned_entry . ' expired', undef, $ident );
 	} ## end foreach my $banned_entry ( keys( %{ $self->{ $spec...}}))
+
+	# retries unbans that failed at expiry, backing off with the same
+	# doubling to a cap of 60 seconds the manager uses for respawns... a
+	# re-ban via _ban_many cancels the entry instead
+	foreach my $retry_entry ( keys( %{ $self->{ $spec->{retry_hash} } } ) ) {
+		my $retry = $self->{ $spec->{retry_hash} }{$retry_entry};
+		if ( $retry->{next_try} > $now ) {
+			next;
+		}
+
+		eval { $self->_backend_do( $spec->{unban_method}, ban => $retry_entry ); };
+		if ($@) {
+			$self->{stats}{errors}++;
+			$retry->{last_tried} = $now;
+			$retry->{times_tried}++;
+			$retry->{next_try} = $now + $retry->{delay};
+			$retry->{delay}    = $retry->{delay} * 2 > 60 ? 60 : $retry->{delay} * 2;
+			log_drek(
+				'err',
+				'unban retry '
+					. $retry->{times_tried} . ' for '
+					. $spec->{log_label} . ' of "'
+					. $retry_entry
+					. '" failed... '
+					. $@,
+				undef,
+				$ident
+			);
+		} else {
+			delete( $self->{ $spec->{retry_hash} }{$retry_entry} );
+			log_drek( 'info', 'unban retry for ' . $spec->{log_label} . ' of ' . $retry_entry . ' succeeded',
+				undef, $ident );
+		}
+	} ## end foreach my $retry_entry ( keys( %{ $self->{ $spec...}}))
 
 	if ($changed) {
 		my $checkpoint_method = $spec->{checkpoint};
@@ -1261,12 +1342,27 @@ sub _load_state {
 			next;
 		}
 		my ( $banned_entry, $written, $left ) = @row;
-		# state files written before normalization existed may carry
-		# non-canonical forms
+		# everything is normalized before being booked, so a row that will
+		# not normalize is a hand edit or a corrupt tablet... it is skipped
+		# rather than booked raw, which would leave a entry the unban path
+		# can never name, as it normalizes what it is asked to remove
 		my $normalized = $spec->{normalizer}->($banned_entry);
-		if ( defined($normalized) ) {
-			$banned_entry = $normalized;
-		}
+		if ( !defined($normalized) ) {
+			log_drek(
+				'err',
+				'skipping line '
+					. $line_number . ' in "'
+					. $state_file
+					. '"... "'
+					. $banned_entry
+					. '" is not a valid '
+					. $spec->{noun},
+				undef,
+				$ident
+			);
+			next;
+		} ## end if ( !defined($normalized) )
+		$banned_entry = $normalized;
 
 		my $expires = $left ? $written + $left : 0;
 

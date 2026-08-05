@@ -236,7 +236,10 @@ method taking a whole hash of sockets rather than using a per socket object.
 
     - timeout :: Timeout in seconds for the whole fan out, bounding it as a
           whole rather than each socket individually, so the wall time is
-          the slowest socket capped at one timeout instead of the sum. 0
+          the slowest socket capped at one timeout instead of the sum. This
+          covers the connects as well, each of which is bounded by a even
+          share of what is left of it, so a socket whose listener never
+          accepts can not hang the fan out or starve the rest of it. 0
           means no timeout.
         Default :: 30
 
@@ -276,26 +279,63 @@ sub call_many {
 
 	my $answers = {};
 
+	# one shared deadline over the whole fan out, the connects included... a
+	# timeout of 0 means no deadline at all
+	my $deadline = $timeout ? time + $timeout : undef;
+
 	# each connection is a little state machine... writing till the request
 	# line is fully sent, then reading till a newline shows up
 	my %conns;
-	my $writers = IO::Select->new;
-	my $readers = IO::Select->new;
-	foreach my $name ( keys( %{ $opts{sockets} } ) ) {
-		# unix stream connects to a listening socket complete immediately and
-		# dead sockets refuse immediately, so a blocking connect here is fine
-		my $sock = IO::Socket::UNIX->new(
-			'Type' => IO::Socket::UNIX::SOCK_STREAM(),
-			'Peer' => $opts{sockets}{$name},
-		);
+	my $writers     = IO::Select->new;
+	my $readers     = IO::Select->new;
+	my @names       = sort( keys( %{ $opts{sockets} } ) );
+	my $left_to_try = scalar(@names);
+	foreach my $name (@names) {
+		# a unix stream connect to a live listener normally completes at once
+		# and a dead socket refuses at once, but a listener whose accept queue
+		# has filled blocks, so each connect is bounded rather than being left
+		# to wedge the whole fan out... the bound is a even share of what is
+		# left of the deadline, so one wedged listener can not eat the budget
+		# the rest need, and never less than a second as alarm(0) would mean
+		# no alarm at all
+		my $remaining;
+		if ( defined($deadline) ) {
+			my $budget = $deadline - time;
+			if ( $budget <= 0 ) {
+				$left_to_try--;
+				$answers->{$name} = { 'error' => 'Timed out before connecting to "' . $opts{sockets}{$name} . '"' };
+				next;
+			}
+			$remaining = int( $budget / $left_to_try ) || 1;
+		}
+		$left_to_try--;
+
+		my $sock;
+		my $connect_error;
+		eval {
+			local $SIG{ALRM} = sub { die("timed out\n"); };
+			alarm($remaining) if defined($remaining);
+			$sock = IO::Socket::UNIX->new(
+				'Type' => IO::Socket::UNIX::SOCK_STREAM(),
+				'Peer' => $opts{sockets}{$name},
+			);
+			$connect_error = $! if !$sock;
+			alarm(0);
+			1;
+		} or do {
+			alarm(0);
+			$sock          = undef;
+			$connect_error = 'timed out';
+		};
 		if ( !$sock ) {
-			$answers->{$name} = { 'error' => 'Failed to connect to "' . $opts{sockets}{$name} . '"... ' . $! };
+			$answers->{$name}
+				= { 'error' => 'Failed to connect to "' . $opts{sockets}{$name} . '"... ' . $connect_error };
 			next;
 		}
 		$sock->blocking(0);
 		$conns{$sock} = { 'name' => $name, 'sock' => $sock, 'sent' => 0, 'buf' => '' };
 		$writers->add($sock);
-	} ## end foreach my $name ( keys( %{ $opts{sockets} } ) )
+	} ## end foreach my $name (@names)
 
 	my $finish = sub {
 		my ( $conn, $answer ) = @_;
@@ -306,10 +346,9 @@ sub call_many {
 		$answers->{ $conn->{name} } = $answer;
 	};
 
-	# one select loop over all the connections against a single shared
-	# deadline... no SIGALRM as one alarm can't supervise N conversations,
-	# and a timeout of 0 means no deadline at all
-	my $deadline = $timeout ? time + $timeout : undef;
+	# one select loop over all the connections against that same deadline...
+	# no SIGALRM here as one alarm can't supervise N conversations, which is
+	# why only the sequential connects above use one
 	while (%conns) {
 		my $remaining;
 		if ( defined($deadline) ) {

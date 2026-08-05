@@ -62,7 +62,7 @@ sub denied_ok {
 		plan tests => 3;
 		ok( !$lived, 'refused' );
 		like( ( ref($err) eq 'HASH' ? $err->{error} : $err ), $regex, 'error message' );
-		is( ( ref($err) eq 'HASH' ? $err->{code} : undef ), 'permission_denied', 'permission_denied code' );
+		is( ( ref($err) eq 'HASH'   ? $err->{code}  : undef ), 'permission_denied', 'permission_denied code' );
 	};
 } ## end sub denied_ok
 
@@ -108,16 +108,25 @@ lives_ok { $ereshkigal->_authorize( $global, 'sshd', 'smtp' ) } 'global user all
 # a kur scoped user is authorized for just that kur
 my $scoped = ctx( 'uid' => 12346, 'username' => 'scopeduser' );
 lives_ok { $ereshkigal->_authorize( $scoped, 'sshd' ) } 'scoped user their kur';
-denied_ok( sub { $ereshkigal->_authorize( $scoped, 'smtp' ) }, qr/not authorized for the kur "smtp"/,
-	'scoped user other kur denied' );
-denied_ok( sub { $ereshkigal->_authorize($scoped) }, qr/not authorized for manager level/,
-	'scoped user manager level denied' );
-denied_ok( sub { $ereshkigal->_authorize( $scoped, 'sshd', 'smtp' ) }, qr/not authorized for the kur "smtp"/,
-	'scoped user denied when any touched kur is not theirs' );
+denied_ok(
+	sub { $ereshkigal->_authorize( $scoped, 'smtp' ) },
+	qr/not authorized for the kur "smtp"/,
+	'scoped user other kur denied'
+);
+denied_ok(
+	sub { $ereshkigal->_authorize($scoped) },
+	qr/not authorized for manager level/,
+	'scoped user manager level denied'
+);
+denied_ok(
+	sub { $ereshkigal->_authorize( $scoped, 'sshd', 'smtp' ) },
+	qr/not authorized for the kur "smtp"/,
+	'scoped user denied when any touched kur is not theirs'
+);
 
 # a nobody is denied everywhere
 my $nobody = ctx( 'uid' => 12347, 'username' => 'nobodyuser' );
-denied_ok( sub { $ereshkigal->_authorize($nobody) },         qr/not authorized/, 'unknown user manager level denied' );
+denied_ok( sub { $ereshkigal->_authorize($nobody) }, qr/not authorized/, 'unknown user manager level denied' );
 denied_ok( sub { $ereshkigal->_authorize( $nobody, 'sshd' ) }, qr/not authorized/, 'unknown user kur denied' );
 
 # a gateway scoped user... authorization for a command targeted at a
@@ -125,8 +134,11 @@ denied_ok( sub { $ereshkigal->_authorize( $nobody, 'sshd' ) }, qr/not authorized
 # members', that being what makes one usable as a single point of contact
 my $gateuser = ctx( 'uid' => 12348, 'username' => 'gateuser' );
 lives_ok { $ereshkigal->_authorize( $gateuser, 'gate' ) } 'gateway user their gateway';
-denied_ok( sub { $ereshkigal->_authorize( $gateuser, 'sshd' ) }, qr/not authorized/,
-	'gateway user denied the members directly' );
+denied_ok(
+	sub { $ereshkigal->_authorize( $gateuser, 'sshd' ) },
+	qr/not authorized/,
+	'gateway user denied the members directly'
+);
 denied_ok( sub { $ereshkigal->_authorize($gateuser) }, qr/not authorized/, 'gateway user denied manager level' );
 
 SKIP: {
@@ -155,7 +167,7 @@ SKIP: {
 		}
 	}
 	endgrent();
-	SKIP: {
+SKIP: {
 		skip 'current user is not in any group member list', 1 if !defined($member_group);
 		$ereshkigal->{authed_groups} = [$member_group];
 		lives_ok { $ereshkigal->_authorize($me) } 'authorized via a group member list';
@@ -167,6 +179,35 @@ SKIP: {
 	lives_ok { $ereshkigal->_authorize( $me, 'sshd' ) } 'kur level group grants that kur';
 	denied_ok( sub { $ereshkigal->_authorize( $me, 'smtp' ) }, qr/not authorized/, 'but not the other kur' );
 } ## end SKIP:
+
+# a untargeted command on a manager carrying no real kurs is authorized
+# before the emptiness is reported, so a refusal does not leak whether the
+# manager has anything defined... the empty list makes it the manager level
+# check, matching every other untargeted command
+open( my $bare_fh, '>', $dir . '/bare.toml' ) || die($!);
+print $bare_fh 'run_base_dir   = "'
+	. $dir . '/run"' . "\n"
+	. 'cache_base_dir = "'
+	. $dir
+	. '/cache"' . "\n"
+	. 'enable_auth    = true' . "\n"
+	. 'authed_users   = [ "globaluser" ]' . "\n";
+close($bare_fh);
+
+my $bare = Ereshkigal->new( 'config' => $dir . '/bare.toml' );
+foreach my $command ( 'ban', 'cidr_ban' ) {
+	my $method = '_cmd_' . $command;
+	my $args   = $command eq 'ban' ? { 'ips' => ['1.2.3.4'] } : { 'cidrs' => ['1.2.3.0/24'] };
+	denied_ok(
+		sub { $bare->$method( { 'args' => $args }, $nobody ) },
+		qr/not authorized/,
+		'untargeted ' . $command . ' with no kurs refuses before reporting emptiness'
+	);
+}
+
+# and an authorized caller still gets told there is nothing to ban on
+throws_ok { $bare->_cmd_ban( { 'args' => { 'ips' => ['1.2.3.4'] } }, $global ) } qr/No kur instances/,
+	'a authorized caller still gets the no kur instances error';
 
 # with enable_auth off everything is authorized regardless of lists
 $ereshkigal->{enable_auth} = 0;

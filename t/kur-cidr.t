@@ -130,6 +130,31 @@ $off->{started} = time;
 is( $off->{enable_cidr},   0, 'enable_cidr defaults off' );
 is( $off->_cidr_available, 0, 'CIDR not available when disabled' );
 
+# the toggles are folded from whatever the config carried... the false-ish
+# strings and a empty string, which a templater may well emit, all mean off,
+# while anything else is on
+foreach my $false ( '', '0', 'false', 'FALSE', 'no', 'off' ) {
+	my $folded = Ereshkigal::Kur->new(
+		'name'           => 'fold',
+		'backend'        => 'dummy',
+		'run_base_dir'   => $dir . '/run',
+		'cache_base_dir' => $dir . '/cache',
+		'enable_cidr'    => $false,
+	);
+	is( $folded->{enable_cidr}, 0, 'enable_cidr "' . $false . '" folds to off' );
+} ## end foreach my $false ( '', '0', 'false', 'FALSE', ...)
+
+foreach my $true ( '1', 'true', 'yes', 'on' ) {
+	my $folded = Ereshkigal::Kur->new(
+		'name'           => 'fold',
+		'backend'        => 'dummy',
+		'run_base_dir'   => $dir . '/run',
+		'cache_base_dir' => $dir . '/cache',
+		'enable_cidr'    => $true,
+	);
+	is( $folded->{enable_cidr}, 1, 'enable_cidr "' . $true . '" folds to on' );
+} ## end foreach my $true ( '1', 'true', 'yes', 'on' )
+
 throws_ok { $off->_cmd_cidr_ban( { 'args' => { 'cidrs' => ['1.2.3.0/24'] } } ) } qr/not enabled/,
 	'cidr_ban refused when disabled';
 throws_ok { $off->_cmd_cidr_unban( { 'args' => { 'cidr' => '1.2.3.0/24' } } ) } qr/not enabled/,

@@ -316,4 +316,61 @@ is_deeply(
 $fanned = $ereshkigal->_fan_out( ['nosuch'], 'ping' );
 is_deeply( $fanned, { 'nosuch' => { 'error' => 'not running' } }, '_fan_out treats a unknown kur as not running' );
 
+#
+# a running kur whose socket can not be reached reports under the same error
+# key status_all uses, rather than nesting the failure inside status
+#
+
+# a pid makes it look running, so the fan out attempts a connect and fails
+# against the socket that was never created
+$ereshkigal->{kurs}{sshd}{pid} = $$;
+
+my $wedged = $ereshkigal->_cmd_status_kur( { 'args' => { 'name' => 'sshd' } }, undef );
+is( $wedged->{running}, 1, 'status_kur of a wedged kur still reports running' );
+like( $wedged->{error}, qr/Failed to connect/, 'status_kur reports the failure under error' );
+ok( !defined( $wedged->{status} ), 'status_kur leaves status unset when the kur could not be reached' );
+
+my $all = $ereshkigal->_cmd_status_all;
+like( $all->{kurs}{sshd}{error}, qr/Failed to connect/, 'status_all reports the same failure under error' );
+ok( !defined( $all->{kurs}{sshd}{status} ), 'status_all leaves status unset too' );
+
+$ereshkigal->{kurs}{sshd}{pid} = undef;
+
+#
+# the interfaces option and options validation
+#
+
+$ereshkigal = Ereshkigal->new(
+	'config' => write_cfg(
+			  'run_base_dir = "'
+			. $dir
+			. '/ifrun"' . "\n"
+			. qq([kur.edge]\nbackend = "dummy"\n\n)
+			. qq([kur.edge.options]\ninterfaces = [ "eth0", "eth1" ]\nmode = "src"\n\n)
+			. qq([kur.lone]\nbackend = "dummy"\n\n)
+			. qq([kur.lone.options]\ninterfaces = "eth0"\n)
+	)
+);
+@cmd     = $ereshkigal->_build_kur_cmd('edge');
+$cmd_str = join( ' ', @cmd );
+like( $cmd_str, qr/--interfaces eth0,eth1/, 'a array interfaces option rides --interfaces' );
+like( $cmd_str, qr/--option mode=src/,      'scalar options still ride --option' );
+unlike( $cmd_str, qr/--option interfaces/, 'interfaces does not also ride --option' );
+
+@cmd     = $ereshkigal->_build_kur_cmd('lone');
+$cmd_str = join( ' ', @cmd );
+like( $cmd_str, qr/--interfaces eth0/, 'a scalar interfaces option rides --interfaces too' );
+
+throws_ok {
+	Ereshkigal->new(
+		'config' => write_cfg(
+				  'run_base_dir = "'
+				. $dir
+				. '/ifrun"' . "\n"
+				. qq([kur.edge]\nbackend = "dummy"\n\n[kur.edge.options]\nbad = [ "a" ]\n)
+		)
+	)
+} ## end throws_ok
+qr/non-scalar value for the option "bad"/, 'dies on a array valued option other than interfaces';
+
 done_testing;

@@ -47,6 +47,7 @@ t/kur-cidr.t
 t/kur-cmds.t
 t/kur-new.t
 t/kur-server.t
+t/kur-unban-retry.t
 t/lib/EreshkigalTest.pm
 t/logdrek.t
 t/manager-auth.t

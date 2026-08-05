@@ -122,9 +122,11 @@ sub _wait_for_pid_clear {
 		last if !defined($pid) || $pid !~ /^\s*([0-9]+)\s*$/;
 		$pid = $1;
 
-		# kill 0 is true while the process exists (or exists but is ours to
-		# signal); once it goes false the old manager is gone.
-		last if !kill( 0, $pid );
+		# kill 0 is true while the process exists, and EPERM means it exists
+		# but is not ours to signal; once both go false the old manager is
+		# gone. matching the foreground branch, which checks EPERM the same
+		# way, so a manager owned by another user is still waited on.
+		last if !kill( 0, $pid ) && !$!{EPERM};
 
 		# 0.25s nap without pulling in Time::HiRes.
 		select( undef, undef, undef, 0.25 );    ## no critic (BuiltinFunctions::ProhibitSleepViaSelect)

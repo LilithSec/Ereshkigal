@@ -72,6 +72,12 @@ Default is kur.
 
 A backend specific option. May be specified multiple times.
 
+=head2 --interfaces=<interfaces>
+
+A comma seperated list of interfaces, handed to the backend as the
+C<interfaces> option as a array. Wanted by backends taking a array of
+interfaces there, such as xdp.
+
 =head2 --self-heal <0/1>
 
 If the firewall setup should be verified and re-inited if needed before each
@@ -149,6 +155,7 @@ my $prefix;
 my $ports;
 my $protocols;
 my @options;
+my $interfaces;
 my $self_heal;
 my $ban_time;
 my $checkpoint;
@@ -168,6 +175,7 @@ GetOptions(
 	'protocols=s'        => \$protocols,
 	'prefix=s'           => \$prefix,
 	'option=s'           => \@options,
+	'interfaces=s'       => \$interfaces,
 	'self-heal=i'        => \$self_heal,
 	'ban-time=s'         => \$ban_time,
 	'checkpoint=s'       => \$checkpoint,
@@ -205,6 +213,10 @@ foreach my $key_value (@options) {
 	}
 	$backend_options{$key} = $value;
 }
+# interfaces is array valued, so it rides its own flag rather than --option
+if ( defined($interfaces) ) {
+	$backend_options{interfaces} = [ split( /\s*,\s*/, $interfaces ) ];
+}
 
 my $kur = Ereshkigal::Kur->new(
 	'name'      => $name,
@@ -223,7 +235,29 @@ my $kur = Ereshkigal::Kur->new(
 );
 
 if ($foreground) {
-	# supervised by ereshkigal or ran by hand, so just write the PID file ourselves
+	# supervised by ereshkigal or ran by hand, so the PID file is ours to
+	# write... the daemonize branch gets that plus a liveness check from
+	# daemonize() itself, so do the same check here rather than clobbering
+	# the PID file of a live kur and unlinking it again on the way out
+	if ( -e $kur->pid_path && open( my $old_pid_fh, '<', $kur->pid_path ) ) {
+		my $old_pid = <$old_pid_fh>;
+		close($old_pid_fh);
+		if ( defined($old_pid) && $old_pid =~ /^\s*([0-9]+)\s*$/ ) {
+			$old_pid = $1;
+			# kill 0 is true while the process exists, and EPERM means it
+			# exists but is not ours to signal
+			if ( kill( 0, $old_pid ) || $!{EPERM} ) {
+				die(      'A kur named "'
+						. $name
+						. '" already appears to be running with PID '
+						. $old_pid
+						. ' per the PID file "'
+						. $kur->pid_path
+						. '"' );
+			}
+		} ## end if ( defined($old_pid) && $old_pid =~ /^\s*([0-9]+)\s*$/)
+	} ## end if ( -e $kur->pid_path && open( my $old_pid_fh...))
+
 	open( my $pid_fh, '>', $kur->pid_path ) || die( 'Failed to open the PID file "' . $kur->pid_path . '"... ' . $! );
 	print $pid_fh $$;
 	close($pid_fh);

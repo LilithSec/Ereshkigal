@@ -49,15 +49,18 @@ sub usage_desc { return '%c add %o <kur>'; }
 
 sub opt_spec {
 	return (
-		[ 'backend=s',    'the Net::Firewall::BlockerHelper backend to use' ],
-		[ 'fan-out=s',    'comma seperated list of kurs to fan out to, in place of --backend' ],
-		[ 'ports=s',      'comma seperated list of ports to block' ],
-		[ 'protocols=s',  'comma seperated list of protocols to block' ],
-		[ 'prefix=s',     'the prefix to use' ],
-		[ 'option=s@',    'a backend specific option, key=value, may be given multiple times' ],
-		[ 'self-heal=i',  'if the firewall setup should be checked and re-inited before each ban/unban' ],
-		[ 'ban-time=i',   'seconds bans should last for this kur, 0 meaning never time out' ],
-		[ 'checkpoint=i', 'seconds between ban state CSV rewrites for this kur' ],
+		[ 'backend=s',          'the Net::Firewall::BlockerHelper backend to use' ],
+		[ 'fan-out=s',          'comma seperated list of kurs to fan out to, in place of --backend' ],
+		[ 'ports=s',            'comma seperated list of ports to block' ],
+		[ 'protocols=s',        'comma seperated list of protocols to block' ],
+		[ 'prefix=s',           'the prefix to use' ],
+		[ 'option=s@',          'a backend specific option, key=value, may be given multiple times' ],
+		[ 'interfaces=s',       'comma seperated list of interfaces, handed over as the interfaces option array' ],
+		[ 'self-heal=i',        'if the firewall setup should be checked and re-inited before each ban/unban' ],
+		[ 'ban-time=i',         'seconds bans should last for this kur, 0 meaning never time out' ],
+		[ 'checkpoint=i',       'seconds between ban state CSV rewrites for this kur' ],
+		[ 'enable-cidr=s',      'if CIDR banning is enabled for this kur' ],
+		[ 'cidr-silent-drop=s', 'if unavailable CIDR commands are silently dropped rather than errored' ],
 	);
 } ## end sub opt_spec
 
@@ -117,6 +120,15 @@ sub execute {
 		}
 		$opts->{options} = \%backend_options;
 	} ## end if ( defined( $opt->option ) )
+	if ( defined( $opt->interfaces ) ) {
+		$opts->{options}{interfaces} = $self->_split_comma_list( 'interfaces', $opt->interfaces );
+	}
+	if ( defined( $opt->enable_cidr ) ) {
+		$opts->{enable_cidr} = $opt->enable_cidr;
+	}
+	if ( defined( $opt->cidr_silent_drop ) ) {
+		$opts->{cidr_silent_drop} = $opt->cidr_silent_drop;
+	}
 
 	$self->run_command( 'add_kur', { 'name' => $args->[0], 'opts' => $opts } );
 

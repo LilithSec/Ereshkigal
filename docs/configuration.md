@@ -126,6 +126,11 @@ The `[kur.<name>.options]` table is handed to the backend unchecked.
 [kurs](kurs.md) links a detail page per backend covering every
 option and the host setup each needs; the short version...
 
+Values must be plain scalars, with one exception: `interfaces`, which
+the xdp backend wants as an array, may be given as one. Any other
+array or table valued option is refused at config load rather than
+reaching the backend as a stringified ref.
+
 - **pf** — `kill` (kill existing states for a banned IP; see
   [security](security.md), you almost certainly want this on).
 - **ipfw** — `rule` (rule number, unique per kur), `type`

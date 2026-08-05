@@ -88,6 +88,8 @@ underworlds from being spoiled by the ones that can not oblige.
 ```shell
 ereshkigal add dns --backend pf --ports 53 --protocols tcp,udp \
     --option kill=1 --ban-time 300     # raise a new kur, now
+ereshkigal add edge --backend xdp --interfaces eth0,eth1 \
+    --enable-cidr 1                    # array valued options ride --interfaces
 ereshkigal add gate --fan-out sshd,smtp  # raise a gate onto existing kurs
                                          # (see configuration.md)
 ereshkigal remove dns                  # stop it, tear down its firewall state,

@@ -60,8 +60,8 @@ ok( !defined( $kur->{last_checkpoint} ) || !$kur->{last_checkpoint}, 'no checkpo
 
 my $before = time;
 $kur->_cmd_ban( { 'args' => { 'ips' => ['1.2.3.4'] } } );
-ok( -f $kur->state_path, 'ban created the state CSV' );
-ok( !-e $kur->state_path . '.tmp', 'no temp file left behind' );
+ok( -f $kur->state_path,                'ban created the state CSV' );
+ok( !-e $kur->state_path . '.tmp',      'no temp file left behind' );
 ok( $kur->{last_checkpoint} >= $before, 'last_checkpoint bumped by the mutation' );
 
 my $raw = slurp( $kur->state_path );
@@ -70,7 +70,7 @@ like( $raw, qr/^ip,time,ban_time_left\n/, 'the header row is present' );
 $kur->_cmd_ban( { 'args' => { 'ips' => ['9.9.9.9'], 'ban_time' => 0 } } );
 my $rows = read_ban_csv( $kur->state_path );
 is( $rows->{'9.9.9.9'}{left}, 0, 'permanent ban written with 0 left' );
-ok( $rows->{'1.2.3.4'}{left} > 0 && $rows->{'1.2.3.4'}{left} <= 100, 'timed ban written with it\'s time left' );
+ok( $rows->{'1.2.3.4'}{left} > 0        && $rows->{'1.2.3.4'}{left} <= 100,  'timed ban written with it\'s time left' );
 ok( $rows->{'1.2.3.4'}{time} >= $before && $rows->{'1.2.3.4'}{time} <= time, 'the time column is the write time' );
 
 # clamped so a ban expiring with in the same second can't collide with the
@@ -92,7 +92,7 @@ is( $result->{bans},         2, '_cmd_checkpoint reports the ban count' );
 # periodic rewrite bookkeeping via the tick path
 #
 
-$kur->{bans} = { '2.2.2.2' => { 'banned_at' => time, 'expires' => time + 1000 } };
+$kur->{bans}            = { '2.2.2.2' => { 'banned_at' => time, 'expires' => time + 1000 } };
 $kur->{last_checkpoint} = time - 100;
 my $old_raw = slurp( $kur->state_path );
 $kur->_tick;
@@ -110,8 +110,8 @@ $disabled->_cmd_ban( { 'args' => { 'ips' => ['3.3.3.3'] } } );
 $disabled->{last_checkpoint} = 0;
 $old_raw = slurp( $disabled->state_path );
 $disabled->_tick;
-is( slurp( $disabled->state_path ), $old_raw,  'checkpoint 0 disables the periodic rewrite' );
-is( $disabled->{last_checkpoint},   0,         'and last_checkpoint stays put' );
+is( slurp( $disabled->state_path ), $old_raw, 'checkpoint 0 disables the periodic rewrite' );
+is( $disabled->{last_checkpoint},   0,        'and last_checkpoint stays put' );
 
 #
 # loading... the row time is compared against now to decide restoration
@@ -119,29 +119,39 @@ is( $disabled->{last_checkpoint},   0,         'and last_checkpoint stays put' )
 
 my $now = time;
 open( my $csv_fh, '>', $dir . '/cache/kur.loader.csv' ) || die($!);
-print $csv_fh "ip,time,ban_time_left\n"
-	. '10.0.0.1,' . $now . ',500' . "\n"                # timed, alive
-	. '10.0.0.2,' . ( $now - 60 ) . ',10' . "\n"        # expired while down
-	. '10.0.0.3,' . $now . ',0' . "\n"                  # permanent
-	. "not,enough\n"                                    # malformed... field count
-	. '10.0.0.4,junk,50' . "\n"                         # malformed... time
-	. '10.0.0.5,' . $now . ',junk' . "\n"               # malformed... left
-	. "\n"                                              # blank
-	. '10.0.0.6,' . $now . ',500' . "\n";               # good row after the junk
+print $csv_fh "ip,time,ban_time_left\n" . '10.0.0.1,' . $now . ',500' . "\n"    # timed, alive
+	. '10.0.0.2,' . ( $now - 60 ) . ',10' . "\n"                                # expired while down
+	. '10.0.0.3,' . $now . ',0' . "\n"                                          # permanent
+	. "not,enough\n"                                                            # malformed... field count
+	. '10.0.0.4,junk,50' . "\n"                                                 # malformed... time
+	. '10.0.0.5,' . $now . ',junk' . "\n"                                       # malformed... left
+	. '010.0.0.7,' . $now . ',500' . "\n"                                       # will not normalize... leading zero octet
+	. 'notanip,' . $now . ',500' . "\n"                                         # will not normalize... not a IP at all
+	. "\n"                                                                      # blank
+	. '10.0.0.6,' . $now . ',500' . "\n";                                       # good row after the junk
 close($csv_fh);
 
 my $loader = Ereshkigal::Kur->new( %common, 'name' => 'loader' );
 $loader->{started} = time;
 ok( defined( $loader->{bans}{'10.0.0.1'} ), 'live timed row restored' );
-is( $loader->{bans}{'10.0.0.1'}{expires}, $now + 500, 'expiry reconstructed as time plus left' );
-is( $loader->{bans}{'10.0.0.1'}{banned_at}, $now, 'the row time stands in for banned_at' );
+is( $loader->{bans}{'10.0.0.1'}{expires},   $now + 500, 'expiry reconstructed as time plus left' );
+is( $loader->{bans}{'10.0.0.1'}{banned_at}, $now,       'the row time stands in for banned_at' );
 ok( !defined( $loader->{bans}{'10.0.0.2'} ), 'expired while down row not restored' );
-is( $loader->{stats}{expired}, 1, 'and counted as expired' );
+is( $loader->{stats}{expired},            1, 'and counted as expired' );
 is( $loader->{bans}{'10.0.0.3'}{expires}, 0, 'permanent row stays permanent' );
 ok( defined( $loader->{bans}{'10.0.0.6'} ), 'good row after malformed ones still loads' );
+
 foreach my $bad ( '10.0.0.4', '10.0.0.5', 'not' ) {
 	ok( !defined( $loader->{bans}{$bad} ), 'malformed row "' . $bad . '" skipped' );
 }
+
+# a row that will not normalize is skipped rather than booked raw... booking
+# it raw would leave a ban the unban path could never name, as it normalizes
+# whatever it is asked to remove
+foreach my $bad ( '010.0.0.7', 'notanip' ) {
+	ok( !defined( $loader->{bans}{$bad} ), 'un-normalizable row "' . $bad . '" not booked raw' );
+}
+is( $loader->{bans}{'10.0.0.7'}, undef, 'nor booked under a normalized form it never had' );
 is_deeply(
 	[ sort( @{ $loader->_cmd_banned->{banned} } ) ],
 	[ '10.0.0.1', '10.0.0.3', '10.0.0.6' ],

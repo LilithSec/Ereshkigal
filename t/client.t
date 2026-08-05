@@ -5,7 +5,8 @@ use warnings;
 use Test::More;
 use Test::Exception;
 use lib 't/lib';
-use EreshkigalTest qw( test_dir socket_path_ok mock_server );
+use EreshkigalTest   qw( test_dir socket_path_ok mock_server );
+use IO::Socket::UNIX ();
 
 use Ereshkigal::Client;
 
@@ -257,6 +258,61 @@ my $elapsed = time - $started;
 like( $per_name->{one}{error}, qr/timed out/, 'the first stalled socket timed out' );
 like( $per_name->{two}{error}, qr/timed out/, 'the second stalled socket timed out' );
 cmp_ok( $elapsed, '<=', 3, 'the deadline is shared... about one timeout, not the sum' );
+
+# a listener that never accepts can not wedge the fan out... what a connect
+# to one whose accept queue has filled does is platform specific, Linux
+# blocking where the BSDs refuse at once, so this asserts the part that must
+# hold either way... every name is answered and the whole thing stays inside
+# the deadline, which is what the bounded connects buy
+my $deaf_socket = $dir . '/cm-deaf.sock';
+my $deaf        = IO::Socket::UNIX->new(
+	'Type'   => IO::Socket::UNIX::SOCK_STREAM(),
+	'Local'  => $deaf_socket,
+	'Listen' => 1,
+) || die($!);
+
+# fill the accept queue... each filler is bounded too, as the one that finds
+# the queue full is the one that would otherwise hang this test
+my @backlog;
+foreach ( 1 .. 20 ) {
+	my $filler;
+	eval {
+		local $SIG{ALRM} = sub { die("blocked\n"); };
+		alarm(1);
+		$filler = IO::Socket::UNIX->new(
+			'Type' => IO::Socket::UNIX::SOCK_STREAM(),
+			'Peer' => $deaf_socket,
+		);
+		alarm(0);
+		1;
+	} or do {
+		alarm(0);
+	};
+	last if !$filler;
+	push( @backlog, $filler );
+} ## end foreach ( 1 .. 20 )
+
+$started  = time;
+$per_name = Ereshkigal::Client->call_many(
+	'sockets' => { 'deaf' => $deaf_socket, 'ok' => $cm_a_socket },
+	'command' => 'slowcheck',
+	'timeout' => 4,
+);
+$elapsed = time - $started;
+cmp_ok( $elapsed, '<=', 8, 'a listener that never accepts does not hang the fan out' );
+ok( defined( $per_name->{deaf} ),        'the deaf socket still got a answer' );
+ok( defined( $per_name->{deaf}{error} ), 'and that answer is a error' );
+is_deeply(
+	$per_name->{ok},
+	{ 'result' => { 'quick' => 1 } },
+	'the healthy socket is not starved of it\'s share of the deadline'
+);
+
+foreach my $filler (@backlog) {
+	close($filler);
+}
+close($deaf);
+unlink($deaf_socket);
 
 # this one last as the mock will be stuck sleeping afterwards
 throws_ok { Ereshkigal::Client->new( 'socket' => $socket, 'timeout' => 1 )->call('sleepy') }
