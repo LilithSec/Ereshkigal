@@ -410,7 +410,7 @@ sub start_server {
 
 	my $server = POE::Component::Server::JSONUnix->spawn(
 		'socket_path' => $self->socket_path,
-		'socket_mode' => 0600,
+		'socket_mode' => oct('0600'),
 		'alias'       => $ident,
 		'on_error'    => sub {
 			my ( $operation, $errnum, $errstr ) = @_;
@@ -635,13 +635,21 @@ sub _ban_many {
 		if ( !defined($entry) ) {
 			my $key = defined($raw_entry) ? $raw_entry : '';
 			$self->{stats}{errors}++;
-			$results->{$key}
-				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a IPv4 or IPv6 ' . $spec->{noun} };
-			log_drek( 'err',
-				$spec->{log_label} . ' of "' . $key . '" failed... does not appear to be a IPv4 or IPv6 ' . $spec->{noun},
-				undef, $ident );
+			$results->{$key} = {
+				'status' => 'error',
+				'error'  => '"' . $key . '" does not appear to be a IPv4 or IPv6 ' . $spec->{noun}
+			};
+			log_drek(
+				'err',
+				$spec->{log_label} . ' of "'
+					. $key
+					. '" failed... does not appear to be a IPv4 or IPv6 '
+					. $spec->{noun},
+				undef,
+				$ident
+			);
 			next;
-		}
+		} ## end if ( !defined($entry) )
 		my $expires = $ban_time ? time + $ban_time : 0;
 
 		# already banned, so just refresh it's timer... the backend ban is
@@ -651,7 +659,8 @@ sub _ban_many {
 			$self->_refresh_heal;
 			$self->{ $spec->{hash} }{$entry}{expires} = $expires;
 			$results->{$entry} = { 'status' => 'ok', 'refreshed' => 1 };
-			log_drek( 'info', 'refreshed ' . $spec->{log_label} . ' of ' . $entry . ' expires=' . $expires, undef, $ident );
+			log_drek( 'info', 'refreshed ' . $spec->{log_label} . ' of ' . $entry . ' expires=' . $expires,
+				undef, $ident );
 			next;
 		}
 
@@ -994,7 +1003,7 @@ sub _cmd_re_init {
 	log_drek( 'info', 're_init done', undef, 'kur-' . $self->{name} );
 
 	return { 're_init' => 1 };
-}
+} ## end sub _cmd_re_init
 
 # handles the checkpoint command... force writes both tablets now,
 # returning how many entries each is carrying
@@ -1079,7 +1088,7 @@ sub _sweep_bans {
 	}
 
 	return;
-} ## end sub _sweep_bans
+}
 
 # the shared per family sweep... unbans anything whose sentence has been
 # served and checkpoints that family's tablet when anything changed
@@ -1166,7 +1175,7 @@ sub _write_state {
 		# checked as buffered print failures, a full filesystem for example,
 		# only surface here... skipping the rename keeps the previous good
 		# state file in place rather than replacing it with a truncated one
-		close($fh) || die( 'close failed... ' . $! );
+		close($fh)                       || die( 'close failed... ' . $! );
 		rename( $tmp_file, $state_file ) || die( 'rename failed... ' . $! );
 	};
 	if ($@) {
@@ -1270,9 +1279,10 @@ sub _load_state {
 					undef, $ident );
 			}
 			$self->{stats}{ $spec->{expired_stat} }++;
-			log_drek( 'info', $spec->{log_label} . ' of ' . $banned_entry . ' expired while not running', undef, $ident );
+			log_drek( 'info', $spec->{log_label} . ' of ' . $banned_entry . ' expired while not running',
+				undef, $ident );
 			next;
-		}
+		} ## end if ( $expires && $expires <= $now )
 
 		eval { $self->_backend_do( $spec->{ban_method}, ban => $banned_entry ); };
 		if ($@) {

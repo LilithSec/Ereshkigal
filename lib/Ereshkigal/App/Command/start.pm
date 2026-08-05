@@ -85,8 +85,8 @@ sub execute {
 							. $ereshkigal->pid_path
 							. '"' );
 				}
-			} ## end if ( defined($old_pid) && $old_pid =~ /^\s*([0-9]+)\s*$/...)
-		} ## end if ( -e $ereshkigal->pid_path && open( my...))
+			} ## end if ( defined($old_pid) && $old_pid =~ /^\s*([0-9]+)\s*$/)
+		} ## end if ( -e $ereshkigal->pid_path && open( my ...))
 
 		open( my $pid_fh, '>', $ereshkigal->pid_path )
 			|| die( 'Failed to open the PID file "' . $ereshkigal->pid_path . '"... ' . $! );
@@ -127,8 +127,8 @@ sub _wait_for_pid_clear {
 		last if !kill( 0, $pid );
 
 		# 0.25s nap without pulling in Time::HiRes.
-		select( undef, undef, undef, 0.25 );
-	}
+		select( undef, undef, undef, 0.25 );    ## no critic (BuiltinFunctions::ProhibitSleepViaSelect)
+	} ## end for ( 1 .. 40 )
 
 	return;
 } ## end sub _wait_for_pid_clear

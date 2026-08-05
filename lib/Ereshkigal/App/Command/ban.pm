@@ -64,7 +64,7 @@ sub validate_args {
 	}
 
 	return;
-}
+} ## end sub validate_args
 
 sub execute {
 	my ( $self, $opt, $args ) = @_;

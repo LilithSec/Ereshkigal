@@ -208,7 +208,7 @@ sub new {
 		authed_groups    => [],
 		auth_temp_dir    => undef,
 		socket_group     => undef,
-		socket_mode      => 0660,
+		socket_mode      => oct('0660'),
 		kurs             => {},
 		wheel_to_kur     => {},
 		pid_to_kur       => {},
@@ -269,7 +269,7 @@ sub new {
 			$self->warn;
 		}
 		$self->{socket_mode} = oct( '' . $config->{socket_mode} );
-	}
+	} ## end if ( defined( $config->{socket_mode} ) )
 
 	# A bare kur_bin (no path separator) is resolved against the directory
 	# ereshkigal was invoked from, since kur is installed alongside it. This
@@ -745,10 +745,12 @@ sub _authorize {
 		if ( $self->_user_in_lists( $ctx, $username, $self->{authed_users}, $self->{authed_groups} ) ) {
 			return;
 		}
-		die( {
-			'error' => 'The user "' . $username . '" is not authorized for manager level commands',
-			'code'  => 'permission_denied',
-		} );
+		die(
+			{
+				'error' => 'The user "' . $username . '" is not authorized for manager level commands',
+				'code'  => 'permission_denied',
+			}
+		);
 	} ## end if ( !@kurs )
 
 	foreach my $name (@kurs) {
@@ -759,10 +761,12 @@ sub _authorize {
 		my @groups = ( @{ $self->{authed_groups} },
 			ref( $def->{authed_groups} ) eq 'ARRAY' ? @{ $def->{authed_groups} } : () );
 		if ( !$self->_user_in_lists( $ctx, $username, \@users, \@groups ) ) {
-			die( {
-				'error' => 'The user "' . $username . '" is not authorized for the kur "' . $name . '"',
-				'code'  => 'permission_denied',
-			} );
+			die(
+				{
+					'error' => 'The user "' . $username . '" is not authorized for the kur "' . $name . '"',
+					'code'  => 'permission_denied',
+				}
+			);
 		}
 	} ## end foreach my $name (@kurs)
 

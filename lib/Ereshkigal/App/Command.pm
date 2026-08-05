@@ -94,7 +94,7 @@ sub _result_has_failures {
 	my @to_scan = ($result);
 	if ( ref( $result->{kurs} ) eq 'HASH' ) {
 		foreach my $kur_result ( values( %{ $result->{kurs} } ) ) {
-			next if ref($kur_result) ne 'HASH';
+			next     if ref($kur_result) ne 'HASH';
 			return 1 if defined( $kur_result->{error} );
 			push( @to_scan, $kur_result );
 		}
