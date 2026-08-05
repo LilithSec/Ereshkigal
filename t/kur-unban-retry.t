@@ -234,6 +234,20 @@ foreach my $bad ( 'short', '9.9.9.9', '010.0.0.1', '10.0.0.1' ) {
 }
 is( $bad_tablet->{unban_retries}{'1.1.1.1'}{delay}, 2, 'a 0 delay is floored rather than pegging the backoff' );
 
+# only the backoff's own doubling is clamped, so a restored delay has to be
+# brought inside the cap here or one bad row puts the next attempt days out
+open( my $wild_fh, '>', $dir . '/cache/kur.wildtablet.retry.csv' ) || die($!);
+print $wild_fh "ip,first_tried,last_tried,times_tried,next_try,delay\n"
+	. '8.8.4.4,1,2,3,4,999999' . "\n"
+	. '8.8.8.8,1,2,3,4,60' . "\n"
+	. '4.4.4.4,1,2,3,4,30' . "\n";
+close($wild_fh);
+my $wild_tablet = Ereshkigal::Kur->new( %common, 'name' => 'wildtablet' );
+$wild_tablet->{started} = time;
+is( $wild_tablet->{unban_retries}{'8.8.4.4'}{delay}, 60, 'a delay past the cap is brought back to it' );
+is( $wild_tablet->{unban_retries}{'8.8.8.8'}{delay}, 60, 'a delay at the cap is left alone' );
+is( $wild_tablet->{unban_retries}{'4.4.4.4'}{delay}, 30, 'a delay under the cap is left alone' );
+
 #
 # status and banned surface what is owed
 #

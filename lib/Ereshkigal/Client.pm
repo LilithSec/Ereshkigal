@@ -150,19 +150,16 @@ sub call {
 
 # Sends one request over a already connected socket and reads back the one
 # line answer to it, which is the whole of the newline delimited JSON
-# protocol L<POE::Component::Server::JSONUnix> speaks. Used by L</call> for
-# both the initial request and the resend after a auth challenge, and by
-# _authenticate for the challenge itself, so it deliberately does no
-# connecting, no timing out, and no auth handling of it's own... the caller
-# owns all three.
+# protocol POE::Component::Server::JSONUnix speaks. Used by call for both the
+# initial request and the resend after a auth challenge, and by _authenticate
+# for the challenge itself, so it deliberately does no connecting, no timing
+# out, and no auth handling of it's own... the caller owns all three.
 #
 # The request is JSON encoded, a newline appended, and written to the socket;
 # the answer is read to the first newline and JSON decoded.
 #
-# Args, all required and positional...
+# Args, both required and positional...
 #
-#     $self    :: The Ereshkigal::Client instance. Only used for it's socket
-#                 path, which goes into the error messages.
 #     $sock    :: A open IO::Socket::UNIX already connected to the server.
 #                 Left open on return, as the auth challenge and the resend
 #                 that follows it have to happen on this same connection.
@@ -173,11 +170,11 @@ sub call {
 #                 encode dies here.
 #
 # Returns the decoded response as a hash ref. The server's own shape is
-# C<{ status =E<gt> 'ok', result =E<gt> ... }> on success and
-# C<{ status =E<gt> 'error', error =E<gt> '...' }> on failure, but no
-# checking of that is done here... a error response comes back as a plain
-# hash ref just like a successful one, for the caller to judge. L</call_ok>
-# is what turns a error status into a die.
+# { status => 'ok', result => ... } on success and
+# { status => 'error', error => '...' } on failure, but no checking of that
+# is done here... a error response comes back as a plain hash ref just like a
+# successful one, for the caller to judge. call_ok is what turns a error
+# status into a die.
 #
 # Dies, with a trailing newline so the message reads cleanly when it reaches
 # a user, if the socket gives EOF rather than a line, if the line will not
@@ -208,9 +205,9 @@ sub _send_request {
 	return $response;
 } ## end sub _send_request
 
-# Completes the L<POE::Component::Server::JSONUnix> unix ownership challenge
-# on a already connected socket, which is how a manager with enable_auth on
-# learns who is talking to it. Called by L</call> when a request comes back
+# Completes the POE::Component::Server::JSONUnix unix ownership challenge on
+# a already connected socket, which is how a manager with enable_auth on
+# learns who is talking to it. Called by call when a request comes back
 # refused with the authentication required error, after which that request is
 # resent on the same connection.
 #
@@ -222,10 +219,8 @@ sub _send_request {
 # server doing it on success and this doing it otherwise, so a rejected
 # challenge leaves nothing behind.
 #
-# Args, both required and positional...
+# Args, required and positional...
 #
-#     $self :: The Ereshkigal::Client instance. Only used for it's socket
-#              path, which goes into the error messages.
 #     $sock :: A open IO::Socket::UNIX already connected to the server. Auth
 #              state is per connection, so this must be the same socket the
 #              refused request went over and the one the resend will go over.

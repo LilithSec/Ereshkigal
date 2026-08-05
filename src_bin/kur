@@ -140,11 +140,37 @@ use Pod::Usage;
 use Net::Server::Daemonize qw(daemonize);
 use Ereshkigal::Kur;
 
+# Prints the version and exits. Named and placed in main:: because that is
+# where Getopt::Long looks for it, so a --version it handles itself finds it,
+# but the option handling below also calls it outright rather than relying on
+# that, which is why both spellings of the flag work the same.
+#
+# Takes no args. Getopt::Long passes a getopt object when it is the caller,
+# and it is deliberately ignored... there is nothing here worth varying on
+# it.
+#
+# Returns nothing, ever, as it exits 255 rather than returning. 255 is used
+# throughout this bin for "asked and answered, did not run", the same code
+# pod2usage is given below.
+#
+#     main::VERSION_MESSAGE;    # prints "kur v. 0.0.1" and exits 255
 sub main::VERSION_MESSAGE {
 	print 'kur v. ' . $Ereshkigal::Kur::VERSION . "\n";
 	exit 255;
 }
 
+# Prints the full help, that being this bin's own POD rendered by pod2usage,
+# and exits. In main:: for the same reason VERSION_MESSAGE is... Getopt::Long
+# looks there, and the option handling below calls it outright as well.
+#
+# Takes no args, ignoring anything Getopt::Long hands it.
+#
+# Returns nothing, ever. pod2usage is given -exitval 255 so it exits rather
+# than returning, and -verbose 2 so the whole POD is shown rather than just
+# the usage line. It goes to STDOUT rather than STDERR, help having been
+# asked for rather than provoked by a mistake.
+#
+#     main::HELP_MESSAGE;    # prints the POD to stdout and exits 255
 sub main::HELP_MESSAGE {
 	pod2usage( -exitval => 255, -verbose => 2, -output => \*STDOUT, );
 }
@@ -189,11 +215,9 @@ GetOptions(
 # print version or help if requested
 if ($help) {
 	main::HELP_MESSAGE;
-	exit 42;
 }
 if ($version) {
 	main::VERSION_MESSAGE;
-	exit 42;
 }
 
 # both are documented as required, so bounce their absence as a usage error

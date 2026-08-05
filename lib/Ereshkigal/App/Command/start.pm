@@ -143,12 +143,42 @@ sub execute {
 	return;
 } ## end sub execute
 
-# Poll for up to ~10s, waiting for the named PID file to belong to a process
-# that is no longer running. Returns as soon as the file is gone, holds no
-# readable PID, or names a dead process, so a stale PID file (which daemonize()
-# happily reclaims) and a still-exiting manager both resolve cleanly. If a live
-# manager is still running after the timeout, we return anyway and let
-# daemonize() refuse to start a duplicate.
+# Waits, briefly, for a previous manager to finish going away, so that a
+# restart does not race it's own predecessor. This exists because
+# "ereshkigal stop" returns as soon as the shutdown has been requested
+# rather than once it has finished, which means "service ereshkigal
+# restart", and anything else that stops and immediately starts, can reach
+# start while the old manager is still tearing it's kurs down. With out this
+# the start aborts with daemonize's "Pid_file already exists for running
+# process" for a manager that was a half second from being gone.
+#
+# It polls rather than watching for anything, up to forty times with a
+# quarter second between, so a little over ten seconds in the worst case. It
+# returns the moment any of four things is true... the PID file is gone, it
+# can not be opened, it holds nothing that looks like a PID, or the PID it
+# holds names a process that is neither running nor merely unsignalable by
+# us. The first three are all a stale PID file, which daemonize happily
+# reclaims on it's own.
+#
+# Deliberately does not decide anything. If a live manager is still there
+# when the polling runs out it returns anyway and leaves the refusing to
+# daemonize, or to the foreground branch's own liveness check... this only
+# ever buys time, and never turns a running manager into a startable one.
+#
+# Args, one, positional and required...
+#
+#     $pid_path :: Full path of the manager PID file to watch, in practice
+#                  always $ereshkigal->pid_path. It need not exist... a
+#                  missing file is the state being waited for and returns at
+#                  once.
+#
+# Returns nothing meaningful, a empty return. There is no telling from the
+# return whether the wait succeeded or timed out, deliberately, as the
+# caller does not act on it either way.
+#
+#     $self->_wait_for_pid_clear( $ereshkigal->pid_path );
+#     # returns at once if nothing is running, or after up to ~10s if a
+#     # previous manager is still shutting down
 sub _wait_for_pid_clear {
 	my ( $self, $pid_path ) = @_;
 

@@ -157,9 +157,46 @@ sub execute {
 	return;
 } ## end sub execute
 
-# split a comma seperated option value into a arrayref, trimming the ends
-# and dropping empty elements so the likes of ",22" or "22, 23," come out
-# clean... a option that yields nothing is a usage error
+# Turns one of this command's comma seperated option values into the array
+# ref the manager expects for it. The kur bin takes --ports 22,80 and the
+# like as a single string, but add_kur is a JSON request where ports is a
+# array, so the splitting has to happen somewhere and it happens here.
+# Shared by --fan-out, --ports, --protocols and --interfaces rather than
+# each doing it's own, so all four treat sloppy input the same way.
+#
+# The value is trimmed at both ends, split on commas with any surrounding
+# whitespace eaten, and empty elements dropped, so ",22", "22, 23," and
+# "22 , 23" all come out as clean lists. Nothing else is checked... whether
+# 22 is a plausible port or eth0 a real interface is for the manager and the
+# backend to say, not this.
+#
+# Args, both positional and required...
+#
+#     $option_name  :: The option's name with out it's leading dashes, as in
+#                      'ports' or 'fan-out'. Used only to build the usage
+#                      error, so it wants to be the dashed spelling the user
+#                      actually typed rather than the underscored one the
+#                      opt object carries.
+#     $option_value :: The raw string as given on the command line. Must be
+#                      defined... callers guard with a defined check on the
+#                      opt accessor, and a undef reaching here warns and
+#                      then behaves as the empty string, which is a usage
+#                      error anyway.
+#
+# Returns a array ref of the elements, in the order given and with
+# duplicates left alone... a caller wanting them deduped does that it's
+# self, and for ports the manager does it anyway.
+#
+# Does not return if the value yields nothing, as "" or "," would. That
+# calls usage_error, which dies with the message and the usage screen, so
+# --ports with a empty value is refused rather than quietly becoming a
+# ports list of none.
+#
+#     my $ports = $self->_split_comma_list( 'ports', '22, 80,443' );
+#     # [ '22', '80', '443' ]
+#
+#     my $members = $self->_split_comma_list( 'fan-out', ',sshd,,smtp,' );
+#     # [ 'sshd', 'smtp' ]
 sub _split_comma_list {
 	my ( $self, $option_name, $option_value ) = @_;
 

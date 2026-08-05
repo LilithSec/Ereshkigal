@@ -353,6 +353,27 @@ throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'nosuch' } }
 qr/No such kur instance/, 'clear_retries refuses a unknown kur';
 
 #
+# a bad ban_time is bounced once at the manager rather than by every kur...
+# the kur still validates it, but a caller should not get N copies of the
+# same error back for one bad value
+#
+
+foreach my $bad ( 'abc', -1, '1.5', ['30'] ) {
+	my $shown = ref($bad) ? 'a ref' : $bad;
+	throws_ok {
+		$ereshkigal->_cmd_ban( { 'args' => { 'ips' => ['1.2.3.4'], 'ban_time' => $bad } }, undef )
+	}
+	qr/args\.ban_time must be a non-negative int of seconds/, 'ban_time "' . $shown . '" bounced at the manager';
+}
+
+# and a good one still reaches the kurs, which are simply not running here
+is_deeply(
+	$ereshkigal->_cmd_ban( { 'args' => { 'ips' => ['1.2.3.4'], 'ban_time' => 30 } }, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } } },
+	'a valid ban_time is not bounced'
+);
+
+#
 # re_init fans out the same way
 #
 

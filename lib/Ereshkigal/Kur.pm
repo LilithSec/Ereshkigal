@@ -562,9 +562,45 @@ sub start_server {
 	return;
 } ## end sub start_server
 
-# calls the specified method on the backend object, dieing if it either dies
-# or is left with the error set, as depending on the fatality settings in play
-# Error::Helper may just warn instead of dieing
+# The single choke point for every call into the Net::Firewall::BlockerHelper
+# frontend held in $self->{backend_obj}. It exists because that frontend has
+# two ways of failing and only one of them is a die... depending on the
+# Error::Helper fatality settings in play a failure may instead just warn and
+# leave the error flag set, which a bare method call would sail straight past.
+# Everything in this module goes through here so both look the same to the
+# caller, which is why none of the command handlers check errors themselves.
+#
+# The method is called on the frontend inside a eval. A die is rethrown as
+# is, and if the call survived but left the frontend's error flag set, the
+# frontend's errorString is thrown instead.
+#
+# Args, the first required and the rest optional...
+#
+#     $method :: The name of the method to call on the frontend, as a plain
+#                string, called as a method so it may be any of the frontend's
+#                public API... 'ban', 'unban', 'ban_cidr', 'unban_cidr',
+#                'list', 'list_cidr', 'check', 'flush', 're_init', or
+#                'teardown'. Not validated here, so a name the frontend does
+#                not implement dies with the usual can't locate object method.
+#     %args   :: The remaining pairs, passed through to that method verbatim.
+#                In practice this is either empty, for the ones taking no
+#                arguments, or a single ban => $entry pair for the ban and
+#                unban family.
+#
+# Returns whatever the method returned, as a list, propagated unchanged. For
+# list and list_cidr that is the entries the firewall is carrying; for check
+# it is a single true or false healthy value, which is why callers of that
+# assign it as ($healthy); for the rest it is generally empty and ignored.
+#
+# Dies with either the frontend's own exception or its errorString, neither
+# carrying a trailing newline, so a caller wanting to report it cleanly has
+# to trim it.
+#
+#     my @banned = $self->_backend_do('list');
+#
+#     $self->_backend_do( 'unban', ban => '1.2.3.4' );
+#
+#     my ($healthy) = $self->_backend_do('check');
 sub _backend_do {
 	my ( $self, $method, %args ) = @_;
 
@@ -580,8 +616,65 @@ sub _backend_do {
 	return @results;
 } ## end sub _backend_do
 
-# the per family knobs the shared ban/unban/sweep/load helpers use... the
-# single IP and CIDR paths are identical beyond these
+# The per family knobs the shared ban/unban/sweep/load helpers use. The single
+# IP and the CIDR paths are identical beyond these, so rather than two near
+# copies of every helper there is one of each taking a $spec, which is one of
+# the two entries below... $family_spec{ip} or $family_spec{cidr}. Any helper
+# below documenting a $spec argument means one of these two hash refs, and
+# names only the keys it actually reaches for.
+#
+# The keys, all present in both entries...
+#
+#     noun             :: The family in error messages meant for a human,
+#                         'IP' or 'CIDR'.
+#     label            :: The family in lower case, 'ip' or 'cidr'. Used as
+#                         the first column name in the tablet header, and
+#                         matched against when deciding if a tablet's first
+#                         line is that header.
+#     log_label        :: What one entry of this family is called in the log,
+#                         'ban' or 'cidr ban'.
+#     infix            :: Fragment glued into log lines before the entry
+#                         itself, '' or 'cidr '. Separate from log_label as
+#                         the two read differently depending on the sentence.
+#     normalizer       :: Code ref, normalize_ip or normalize_cidr, taking one
+#                         raw string and returning the canonical form or undef
+#                         if it will not validate. Everything is put through
+#                         this before being booked, which is what keeps the
+#                         books canonical only.
+#     ban_method       :: Frontend method banning one entry, 'ban' or
+#                         'ban_cidr'.
+#     unban_method     :: Frontend method unbanning one entry, 'unban' or
+#                         'unban_cidr'.
+#     list_method      :: Frontend method listing what the firewall carries,
+#                         'list' or 'list_cidr'.
+#     hash             :: Name of the key on $self holding this family's ban
+#                         book, 'bans' or 'cidr_bans'. That book is a hash of
+#                         canonical entry to { banned_at => epoch,
+#                         expires => epoch or 0 for never }.
+#     retry_hash       :: Name of the key on $self holding this family's unban
+#                         retry book, 'unban_retries' or
+#                         'cidr_unban_retries'. That book is a hash of
+#                         canonical entry to { first_tried => epoch,
+#                         last_tried => epoch, times_tried => int,
+#                         next_try => epoch, delay => seconds }.
+#     ban_stat         :: Key under $self->{stats} counting bans for this
+#                         family, 'bans' or 'cidr_bans'.
+#     unban_stat       :: Key under $self->{stats} counting unbans,
+#                         'unbans' or 'cidr_unbans'.
+#     expired_stat     :: Key under $self->{stats} counting expiries,
+#                         'expired' or 'cidr_expired'.
+#     checkpoint       :: Name of the method writing this family's ban tablet,
+#                         '_checkpoint' or '_checkpoint_cidr'. Called as
+#                         $self->$method with no arguments.
+#     retry_checkpoint :: Name of the method writing this family's retry
+#                         tablet, '_checkpoint_retries' or
+#                         '_checkpoint_cidr_retries'.
+#     retry_path       :: Name of the accessor giving this family's retry
+#                         tablet path, 'retry_state_path' or
+#                         'cidr_retry_state_path'.
+#     retry_arg        :: The request argument naming a single entry of this
+#                         family, 'ip' or 'cidr'. Used by the clear_retries
+#                         handler to work out which family was named.
 my %family_spec = (
 	'ip' => {
 		'noun'             => 'IP',
@@ -623,10 +716,30 @@ my %family_spec = (
 	},
 );
 
-# refuses backend-mutating commands once stop has been requested... the
-# backend is torn down at that point, and anything landing in the window
-# before the server session shuts down would both fail against it and
-# overwrite the fresh final tablet stop just left behind
+# Guard called at the top of every command handler that would touch the
+# backend, refusing it once stop has been requested. It exists because stop
+# tears the backend down and writes a final tablet, but the server session
+# stays up for another second so the stop response can flush... anything
+# arriving in that window would both fail against a torn down backend and
+# overwrite the fresh tablet stop just left behind. The read only handlers,
+# banned and status, and the book only ones, checkpoint and clear_retries,
+# deliberately do not call this, as neither can do that damage.
+#
+# Takes no arguments beyond the invocant, reading $self->{stopping}, which
+# _stop_guts sets.
+#
+# Returns nothing meaningful, a empty return, when the kur is not stopping.
+# The whole point is the die on the other branch, so callers just call it and
+# carry on.
+#
+# Dies with 'this kur is stopping', no trailing newline, once stopping is
+# set. That reaches the client as a normal error response.
+#
+#     sub _cmd_flush {
+#         my ($self) = @_;
+#         $self->_refuse_when_stopping;
+#         ...
+#     }
 sub _refuse_when_stopping {
 	my ($self) = @_;
 
@@ -637,8 +750,36 @@ sub _refuse_when_stopping {
 	return;
 }
 
-# resolves the effective ban_time for a ban request, the instance default
-# unless the request carries its own, dieing if the carried one is invalid
+# Works out how long the bans in one request should last, which is the
+# instance default unless that request carried its own ban_time. This is the
+# per request layer of the ban_time layering, the ones below it having already
+# been resolved into $self->{ban_time} by new... a request beats the kur
+# setting, which beats the manager wide one, which beats 600.
+#
+# Validation happens here rather than being left to the backend so a bad
+# ban_time fails the whole request up front, instead of after some of its IPs
+# have already been banned.
+#
+# Args, one required...
+#
+#     $args :: The args hash ref of the request, which is whatever the client
+#              sent and so may be missing keys or carry rubbish. Only
+#              args.ban_time is looked at, and it is optional... when absent
+#              or undef the instance default is used. When present it must be
+#              a plain scalar of digits, so a non-negative integer of seconds
+#              with 0 meaning the ban never expires. A ref, a negative number,
+#              or anything non-numeric dies.
+#
+# Returns the effective ban_time as a integer of seconds, 0 meaning the bans
+# should never expire. Callers hand that straight to _ban_many.
+#
+# Dies with 'args.ban_time must be a non-negative int of seconds', no
+# trailing newline, on a carried ban_time that will not validate.
+#
+#     my $ban_time = $self->_resolve_ban_time( $request->{args} );
+#
+#     # with args of { ips => ['1.2.3.4'], ban_time => 3600 } that is 3600,
+#     # and with { ips => ['1.2.3.4'] } it is whatever $self->{ban_time} is
 sub _resolve_ban_time {
 	my ( $self, $args ) = @_;
 
@@ -652,12 +793,34 @@ sub _resolve_ban_time {
 	return $args->{ban_time};
 } ## end sub _resolve_ban_time
 
-# gives self_heal its chance on the refresh path... a refresh does not go
-# through the backend's ban, which is where self_heal normally hooks in, and
-# refresh heavy traffic is the common case for ban sources, so the
-# check-and-re_init half is ran here so a swept away setup still gets
-# noticed and rebuilt... best effort, a failure here is the next real ban's
-# problem
+# Gives self_heal its chance on the refresh path. Normally self_heal lives
+# inside the backend's own ban and unban, checking the firewall setup is still
+# there before each one, but re-banning something already banned deliberately
+# does not call the backend at all... and for a ban source hammering the same
+# handful of addresses that refresh is the common case, so a setup swept away
+# by a firewall reload could go unnoticed indefinitely. This runs the
+# check-and-re_init half by hand to close that.
+#
+# Reads the effective self_heal, defaulting to on when the instance leaves it
+# undef, and returns straight away when it is off. Otherwise the backend is
+# asked to check, and if that succeeds but reports unhealthy the backend is
+# asked to re_init. A successful re_init empties both retry books and
+# checkpoints them, since re_init tears the setup down and rebuilds from the
+# ban books, taking any rule a failed unban left behind with it.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return, whichever branch it took.
+#
+# Deliberately dies for nothing. Both backend calls are wrapped, a failed
+# check is treated as no reason to act, and a failed re_init is only logged...
+# this is best effort housekeeping on the way through a refresh, so a
+# firewall having a bad moment is left for the next real ban to trip over
+# rather than turning a successful refresh into a error.
+#
+#     # from _ban_many, on finding the entry already in the book
+#     $self->_refresh_heal;
+#     $self->{ $spec->{hash} }{$entry}{expires} = $expires;
 sub _refresh_heal {
 	my ($self) = @_;
 
@@ -685,14 +848,61 @@ sub _refresh_heal {
 	return;
 } ## end sub _refresh_heal
 
-# the shared loop body of _cmd_ban and _cmd_cidr_ban... validates and
-# normalizes each entry, refreshes the timer of anything already banned, and
-# bans the rest via the backend, returning the per entry results hash
+# The shared loop body behind both _cmd_ban and _cmd_cidr_ban, the two being
+# identical once the family knobs are parameterized out. Every entry is
+# answered for separately, so one bad address never spoils the rest of a
+# request... that is the reason this returns a per entry hash rather than
+# dieing on the first problem.
 #
-# $entries is the raw args.ips or args.cidrs arrayref straight from the
-# request, $ban_time the effective seconds from _resolve_ban_time, and $spec
-# the matching %family_spec entry, ip or cidr, supplying the normalizer
-# along with the backend ban method, ban hash, and stats keys
+# For each entry in turn... it is normalized, and a entry that will not
+# normalize is recorded as a error and skipped. One already in the ban book is
+# a refresh, so its expiry is reset, _refresh_heal is given its chance, and
+# the backend is deliberately not asked to re-add it, as not every backend
+# takes that gracefully. One with a pending unban retry means the firewall
+# still carries the rule, so that retry is cancelled and the entry booked
+# afresh, again without troubling the backend. Anything else is banned via the
+# backend and booked. Nothing here writes a tablet... the caller checkpoints
+# once for the whole request.
+#
+# Args, all three required and positional...
+#
+#     $entries  :: Array ref of raw entries straight off the request, so
+#                  args.ips or args.cidrs as the client sent them. Elements
+#                  are whatever arrived and may be undef, refs, or nonsense;
+#                  each is put through the family normalizer and a failure
+#                  becomes that entry's error rather than a die. A empty array
+#                  is legal here and simply produces a empty result, the
+#                  callers having already rejected one.
+#     $ban_time :: Effective seconds from _resolve_ban_time. 0 means the bans
+#                  never expire, anything else is added to the current time to
+#                  get each entry's expiry.
+#     $spec     :: One of the %family_spec entries described above. Uses
+#                  normalizer, noun, log_label, infix, hash, retry_hash,
+#                  retry_checkpoint, ban_method, and ban_stat.
+#
+# Returns a hash ref keyed by entry, holding one result per entry of the
+# request. A good entry is keyed by its canonical form, so the caller sees the
+# normalized spelling rather than what was sent, and its value is
+# { status => 'ok' }, or { status => 'ok', refreshed => 1 } when it was
+# already banned and only had its timer reset. A entry that would not
+# normalize is keyed by the raw string it arrived as, or by the empty string
+# when it arrived undef, with a value of
+# { status => 'error', error => '...' }. A backend refusal is the same error
+# shape but keyed by the canonical form.
+#
+# Does not die. Every failure is a per entry error in the returned hash.
+#
+#     my $results = $self->_ban_many(
+#         [ '1.2.3.4', 'nonsense' ],
+#         600,
+#         $family_spec{ip},
+#     );
+#     # $results is {
+#     #     '1.2.3.4'  => { status => 'ok' },
+#     #     'nonsense' => { status => 'error', error => '"nonsense" does ...' },
+#     # }
+#
+#     my $results = $self->_ban_many( ['1.2.3.0/24'], 0, $family_spec{cidr} );
 sub _ban_many {
 	my ( $self, $entries, $ban_time, $spec ) = @_;
 
@@ -769,14 +979,43 @@ sub _ban_many {
 	return $results;
 } ## end sub _ban_many
 
-# the shared body of _cmd_unban and _cmd_cidr_unban... checks presence via
-# the backend, unbans when present, and keeps the book and tablet straight
-# either way, returning whether it was actually banned
+# The shared body behind both _cmd_unban and _cmd_cidr_unban. It asks the
+# firewall rather than the book whether the entry is actually there, which is
+# what lets a unban be fired at every kur in a fan out without the ones that
+# never held it erroring... they answer was_banned 0 and nothing else happens.
 #
-# $entry is a single IP or CIDR, already normalized by the caller having ran
-# the request arg through the family normalizer, and $spec is the matching
-# %family_spec entry, ip or cidr, supplying the normalizer along with the
-# backend list/unban methods, ban hash, stats keys, and checkpoint method
+# The backend is listed and each entry it reports is normalized before being
+# compared, because a firewall may well render a entry differently to how it
+# was handed over, IPv6 especially, and it is that spelling it wants back to
+# remove it. When no match is found any stale book entry is dropped and the
+# tablet rewritten, so a hand removal behind the kur's back still tidies up.
+# When a match is found the backend is asked to unban it, and on success the
+# book, the retry book, and both tablets are brought into line.
+#
+# Args, both required and positional...
+#
+#     $entry :: A single entry in canonical form. The caller is expected to
+#               have already put the request argument through the family
+#               normalizer and dealt with a failure, so this is never undef
+#               and never a raw spelling... the book and the retry book are
+#               keyed by this form.
+#     $spec  :: One of the %family_spec entries described above. Uses
+#               normalizer, list_method, unban_method, hash, retry_hash,
+#               checkpoint, retry_checkpoint, unban_stat, and infix.
+#
+# Returns 1 when the firewall was carrying the entry and it has now been
+# removed, and 0 when it was not carrying it at all. The callers put that
+# straight into their was_banned field, so 0 is a perfectly ordinary answer
+# and not a failure.
+#
+# Dies if the backend refuses the unban, rethrowing whatever it said, having
+# first counted a error. It also dies if listing the backend fails, that
+# being a bare _backend_do call. A caller wanting a failed unban to be
+# survivable has to wrap it.
+#
+#     my $was_banned = $self->_unban_one( '1.2.3.4', $family_spec{ip} );
+#
+#     my $was_banned = $self->_unban_one( '1.2.3.0/24', $family_spec{cidr} );
 sub _unban_one {
 	my ( $self, $entry, $spec ) = @_;
 
@@ -825,9 +1064,39 @@ sub _unban_one {
 	return 1;
 } ## end sub _unban_one
 
-# handles the ban command... bans or refreshes each of args.ips via
-# _ban_many, with args.ban_time optionally overriding the instance default,
-# then checkpoints the lot to the tablet in one go
+# Handles the ban command off the socket, the single IP half of the pair with
+# _cmd_cidr_ban. All the real work is _ban_many's... this validates the shape
+# of the request, resolves the sentence, and checkpoints once at the end
+# rather than once per IP, so a request banning a hundred addresses writes one
+# tablet rather than a hundred.
+#
+# Args, one required...
+#
+#     $request :: The request hash ref as it came off the socket. Only
+#                 $request->{args} is read, and that must be a hash ref
+#                 carrying an ips key holding a array ref of one or more raw
+#                 IPs. Elements are not checked here, _ban_many judging each
+#                 one. args.ban_time is optional and goes to
+#                 _resolve_ban_time.
+#
+# Returns a hash ref of { ips => $results }, where $results is the per entry
+# hash _ban_many built... each key an IP and each value either
+# { status => 'ok' }, { status => 'ok', refreshed => 1 }, or
+# { status => 'error', error => '...' }. That whole thing becomes the result
+# field of the response.
+#
+# Dies if the kur is stopping, if args is missing, or if args.ips is not a
+# array ref of at least one element, and via _resolve_ban_time if
+# args.ban_time will not validate. Individual bad IPs do not die.
+#
+#     my $result = $self->_cmd_ban(
+#         { 'args' => { 'ips' => [ '1.2.3.4', '5.6.7.8' ] } }
+#     );
+#     # $result is { ips => { '1.2.3.4' => { status => 'ok' }, ... } }
+#
+#     my $result = $self->_cmd_ban(
+#         { 'args' => { 'ips' => ['1.2.3.4'], 'ban_time' => 0 } }
+#     );
 sub _cmd_ban {
 	my ( $self, $request ) = @_;
 
@@ -845,8 +1114,37 @@ sub _cmd_ban {
 	return { 'ips' => $results };
 } ## end sub _cmd_ban
 
-# handles the unban command... normalizes args.ip and hands it to
-# _unban_one, returning the canonical IP and whether it was actually banned
+# Handles the unban command off the socket, the single IP half of the pair
+# with _cmd_cidr_unban. Unlike ban it takes exactly one address, and unlike
+# ban a bad one is fatal to the whole request rather than a per entry error...
+# there being only the one entry, there is nothing to salvage.
+#
+# Args, one required...
+#
+#     $request :: The request hash ref as it came off the socket. Only
+#                 $request->{args} is read, and that must be a hash ref
+#                 carrying a ip key holding a single raw IP as a plain scalar.
+#                 A array ref is refused rather than treated as a list of one.
+#                 There is deliberately no kur argument here... the manager
+#                 fans unban at every kur it has.
+#
+# Returns a hash ref of { ip => $canonical, was_banned => 0 or 1 }. The ip
+# field is the canonical form rather than what was sent, so a client that
+# asked in a variant IPv6 spelling can see what was actually acted on, and
+# was_banned says whether the firewall was carrying it... 0 is a normal
+# answer meaning it was not.
+#
+# Dies if the kur is stopping, if args is missing, if args.ip is missing or a
+# ref, or if it will not normalize, and via _unban_one if the backend refuses
+# the unban.
+#
+#     my $result = $self->_cmd_unban( { 'args' => { 'ip' => '1.2.3.4' } } );
+#     # $result is { ip => '1.2.3.4', was_banned => 1 }
+#
+#     my $result = $self->_cmd_unban(
+#         { 'args' => { 'ip' => '2001:0DB8::1' } }
+#     );
+#     # $result is { ip => '2001:db8::1', was_banned => 0 }
 sub _cmd_unban {
 	my ( $self, $request ) = @_;
 
@@ -864,9 +1162,29 @@ sub _cmd_unban {
 	return { 'ip' => $ip, 'was_banned' => $self->_unban_one( $ip, $family_spec{ip} ) };
 } ## end sub _cmd_unban
 
-# reaches through the frontend to the actual backend object to see if it
-# claims CIDR support, mirroring how the frontend its self gates ban_cidr...
-# anything missing is treated as no support rather than dieing
+# Works out whether the backend this kur is wrapping can carry whole ranges,
+# by reaching through the Net::Firewall::BlockerHelper frontend to the actual
+# backend object underneath it and reading the cidr_supported flag there.
+# That is the same flag the frontend itself gates ban_cidr on, so asking it
+# directly keeps this kur's answer and the frontend's refusal in step. It is
+# called once at init, the answer cached in $self->{cidr_supported}, so the
+# reaching through happens the once rather than per command.
+#
+# Reaching two levels into another distribution's internals is why every step
+# is guarded... a frontend that is undef, not blessed, or has no backend
+# object yet is treated as no support rather than being allowed to die,
+# because this runs during init where a die would take the whole kur down over
+# a question that has a perfectly good conservative answer.
+#
+# Takes no arguments beyond the invocant, reading $self->{backend_obj}.
+#
+# Returns 1 when the backend claims CIDR support and 0 otherwise, including
+# every case where the answer could not be reached at all. Never undef, so it
+# is safe to store and test directly.
+#
+# Does not die.
+#
+#     $self->{cidr_supported} = $self->_backend_cidr_supported;
 sub _backend_cidr_supported {
 	my ($self) = @_;
 
@@ -882,17 +1200,60 @@ sub _backend_cidr_supported {
 	return $backend->{cidr_supported} ? 1 : 0;
 } ## end sub _backend_cidr_supported
 
-# whether this instance will actually act on CIDR commands... the operator has
-# to have opted in via enable_cidr and the backend has to be able to do it
+# Whether this instance will actually act on a CIDR command, which needs both
+# halves... the operator has to have opted in via enable_cidr, and the backend
+# has to be able to carry ranges at all. Either alone is not enough, which is
+# why this exists rather than the callers testing enable_cidr and assuming.
+#
+# Takes no arguments beyond the invocant, reading $self->{enable_cidr}, which
+# new folded to a plain 1 or 0, and $self->{cidr_supported}, which init
+# cached from _backend_cidr_supported.
+#
+# Returns 1 when ranges may be acted on and 0 otherwise. It does not say which
+# half was missing... _cidr_guard works that out for the error message.
+#
+# Does not die.
+#
+#     if ( !$self->_cidr_available ) {
+#         # skip loading the CIDR tablet entirely
+#         return;
+#     }
 sub _cidr_available {
 	my ($self) = @_;
 
 	return ( $self->{enable_cidr} && $self->{cidr_supported} ) ? 1 : 0;
 }
 
-# decides what to do with a CIDR command when CIDR is not available... returns
-# undef to say carry on, a dropped response hashref when cidr_silent_drop is
-# set, or dies otherwise so the refusal is reported
+# The gate both CIDR command handlers pass through before doing anything
+# else, deciding what a kur that can not oblige should do about it. There are
+# three answers rather than two because of fan outs... a gate spanning range
+# capable and range incapable kurs would have every cidr-ban soured by the
+# incapable ones if their only option were a error, so cidr_silent_drop lets
+# those quietly report the command as dropped and leave the response clean.
+#
+# It runs before the handlers validate their payload, deliberately, so a kur
+# that was never going to act short circuits regardless of whether the
+# request was well formed.
+#
+# Takes no arguments beyond the invocant, reading _cidr_available,
+# $self->{enable_cidr}, $self->{cidr_silent_drop}, and $self->{backend} for
+# the message.
+#
+# Returns undef when CIDR is available, which the callers read as carry on.
+# When it is not available and cidr_silent_drop is set it returns a hash ref
+# of { dropped => 1, reason => '...' }, which the callers return to the client
+# unchanged as the whole result... reason names which half was missing, either
+# that CIDR bans are not enabled for the kur or that the named backend does
+# not support them.
+#
+# Dies with that same reason string, no trailing newline, when CIDR is
+# unavailable and cidr_silent_drop is not set.
+#
+#     my $drop = $self->_cidr_guard;
+#     if ( defined($drop) ) {
+#         return $drop;
+#     }
+#     # reached only when this kur really will act on ranges
 sub _cidr_guard {
 	my ($self) = @_;
 
@@ -915,9 +1276,38 @@ sub _cidr_guard {
 	die($reason);
 } ## end sub _cidr_guard
 
-# the CIDR twin of _cmd_ban... _cidr_guard gets first say, then each of
-# args.cidrs is banned or refreshed via _ban_many and the CIDR tablet
-# checkpointed in one go
+# Handles the cidr_ban command off the socket, the range twin of _cmd_ban and
+# identical to it beyond the family knobs and the guard. _cidr_guard gets
+# first say, so a kur that will not act on ranges answers before the payload
+# is even looked at.
+#
+# Args, one required...
+#
+#     $request :: The request hash ref as it came off the socket. A missing
+#                 args is tolerated as far as the guard, becoming a empty hash
+#                 so a dropping kur can answer cleanly rather than dieing over
+#                 a payload it was never going to read. Past the guard,
+#                 args.cidrs must be a array ref of one or more raw ranges,
+#                 elements unchecked here as _ban_many judges each. Host bits
+#                 are masked off by the normalizer, so 1.2.3.4/24 and
+#                 1.2.3.0/24 are one range. args.ban_time is optional.
+#
+# Returns a hash ref of { cidrs => $results } with the same per entry shape
+# _cmd_ban returns, keyed by canonical range. When the guard dropped the
+# command it instead returns that guard's { dropped => 1, reason => '...' },
+# so a caller has to be ready for either shape.
+#
+# Dies if the kur is stopping, if the guard refuses rather than drops, if
+# args.cidrs is not a array ref of at least one element, or via
+# _resolve_ban_time on a bad ban_time.
+#
+#     my $result = $self->_cmd_cidr_ban(
+#         { 'args' => { 'cidrs' => ['1.2.3.0/24'] } }
+#     );
+#     # $result is { cidrs => { '1.2.3.0/24' => { status => 'ok' } } }
+#
+#     # on a kur with CIDR off and cidr_silent_drop set
+#     # $result is { dropped => 1, reason => 'CIDR bans are not enabled ...' }
 sub _cmd_cidr_ban {
 	my ( $self, $request ) = @_;
 
@@ -946,8 +1336,31 @@ sub _cmd_cidr_ban {
 	return { 'cidrs' => $results };
 } ## end sub _cmd_cidr_ban
 
-# the CIDR twin of _cmd_unban... _cidr_guard gets first say, then args.cidr
-# is normalized and handed to _unban_one
+# Handles the cidr_unban command off the socket, the range twin of
+# _cmd_unban. _cidr_guard gets first say the same way it does for cidr_ban.
+#
+# Args, one required...
+#
+#     $request :: The request hash ref as it came off the socket. A missing
+#                 args is tolerated as far as the guard, for the same reason
+#                 it is in _cmd_cidr_ban. Past the guard, args.cidr must be a
+#                 single raw range as a plain scalar; a ref is refused. Host
+#                 bits are masked off, so naming any address inside a banned
+#                 network finds it.
+#
+# Returns a hash ref of { cidr => $canonical, was_banned => 0 or 1 }, the cidr
+# field being the masked canonical form rather than what was sent. When the
+# guard dropped the command it instead returns that guard's
+# { dropped => 1, reason => '...' }.
+#
+# Dies if the kur is stopping, if the guard refuses rather than drops, if
+# args.cidr is missing or a ref, if it will not normalize, or via _unban_one
+# if the backend refuses the unban.
+#
+#     my $result = $self->_cmd_cidr_unban(
+#         { 'args' => { 'cidr' => '1.2.3.4/24' } }
+#     );
+#     # $result is { cidr => '1.2.3.0/24', was_banned => 1 }
 sub _cmd_cidr_unban {
 	my ( $self, $request ) = @_;
 
@@ -974,9 +1387,43 @@ sub _cmd_cidr_unban {
 	return { 'cidr' => $cidr, 'was_banned' => $self->_unban_one( $cidr, $family_spec{cidr} ) };
 } ## end sub _cmd_cidr_unban
 
-# handles the banned command... returns what the backend book actually
-# carries for both single IPs and CIDRs, plus the expiry times the ban
-# hashes are tracking for them
+# Handles the banned command off the socket, the detail view of who this kur
+# is holding. The lists come from the firewall itself rather than the ban
+# books, so what is reported is what is really in place... the books only
+# supply the expiry times, which the firewall has no notion of.
+#
+# One consequence worth knowing: a entry whose unban failed at expiry has left
+# the ban book but not the firewall, so it appears in banned and in
+# unban_retries at once. That is not a inconsistency, it is the whole point of
+# the retry books.
+#
+# Takes no arguments beyond the invocant. Deliberately not gated on
+# _refuse_when_stopping, being read only, nor on _cidr_available, as
+# list_cidr is safe on every backend and simply comes back empty on the ones
+# that do not do ranges.
+#
+# Returns a hash ref carrying six keys...
+#
+#     banned             :: Array ref of the single IPs the firewall is
+#                           carrying, in whatever spelling it reports them.
+#     expires            :: Hash ref of canonical IP to the epoch its sentence
+#                           ends, 0 meaning never. Keyed off the ban book, so
+#                           a firewall entry the book does not know about has
+#                           no key here.
+#     banned_cidr        :: Array ref of the ranges the firewall is carrying.
+#     cidr_expires       :: The range equivalent of expires.
+#     unban_retries      :: Hash ref from _retry_details for the IP family,
+#                           each key a entry still owed to the firewall.
+#     cidr_unban_retries :: The range equivalent.
+#
+# Dies only if listing the backend fails, that being a bare _backend_do call.
+#
+#     my $result = $self->_cmd_banned;
+#     # $result is {
+#     #     banned => ['1.2.3.4'], expires => { '1.2.3.4' => 1785919052 },
+#     #     banned_cidr => [], cidr_expires => {},
+#     #     unban_retries => {}, cidr_unban_retries => {},
+#     # }
 sub _cmd_banned {
 	my ($self) = @_;
 
@@ -1006,10 +1453,40 @@ sub _cmd_banned {
 	};
 } ## end sub _cmd_banned
 
-# the per entry retry book keeping for that family, as a plain hash of entry
-# to it's counts and times... these are unbans still owed to the firewall, so
-# they are deliberately not folded into the banned lists, which are what the
-# firewall is currently carrying on this kur's behalf
+# Flattens one family's retry book into the shape the banned command reports,
+# a plain hash of entry to its counts and times. It exists so the wire format
+# is decided in one place rather than in the command handler, and so the
+# delay field stays internal... that is the backoff's own book keeping and
+# means nothing to a client, next_try already saying when the entry is due.
+#
+# These are unbans still owed to the firewall, deliberately reported
+# separately rather than folded into the banned lists, which are what the
+# firewall is carrying on this kur's behalf.
+#
+# Args, one required...
+#
+#     $spec :: One of the %family_spec entries described above. Uses only
+#              retry_hash.
+#
+# Returns a hash ref keyed by canonical entry, empty when nothing is owed.
+# Each value is a hash ref of...
+#
+#     first_tried :: Epoch the unban first failed, so the age of the debt.
+#     last_tried  :: Epoch of the most recent attempt.
+#     times_tried :: How many attempts have been made, counting the one at
+#                    expiry, so it is at least 1.
+#     next_try    :: Epoch the next attempt is due. A value in the past means
+#                    it is due at the next sweep.
+#
+# Does not die.
+#
+#     my $owed = $self->_retry_details( $family_spec{ip} );
+#     # $owed is {
+#     #     '1.2.3.4' => {
+#     #         first_tried => 1785918152, last_tried => 1785919052,
+#     #         times_tried => 9,          next_try    => 1785919112,
+#     #     },
+#     # }
 sub _retry_details {
 	my ( $self, $spec ) = @_;
 
@@ -1027,9 +1504,27 @@ sub _retry_details {
 	return $details;
 } ## end sub _retry_details
 
-# the first_tried of the longest owed retry for that family, 0 when none are
-# owed... the age of that is what says whether the backend is briefly
-# unhappy or has been refusing since last week
+# Finds the first_tried of the longest owed retry in one family, which is the
+# single number that tells a operator whether the backend is having a brief
+# moment or has been refusing since last week. status reports it so that
+# question can be answered without pulling the whole per entry list out of
+# banned.
+#
+# Args, one required...
+#
+#     $spec :: One of the %family_spec entries described above. Uses only
+#              retry_hash.
+#
+# Returns the epoch of the oldest first_tried across that family's retry
+# book, as a integer, or 0 when nothing is owed. 0 is unambiguous here since a
+# real first_tried is a epoch, so a caller can test it as a boolean for
+# anything owed at all.
+#
+# Does not die.
+#
+#     my $oldest = $self->_retries_oldest( $family_spec{ip} );
+#     # 0 with a clean book, or something like 1785918152 with a debt
+#     # first taken on at that time
 sub _retries_oldest {
 	my ( $self, $spec ) = @_;
 
@@ -1044,9 +1539,46 @@ sub _retries_oldest {
 	return $oldest;
 } ## end sub _retries_oldest
 
-# handles the status command... the instance settings and stats plus ban
-# counts from the backend and ban hashes, split timed versus permanent, with
-# the soonest expiry across both families
+# Handles the status command off the socket, the summary view of this kur...
+# how it is configured, what it has been doing, and how much it is holding.
+# The counts come from the firewall while the timed versus permanent split
+# comes from the ban books, since only the books know about sentences.
+#
+# Takes no arguments beyond the invocant. Read only, so deliberately not
+# gated on _refuse_when_stopping.
+#
+# Returns a hash ref carrying the instance settings as given, name, backend,
+# ports, protocols, prefix, ban_time and checkpoint, along with...
+#
+#     last_checkpoint           :: Epoch of the last successful ban tablet
+#                                  write, 0 if there has not been one.
+#     pid                       :: This kur process's PID.
+#     uptime                    :: Seconds since the server came up.
+#     stats                     :: The live stats hash ref, counting bans,
+#                                  unbans, cidr_bans, cidr_unbans, errors,
+#                                  expired, and cidr_expired.
+#     banned_count              :: How many single IPs the firewall carries.
+#     bans_timed                :: How many of the booked IP bans expire.
+#     bans_permanent            :: How many never do.
+#     next_expiry               :: Soonest epoch any sentence ends, across
+#                                  BOTH families, 0 when everything is
+#                                  permanent or nothing is banned.
+#     cidr_enabled              :: Whether the operator opted in to ranges.
+#     cidr_supported            :: Whether the backend can carry them.
+#     cidr_banned_count         :: How many ranges the firewall carries.
+#     cidr_bans_timed           :: How many booked range bans expire.
+#     cidr_bans_permanent       :: How many never do.
+#     unban_retries             :: How many unbans are still owed to the
+#                                  firewall on the IP side.
+#     unban_retries_oldest      :: first_tried of the longest owed of those,
+#                                  0 when none, from _retries_oldest.
+#     cidr_unban_retries        :: The range equivalent of unban_retries.
+#     cidr_unban_retries_oldest :: The range equivalent of the above.
+#
+# Dies only if listing the backend fails, that being a bare _backend_do call.
+#
+#     my $status = $self->_cmd_status;
+#     # $status->{banned_count} is 3, $status->{unban_retries} is 0, ...
 sub _cmd_status {
 	my ($self) = @_;
 
@@ -1111,8 +1643,29 @@ sub _cmd_status {
 	};
 } ## end sub _cmd_status
 
-# handles the flush command... clears everything via the backend, empties
-# both ban hashes, and checkpoints both tablets
+# Handles the flush command off the socket, emptying this kur entirely. The
+# manager drives it from unban --all, which is the only way a client reaches
+# it... there is no flush subcommand of its own.
+#
+# The backend's flush clears both single IP and range rules in one go, so
+# both ban books are emptied alongside it rather than being unbanned one at a
+# time. Both retry books go too... a debt is a rule the firewall was still
+# carrying, and flush has just removed every rule this kur owns, so nothing
+# is owed any more. All four tablets are then rewritten, which is what stops a
+# restart bringing any of it back.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns a hash ref of { flushed => 1 }. There is no count... the backend's
+# flush does not report one, and the book sizes before the wipe would not
+# necessarily match what the firewall actually removed.
+#
+# Dies if the kur is stopping, or if the backend refuses the flush, in which
+# case nothing is emptied... the books and tablets are only touched after the
+# backend has agreed.
+#
+#     my $result = $self->_cmd_flush;
+#     # $result is { flushed => 1 } and this kur now holds nothing
 sub _cmd_flush {
 	my ($self) = @_;
 
@@ -1135,8 +1688,32 @@ sub _cmd_flush {
 	return { 'flushed' => 1 };
 } ## end sub _cmd_flush
 
-# handles the re_init command... has the backend tear its setup down and
-# rebuild it from scratch
+# Handles the re_init command off the socket, the repair for a firewall setup
+# something outside Ereshkigal has interfered with... a shorewall restart, a
+# pf -F all, a firewalld reload, a hand flushed ipset. The backend tears its
+# table, set, chain or list down and builds it again, then re-bans everything
+# the ban books carry, so the books are the authority and the firewall is
+# brought back into line with them.
+#
+# Bans are not enforced for the moment the rebuild takes, which is brief but
+# real, and is the reason this is a command rather than something done
+# routinely.
+#
+# Both retry books are emptied afterwards and their tablets rewritten,
+# because tearing the setup down takes any rule a failed unban left orphaned
+# in it... those debts have just been settled by the teardown itself. Only the
+# books are re-banned, so nothing that was owed comes back.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns a hash ref of { re_init => 1 }.
+#
+# Dies if the kur is stopping, or if the backend's re_init fails, in which
+# case the retry books are left alone... a failed rebuild may well have left
+# the orphaned rules exactly where they were.
+#
+#     my $result = $self->_cmd_re_init;
+#     # $result is { re_init => 1 } and the firewall matches the books again
 sub _cmd_re_init {
 	my ($self) = @_;
 
@@ -1154,14 +1731,54 @@ sub _cmd_re_init {
 	return { 're_init' => 1 };
 } ## end sub _cmd_re_init
 
-# handles the clear_retries command... forgets unbans still owed to the
-# firewall, either a single named one via args.ip or args.cidr or the lot
-# when neither is given
+# Handles the clear_retries command off the socket, forgetting unbans still
+# owed to the firewall. This is the escape hatch for a debt that will never be
+# paid, the rule having been removed by hand or the entry having never
+# existed as far as the backend is concerned, which would otherwise be
+# retried at the 60 second cap forever.
 #
-# this is the escape hatch for a retry that will never succeed, the rule
-# having been removed by hand or the entry having never existed as far as
-# the backend is concerned. forgetting one does not touch the firewall, so
-# anything genuinely still banished there stays banished
+# Forgetting a debt does not touch the firewall at all... it only stops this
+# kur asking. Anything genuinely still in place stays in place, with nothing
+# tracking it, which is why the documentation points people at unban or
+# re_init first.
+#
+# Both families are walked. Naming a entry of one family leaves the other
+# entirely alone, rather than clearing it wholesale, which is what the
+# other_family_named check is for... without it, naming a ip would empty the
+# whole CIDR book as a side effect.
+#
+# Args, one required...
+#
+#     $request :: The request hash ref as it came off the socket. A missing
+#                 args is fine and means clear everything. args.ip and
+#                 args.cidr are both optional, at most one may be given, and
+#                 each must be a plain scalar naming a single entry of that
+#                 family. Either is normalized before the lookup, since the
+#                 retry books are keyed canonically, so naming a variant
+#                 spelling still finds the debt. Neither given means every
+#                 debt in both families goes.
+#
+# Returns a hash ref of...
+#
+#     cleared      :: Total entries forgotten across both families.
+#     cleared_ip   :: How many on the single IP side... 1 or 0 when a ip was
+#                     named, otherwise however many the book held.
+#     cleared_cidr :: The range equivalent.
+#
+# All three are 0 when nothing was owed, which is not a error... clearing a
+# entry that is not owed is a no-op rather than a failure.
+#
+# Dies if both args.ip and args.cidr are given, if a named entry is a ref, or
+# if a named entry will not normalize. Deliberately not gated on
+# _refuse_when_stopping, as it touches only book keeping.
+#
+#     my $result = $self->_cmd_clear_retries( {} );
+#     # $result is { cleared => 3, cleared_ip => 2, cleared_cidr => 1 }
+#
+#     my $result = $self->_cmd_clear_retries(
+#         { 'args' => { 'ip' => '1.2.3.4' } }
+#     );
+#     # $result is { cleared => 1, cleared_ip => 1, cleared_cidr => 0 }
 sub _cmd_clear_retries {
 	my ( $self, $request ) = @_;
 
@@ -1221,8 +1838,36 @@ sub _cmd_clear_retries {
 	};
 } ## end sub _cmd_clear_retries
 
-# handles the checkpoint command... force writes both tablets now,
-# returning how many entries each is carrying
+# Handles the checkpoint command off the socket, forcing all four tablets out
+# now. The tablets are already written on every mutation and every checkpoint
+# seconds, so this is rarely needed... it is here for taking a consistent
+# snapshot before a backup or a look at the files by hand.
+#
+# Takes no arguments beyond the invocant. Deliberately not gated on
+# _refuse_when_stopping, as writing tablets is safe at any point and stop
+# does exactly this on its way out.
+#
+# Returns a hash ref of...
+#
+#     checkpointed       :: Always 1. There is no failure answer... a tablet
+#                           write that fails logs and counts a error rather
+#                           than reporting back, so this says the command ran,
+#                           not that all four files landed.
+#     bans               :: How many single IP bans the book holds.
+#     cidr_bans          :: How many range bans it holds.
+#     unban_retries      :: How many single IP unbans are still owed.
+#     cidr_unban_retries :: How many range unbans are still owed.
+#
+# The counts come from the books rather than the files, so they say what was
+# meant to be written.
+#
+# Does not die.
+#
+#     my $result = $self->_cmd_checkpoint;
+#     # $result is {
+#     #     checkpointed => 1, bans => 12, cidr_bans => 2,
+#     #     unban_retries => 0, cidr_unban_retries => 0,
+#     # }
 sub _cmd_checkpoint {
 	my ($self) = @_;
 
@@ -1241,9 +1886,40 @@ sub _cmd_checkpoint {
 	};
 } ## end sub _cmd_checkpoint
 
-# handles the stop command... unlike the other handlers this one responds
-# via $ctx its self and returns undef, as the response has to be flushed
-# before the delayed shutdown takes the server session down with it
+# Handles the stop command off the socket. Unlike every other handler this one
+# answers the client itself rather than returning a result to be sent, because
+# the response has to be flushed before the shutdown takes the server session
+# down with it... returning normally would have the session torn down first
+# and the client left hanging. Returning undef is how the JSONUnix handler
+# protocol says the handler has already responded.
+#
+# The teardown happens through _stop_guts, shared with the signal handler, so
+# a stop command and a SIGTERM leave the kur in the same state. A teardown
+# failure does not stop the shutdown... the process is going either way, so
+# the error is reported to the client and logged rather than being allowed to
+# strand the kur half up.
+#
+# Args, one required...
+#
+#     $ctx :: The POE::Component::Server::JSONUnix per request context object
+#             for the connection, handed to the handler by the server. Used
+#             for respond_result to send the answer and close to hang up. It
+#             must be this request's own context, as that is the connection
+#             the answer belongs to.
+#
+# Returns undef, always, which the server reads as the handler having dealt
+# with the response itself.
+#
+# Does not die. The teardown error, if there was one, reaches the client as a
+# teardown_error field alongside stopping => 1, so a client can tell a clean
+# stop from a messy one. The shutdown is posted with a one second delay to
+# give that response time to flush.
+#
+#     # from the server's command dispatch table
+#     'stop' => sub {
+#         my ( undef, undef, $ctx ) = @_;
+#         return $self->_cmd_stop($ctx);
+#     },
 sub _cmd_stop {
 	my ( $self, $ctx ) = @_;
 
@@ -1261,9 +1937,37 @@ sub _cmd_stop {
 	return undef;
 } ## end sub _cmd_stop
 
-# the common guts of stopping... checkpoints both tablets, tears the backend
-# down, and returns any teardown error... shared by the stop command and the
-# signal handler
+# The common guts of stopping, shared by the stop command and the TERM/INT
+# handler so a signaled kur leaves exactly the state a asked one does...
+# tablets on disk and the firewall setup torn down, rather than the process
+# dying with its rules dangling.
+#
+# It sets stopping first, which stops the sweeper rescheduling so its session
+# can end and takes _refuse_when_stopping's guard live, then writes all four
+# tablets before touching the backend, so the state is safe on disk even if
+# the teardown goes badly.
+#
+# A successful teardown empties both retry books and rewrites their tablets,
+# because tearing down takes the whole setup with it, orphaned rules
+# included... anything that was owed has just been paid, and leaving the
+# tablets in place would have the next run retrying unbans for rules that no
+# longer exist. A failed teardown keeps those debts, as it may well have left
+# the rules exactly where they were.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns the teardown error as a string when the backend refused to tear
+# down, or the empty string when it went cleanly. Callers test it as a boolean
+# and pass it on... _cmd_stop puts it in the response, the signal handler
+# ignores it, both having logged it here.
+#
+# Does not die. The teardown is wrapped precisely so a failure cannot strand
+# a kur half stopped.
+#
+#     my $teardown_error = $self->_stop_guts;
+#     if ($teardown_error) {
+#         # went down messy, the firewall may still carry rules
+#     }
 sub _stop_guts {
 	my ($self) = @_;
 
@@ -1295,8 +1999,31 @@ sub _stop_guts {
 	return $teardown_error;
 } ## end sub _stop_guts
 
-# ran once a second by the sweeper session... expires timed bans and
-# handles the periodic checkpoint of both tablets
+# The body of the once a second sweeper alarm started by start_server, and
+# the only thing in this module that happens without a client asking for it.
+# Everything time driven hangs off here... sentences being served, unban
+# retries coming due, and the periodic tablet rewrite.
+#
+# The sweep runs every tick, while the checkpoint only runs once the
+# configured interval has passed since the last successful one, so a busy kur
+# is not rewriting four files a second. A checkpoint of 0 disables the
+# periodic rewrite entirely, mutations and stop still writing as they go.
+#
+# Takes no arguments beyond the invocant. The session calling it has already
+# checked stopping, so this does not.
+#
+# Returns nothing meaningful, a empty return.
+#
+# Does not die, and must not... a die here would take the sweeper session
+# down and leave sentences running forever. _sweep_family wraps every backend
+# call, and the checkpoints report failure by logging rather than throwing.
+#
+#     # from the sweeper session
+#     'sweep' => sub {
+#         return if $self->{stopping};
+#         $self->_tick;
+#         $_[KERNEL]->delay( 'sweep', 1 );
+#     },
 sub _tick {
 	my ($self) = @_;
 
@@ -1312,8 +2039,17 @@ sub _tick {
 	return;
 } ## end sub _tick
 
-# unbans timed bans that have expired, both families... ran once a second
-# via the sweeper session started by start_server
+# Runs the expiry sweep over both families, which is all it does... the work
+# is _sweep_family's, this just saves _tick from knowing there are two
+# families to walk.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return.
+#
+# Does not die, _sweep_family wrapping every backend call it makes.
+#
+#     $self->_sweep_bans;
 sub _sweep_bans {
 	my ($self) = @_;
 
@@ -1324,8 +2060,45 @@ sub _sweep_bans {
 	return;
 }
 
-# the shared per family sweep... unbans anything whose sentence has been
-# served and checkpoints that family's tablet when anything changed
+# The shared per family sweep, and where a sentence actually ends. It has two
+# halves, both driven off the same current time.
+#
+# First, every booked entry whose expiry has passed is unbanned via the
+# backend and dropped from the book. The drop happens whether or not the
+# backend took it... the sentence has been served either way, and a book
+# still claiming a ban the kur has finished with would just feed this same
+# loop a doomed unban every second. What a refused unban leaves behind
+# instead is a entry in the retry book, so the debt to the firewall is
+# remembered rather than the rule being orphaned silently.
+#
+# Second, every retry that has come due is attempted again. A success drops
+# it; a failure bumps the counts and pushes next_try out by the current delay,
+# doubling that delay to a cap of 60 seconds, the same backoff shape the
+# manager uses for respawning a dead kur. Nothing here ever gives up... a debt
+# that can never be paid is cleared by the clear_retries command, by a
+# re-ban, or by a teardown, not by this loop deciding it has tried enough.
+#
+# The two tablets are written at most once each per call, and only when
+# something actually changed, which is why the two changed flags exist rather
+# than checkpointing inside the loops.
+#
+# Args, one required...
+#
+#     $spec :: One of the %family_spec entries described above. Uses hash,
+#              retry_hash, unban_method, expired_stat, log_label, checkpoint,
+#              and retry_checkpoint.
+#
+# Returns nothing meaningful, a empty return. What it did is visible in the
+# books, the stats, and the log.
+#
+# Does not die. Every backend call is wrapped, since this runs off a POE
+# alarm where a die would take the sweeper session down and leave every
+# remaining sentence running forever. A refused unban counts a error and
+# becomes a retry instead.
+#
+#     $self->_sweep_family( $family_spec{ip} );
+#
+#     $self->_sweep_family( $family_spec{cidr} );
 sub _sweep_family {
 	my ( $self, $spec ) = @_;
 
@@ -1418,8 +2191,21 @@ sub _sweep_family {
 	return;
 } ## end sub _sweep_family
 
-# checkpoints the single IP ban state, tracking the time of the last
-# successful checkpoint so the periodic timer has something to measure against
+# Writes the single IP ban tablet, and the only one of the four checkpoint
+# wrappers that tracks when it last succeeded... _tick measures the periodic
+# interval against last_checkpoint, so it is deliberately only bumped on a
+# successful write. A failing tablet therefore has the periodic timer trying
+# again every tick rather than waiting out the interval each time.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return. Whether the write landed is
+# visible in $self->{last_checkpoint} and, on failure, the log and the error
+# stat.
+#
+# Does not die, _write_state reporting failure by returning false.
+#
+#     $self->_checkpoint;
 sub _checkpoint {
 	my ($self) = @_;
 
@@ -1431,8 +2217,21 @@ sub _checkpoint {
 	return;
 } ## end sub _checkpoint
 
-# checkpoints the CIDR ban state to its own sibling CSV, kept separate so
-# the single IP tablet format stays as it was before CIDR support existed
+# Writes the range ban tablet, the sibling of _checkpoint. The two families
+# keep separate files so the single IP tablet's format stayed exactly as it
+# was before ranges existed, rather than growing a family column that older
+# state would not carry.
+#
+# It does not touch last_checkpoint... that is _checkpoint's alone, the two
+# being written together everywhere so one timestamp covers both.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return.
+#
+# Does not die, _write_state reporting failure by returning false.
+#
+#     $self->_checkpoint_cidr;
 sub _checkpoint_cidr {
 	my ($self) = @_;
 
@@ -1441,8 +2240,19 @@ sub _checkpoint_cidr {
 	return;
 }
 
-# checkpoints the single IP unban retry state to its own tablet, so a unban
-# still owed to the firewall is not forgotten by a restart
+# Writes the single IP unban retry tablet, so a debt to the firewall survives
+# a restart... the rule is still in place after one, so the obligation is
+# just as real. It is a separate file from the ban tablet because the two hold
+# different things: one is who is banned, the other is who should not be but
+# still is.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return.
+#
+# Does not die, _write_retry_state reporting failure by returning false.
+#
+#     $self->_checkpoint_retries;
 sub _checkpoint_retries {
 	my ($self) = @_;
 
@@ -1451,7 +2261,23 @@ sub _checkpoint_retries {
 	return;
 }
 
-# checkpoints the CIDR unban retry state, mirroring _checkpoint_retries
+# Writes the range unban retry tablet, mirroring _checkpoint_retries for the
+# other family. The four checkpoint wrappers exist as named methods rather
+# than the callers reaching for _write_state and _write_retry_state directly
+# because %family_spec stores them by name, so a shared helper can write the
+# right family's tablet without knowing which family it is working on.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return.
+#
+# Does not die, _write_retry_state reporting failure by returning false.
+#
+#     $self->_checkpoint_cidr_retries;
+#
+#     # or reached by name from a shared helper
+#     my $method = $spec->{retry_checkpoint};
+#     $self->$method;
 sub _checkpoint_cidr_retries {
 	my ($self) = @_;
 
@@ -1460,13 +2286,46 @@ sub _checkpoint_cidr_retries {
 	return;
 }
 
-# writes a retry hash out as a CSV to that family's retry tablet, atomically
-# via a temp file and rename the same way _write_state does... the times are
-# absolute rather than relative as a retry has no sentence to re-anchor, and
-# a next_try left in the past just means the retry is due at once
+# Writes one family's retry book out as a CSV, the debts owed to the firewall
+# made durable. Atomic the same way _write_state is, a temp file in the same
+# directory renamed over the target, so a reader never sees a half written
+# tablet and a failure leaves the last good one in place.
 #
-# an empty retry hash unlinks the tablet rather than leaving a header only
-# file behind, so nothing owed means nothing on disk
+# The times are stored absolute rather than as a remaining figure, unlike the
+# ban tablet's ban_time_left. A debt has no sentence to re-anchor against...
+# it is simply owed until paid, and a next_try left in the past after a long
+# downtime just means the retry is due at once, which is the wanted behavior.
+#
+# A empty retry book unlinks the tablet rather than leaving a header only file
+# behind, so the file existing at all means something is owed. That is worth
+# knowing before changing it, as a operator can and does check for the file.
+#
+# The row format, one per debt, after a header line of
+# <label>,first_tried,last_tried,times_tried,next_try,delay ...
+#
+#     <entry>,<first_tried>,<last_tried>,<times_tried>,<next_try>,<delay>
+#
+# with the entry in canonical form and the rest integers, the times epochs and
+# delay the seconds the backoff had reached. Rows are sorted by entry so the
+# file is stable between writes and diffs cleanly.
+#
+# Args, one required...
+#
+#     $spec :: One of the %family_spec entries described above. Uses
+#              retry_path, retry_hash, label, and infix.
+#
+# Returns 1 on success, including the nothing owed case where the file was
+# removed or was already absent, and 0 when the write failed, having logged
+# it and counted a error. Every caller ignores the return, the logging being
+# the real reporting, but it is there for one that wants it.
+#
+# Does not die. A open, print, close, rename or unlink failure is caught,
+# logged, counted, and reported by the return value... a tablet write is
+# housekeeping and must never take down a ban or a sweep.
+#
+#     $self->_write_retry_state( $family_spec{ip} );
+#     # writes /var/cache/ereshkigal/kur.<name>.retry.csv, or removes it when
+#     # nothing is owed
 sub _write_retry_state {
 	my ( $self, $spec ) = @_;
 
@@ -1511,11 +2370,56 @@ sub _write_retry_state {
 	return 1;
 } ## end sub _write_retry_state
 
-# writes a ban state hash out as a CSV of <label>,time,ban_time_left to the
-# given file, atomically via a temp file and rename... returns 1 on success
-# and 0 on failure, having logged the failure. shared by the single IP and
-# CIDR checkpoints, the only difference being the file, the hash, and the
-# label used for the first column
+# Writes one family's ban book out as a CSV, which is what makes a timed ban
+# survive a restart with the right time left on it. Shared by both ban
+# checkpoints, the only difference between them being the file, the hash, and
+# the first column's name, which is why this takes them as arguments rather
+# than a $spec.
+#
+# Atomic... everything is written to a temp file beside the target and renamed
+# over it, so a reader never sees a partial tablet. The close is checked as
+# well as the open, because buffered print failures, a full filesystem being
+# the usual one, only surface when the handle is closed; skipping the rename
+# on any failure keeps the previous good tablet rather than replacing it with
+# a truncated one.
+#
+# The row format, one per ban, after a header line of
+# <label>,time,ban_time_left ...
+#
+#     <entry>,<written>,<left>
+#
+# where written is the epoch this write happened and left is the seconds of
+# sentence remaining at that moment, 0 meaning the ban never expires. Storing
+# it relative rather than as a expiry epoch is what lets a restored ban serve
+# out its remaining time rather than being anchored to a clock that may have
+# moved. A ban expiring within the same second is clamped to 1 rather than
+# rounding to 0, since 0 is spoken for by permanent... anything genuinely
+# expired is the sweeper's business, not this one's. Rows are sorted by entry
+# so the file is stable between writes.
+#
+# Args, all four required and positional...
+#
+#     $state_file :: Full path of the tablet to write. The temp file is this
+#                    with .tmp appended, so the directory has to be writable.
+#     $bans       :: The ban book to write, a hash ref of canonical entry to
+#                    { banned_at => epoch, expires => epoch or 0 }. Only
+#                    expires is read. A empty hash writes a header only file
+#                    rather than removing it, unlike the retry tablets.
+#     $now        :: Epoch to record as the write time and to measure each
+#                    remaining sentence against. Passed in rather than taken
+#                    here so every row of one write agrees.
+#     $label      :: Name for the first column, 'ip' or 'cidr'. It is also
+#                    what the loader matches to recognise the header line.
+#
+# Returns 1 on success and 0 on failure, having logged the failure and
+# counted a error. _checkpoint uses that to decide whether to bump
+# last_checkpoint.
+#
+# Does not die, for the same reason _write_retry_state does not.
+#
+#     $self->_write_state(
+#         $self->state_path, $self->{bans}, time, 'ip'
+#     );
 sub _write_state {
 	my ( $self, $state_file, $bans, $now, $label ) = @_;
 
@@ -1552,11 +2456,25 @@ sub _write_state {
 	return 1;
 } ## end sub _write_state
 
-# loads the persisted ban state CSV... the time in each row is compared to
-# the current time for figuring out if the ban should be restored or not...
-# entries that expired while not running are unbanned in case the backend
-# still carries the rule, the rest are re-banned so the freshly inited
-# backend carries them again
+# Restores the single IP ban book from its tablet at startup, which is what
+# makes a restart invisible to anyone serving a sentence. Called from new
+# once the backend is up, so the re-bans it drives land on a freshly inited
+# firewall.
+#
+# The work is _load_state's. This is just the single IP half of the pair with
+# _load_cidr_bans, kept as its own named sub so new reads as three plain
+# calls rather than a loop over families it would otherwise have to know
+# about.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return. What was restored is visible in
+# $self->{bans} and the log.
+#
+# Does not die, _load_state surviving a unreadable tablet, a malformed row,
+# and a backend that refuses a re-ban.
+#
+#     $self->_load_bans;
 sub _load_bans {
 	my ($self) = @_;
 
@@ -1565,10 +2483,26 @@ sub _load_bans {
 	return;
 }
 
-# loads the persisted CIDR ban state, mirroring _load_bans but for CIDR... it
-# is skipped entirely when CIDR is not available for this instance so the
-# persisted file is left intact for a later run that re-enables it, rather than
-# being handed to a backend that can not carry it
+# Restores the range ban book from its tablet at startup, mirroring
+# _load_bans for the other family, with one deliberate difference... it is
+# skipped entirely when ranges are not available to this instance.
+#
+# That skip matters because of what not skipping would do. Loading is not
+# passive: every restored row is re-banned through the backend. Handing a
+# tablet full of ranges to a backend that cannot carry them, or to a kur
+# whose operator has since turned enable_cidr off, would be a burst of
+# failures at every startup. Skipping leaves the file untouched instead, so a
+# later run that turns ranges back on finds its state exactly as it was.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return, including the skipped case,
+# which is not reported... _cidr_available already logged the mismatch at
+# init if there was one.
+#
+# Does not die.
+#
+#     $self->_load_cidr_bans;
 sub _load_cidr_bans {
 	my ($self) = @_;
 
@@ -1581,12 +2515,27 @@ sub _load_cidr_bans {
 	return;
 } ## end sub _load_cidr_bans
 
-# loads both retry tablets... a unban that was still owed when the kur went
-# down is owed just as much now, so the entries come back with their counts
-# and backoff intact rather than starting over. the CIDR side is loaded
-# regardless of whether CIDR is currently available, as the debt is to the
-# firewall and does not care whether the operator has since turned the
-# feature off
+# Restores both retry books from their tablets at startup. A unban that was
+# still owed when the kur went down is owed just as much now, the rule having
+# outlived the process, so the entries come back with their counts and their
+# backoff intact rather than starting over at one attempt and a one second
+# delay.
+#
+# Both families are loaded unconditionally, which is the one place the range
+# side is not gated on _cidr_available. The reason is that a debt is to the
+# firewall rather than to the feature... a rule this kur failed to remove is
+# sitting there regardless of whether the operator has since turned ranges
+# off, and unlike _load_cidr_bans this restores no bans and asks the backend
+# for nothing, so there is no failure burst to avoid.
+#
+# Takes no arguments beyond the invocant.
+#
+# Returns nothing meaningful, a empty return.
+#
+# Does not die, _load_retry_state surviving a unreadable tablet and skipping
+# rows it cannot parse.
+#
+#     $self->_load_retries;
 sub _load_retries {
 	my ($self) = @_;
 
@@ -1597,9 +2546,48 @@ sub _load_retries {
 	return;
 }
 
-# the shared per family retry tablet loader... rows that will not parse or
-# will not normalize are skipped, keeping the same canonical only invariant
-# the ban books have
+# The shared per family retry tablet loader, reading back what
+# _write_retry_state put down. Unlike the ban loader it asks the backend for
+# nothing... a debt is book keeping about a rule that is already there, so
+# restoring one means only putting the entry back in the retry book for the
+# sweeper to pick up.
+#
+# Each row is parsed and checked twice. The shape check wants exactly six
+# fields with a non-empty entry and five integers, and the normalize check
+# wants the entry itself to validate, which keeps the retry books canonical
+# only in the same way the ban books are... a raw spelling booked here would
+# be a debt the clear_retries command could never name, as that normalizes
+# what it is asked to forget. A row failing either is logged and skipped
+# rather than taking the file down with it.
+#
+# A restored delay is brought inside the same bounds the backoff keeps
+# itself in, since only it's own doubling is clamped and a tablet can carry
+# anything. A 0, which only a hand edited one would, is floored back to 2...
+# left alone it would peg the backoff at zero forever and have the sweeper
+# retrying that entry every single tick. Anything past the 60 second cap is
+# brought back to it, a delay of say 999999 having otherwise put the next
+# attempt a week and a half out.
+#
+# The tablet is rewritten at the end so what is on disk matches what was
+# actually restored, which is how skipped rows get dropped rather than
+# lingering to be skipped again at every future startup.
+#
+# Args, one required...
+#
+#     $spec :: One of the %family_spec entries described above. Uses
+#              retry_path, retry_hash, label, normalizer, noun, infix, and
+#              retry_checkpoint.
+#
+# Returns nothing meaningful, a empty return, including when the tablet does
+# not exist, which is the ordinary case of nothing being owed.
+#
+# Does not die. A tablet that cannot be opened or read is logged and the load
+# abandoned, leaving the book empty rather than the kur refusing to start over
+# a file it only needed for housekeeping.
+#
+#     $self->_load_retry_state( $family_spec{ip} );
+#     # a row of 1.2.3.4,1785918152,1785919052,9,1785919112,60 comes back as
+#     # $self->{unban_retries}{'1.2.3.4'} with those counts and that backoff
 sub _load_retry_state {
 	my ( $self, $spec ) = @_;
 
@@ -1666,10 +2654,13 @@ sub _load_retry_state {
 			'last_tried'  => $last_tried,
 			'times_tried' => $times_tried,
 			'next_try'    => $next_try,
-			# a tablet written by hand could carry a 0, which would peg the
-			# backoff at 0 forever, so it is floored at where a first failure
-			# would have left it
-			'delay' => $delay ? $delay : 2,
+			# a tablet written by hand could carry anything, and the backoff
+			# only clamps what it's own doubling produces, so a restored
+			# value is brought inside the same bounds here... a 0 would peg
+			# the backoff at 0 forever and is floored to where a first
+			# failure would have left it, while anything past the cap would
+			# put next_try days out and is brought back to the cap
+			'delay' => $delay ? ( $delay > 60 ? 60 : $delay ) : 2,
 		};
 		log_drek(
 			'info',
@@ -1691,8 +2682,49 @@ sub _load_retry_state {
 	return;
 } ## end sub _load_retry_state
 
-# the shared per family loader behind _load_bans and _load_cidr_bans...
-# parameterized the same way as the rest of the shared family helpers
+# The shared per family ban tablet loader behind _load_bans and
+# _load_cidr_bans, and the one loader that actually touches the firewall...
+# restoring a ban means re-banning it, the backend having just been inited
+# empty.
+#
+# Each row's remaining sentence is reconstructed as written + left, which is
+# what makes a ban serve out the time it had rather than restarting its
+# sentence, and that expiry decides which of two things happens. A row that
+# ran out while the kur was down is unbanned rather than restored, in case
+# the firewall still carries the rule from before, and counted as expired. A
+# row still serving is re-banned and booked.
+#
+# A re-ban the backend refuses is deliberately not booked, matching how a
+# live ban behaves... a book claiming a ban the firewall does not carry would
+# only feed the sweeper a doomed unban later.
+#
+# Rows are checked the same two ways the retry loader checks its own, for
+# shape and then for a entry that will normalize, and a failure of either is
+# logged and skipped. Everything is normalized before being booked, so a
+# tablet carrying a non-canonical spelling has that row dropped rather than
+# booked raw, which would leave a ban the unban path could never name.
+#
+# The tablet is rewritten at the end so it reflects what actually got
+# restored, dropping the expired and the skipped.
+#
+# Args, both required and positional...
+#
+#     $state_file :: Full path of the tablet to read. A missing file is the
+#                    ordinary first run case and returns quietly.
+#     $spec       :: One of the %family_spec entries described above. Uses
+#                    label, normalizer, noun, infix, log_label, ban_method,
+#                    unban_method, hash, expired_stat, and checkpoint.
+#
+# Returns nothing meaningful, a empty return. What was restored is visible in
+# that family's ban book, the expired stat, and the log.
+#
+# Does not die. A unreadable tablet is logged and the load abandoned, and
+# every backend call is wrapped, so neither a bad file nor a firewall in a bad
+# mood can stop the kur starting.
+#
+#     $self->_load_state( $self->state_path, $family_spec{ip} );
+#
+#     $self->_load_state( $self->cidr_state_path, $family_spec{cidr} );
 sub _load_state {
 	my ( $self, $state_file, $spec ) = @_;
 
