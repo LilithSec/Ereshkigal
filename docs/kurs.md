@@ -145,6 +145,9 @@ Notes that apply across the board...
   table) swept it away. It costs one probe per ban/unban; leave it on
   unless that matters to you. What `check` actually probes — and
   where it can probe nothing — varies per backend; see each page.
+  `ereshkigal re-init` forces the same rebuild on demand, which is
+  what you want when `self_heal` is off, when the next ban is a long
+  way off, or when a backend's `check` cannot see the damage.
 - Most backends take no `ports`/`protocols` at all — they block the
   whole IP or operate somewhere ports have no meaning. The strict
   ones (`npf`, `route`, `cloudflare`, `netscaler`, `nsupdate`,

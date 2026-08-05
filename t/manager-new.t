@@ -352,6 +352,28 @@ qr/only one of/, 'clear_retries refuses both a ip and a cidr';
 throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'nosuch' } }, undef ) }
 qr/No such kur instance/, 'clear_retries refuses a unknown kur';
 
+#
+# re_init fans out the same way
+#
+
+throws_ok { $ereshkigal->_cmd_re_init( { 'args' => { 'kur' => 'nosuch' } }, undef ) }
+qr/No such kur instance/, 're_init refuses a unknown kur';
+is_deeply(
+	$ereshkigal->_cmd_re_init( {}, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } } },
+	're_init with no name goes to every real kur'
+);
+is_deeply(
+	$ereshkigal->_cmd_re_init( { 'args' => { 'kur' => 'gate' } }, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } } },
+	're_init targeted at a fan_out kur expands to it\'s members'
+);
+is_deeply(
+	$ereshkigal->_cmd_re_init( { 'args' => { 'kur' => 'sshd' } }, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' } } },
+	're_init targeted at one kur goes to just it'
+);
+
 # nothing is running, so every target answers not running... which is enough
 # to prove the expansion and that each name is reached
 is_deeply(

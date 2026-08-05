@@ -473,6 +473,12 @@ The JSON commands handled are as below.
           specified, to write their ban state CSVs out now. If args.kur is a
           fan_out kur it expands to it's members.
 
+    - re_init :: Have the kur args.kur, or all kurs if args.kur is not
+          specified, tear their firewall setup down and rebuild it, re-banning
+          everything their ban book carries. Expands a fan_out kur the same
+          way checkpoint does. Bans are briefly not enforced while the setup
+          is being rebuilt.
+
     - clear_retries :: Have the kur args.kur, or all kurs if args.kur is not
           specified, forget unbans still owed to the firewall. args.ip or
           args.cidr, at most one of them, names a single owed unban to
@@ -569,6 +575,10 @@ sub start_server {
 			'clear_retries' => sub {
 				my ( undef, $request, $ctx ) = @_;
 				return $self->_cmd_clear_retries( $request, $ctx );
+			},
+			're_init' => sub {
+				my ( undef, $request, $ctx ) = @_;
+				return $self->_cmd_re_init( $request, $ctx );
 			},
 			'stop' => sub {
 				my ( undef, undef, $ctx ) = @_;
@@ -1449,6 +1459,32 @@ sub _cmd_checkpoint {
 
 	return { 'kurs' => $self->_fan_out( \@targets, 'checkpoint' ) };
 } ## end sub _cmd_checkpoint
+
+# handles the re_init command... fans re_init out the same way checkpoint
+# does, having the kurs tear their firewall setup down and rebuild it from
+# what their ban books carry
+sub _cmd_re_init {
+	my ( $self, $request, $ctx ) = @_;
+
+	my $args = $request->{args};
+
+	my @targets;
+	if ( defined($args) && defined( $args->{kur} ) ) {
+		# as with checkpoint, authorization is against the requested name so
+		# a fan_out grant covers the fanned command, and it comes before the
+		# existence check so kur names can not be enumerated
+		$self->_authorize( $ctx, $args->{kur} );
+		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
+			die( 'No such kur instance, "' . $args->{kur} . '"' );
+		}
+		@targets = $self->_expand_kur_targets( $args->{kur} );
+	} else {
+		@targets = $self->_real_kur_names;
+		$self->_authorize( $ctx, @targets );
+	}
+
+	return { 'kurs' => $self->_fan_out( \@targets, 're_init' ) };
+} ## end sub _cmd_re_init
 
 # handles the clear_retries command... fans it out the same way checkpoint
 # does, passing along the optional args.ip or args.cidr naming a single owed

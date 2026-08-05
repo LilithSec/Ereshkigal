@@ -68,6 +68,8 @@ usage_error_ok( ['remove'], qr/single kur instance name/, 'remove with no name' 
 
 usage_error_ok( [ 'checkpoint', 'a', 'b' ], qr/at most one/, 'checkpoint with two args' );
 
+usage_error_ok( [ 're-init', 'a', 'b' ], qr/at most one/, 're-init with two args' );
+
 usage_error_ok( [ 'clear-retries', 'a', 'b' ], qr/at most one/, 'clear-retries with two args' );
 usage_error_ok(
 	[ 'clear-retries', '--ip', '1.2.3.4', '--cidr', '1.2.3.0/24' ],
@@ -85,7 +87,8 @@ usage_error_ok( ['bogus'], qr/bogus/i, 'unknown subcommand' );
 
 foreach my $command (
 	'status',        'banned', 'ban',    'unban',      'cidr-ban', 'cidr-unban',
-	'clear-retries', 'add',    'remove', 'checkpoint', 'start',    'stop'
+	'clear-retries', 'add',    'remove', 'checkpoint', 'start',    'stop',
+	're-init'
 	)
 {
 	foreach my $flag ( '--help', '-h' ) {
@@ -165,6 +168,7 @@ SKIP: {
 			'remove_kur'    => { 'status' => 'error', 'error' => 'No such kur instance, "sshd"' },
 			'checkpoint'    => $echo,
 			'clear_retries' => $echo,
+			're_init'       => $echo,
 			'stop'          => { 'status' => 'ok', 'result' => { 'stopping' => 1 } },
 		}
 	);
@@ -282,6 +286,15 @@ SKIP: {
 	$result  = test_app( 'Ereshkigal::App' => [ @s, 'checkpoint', 'sshd' ] );
 	$decoded = decode_json( $result->stdout );
 	is( $decoded->{args}{kur}, 'sshd', 'checkpoint passes the kur name' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 're-init' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{command}, 're_init', 're-init calls re_init' );
+	ok( !defined( $decoded->{args} ), 're-init with out a name sends no args' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 're-init', 'sshd' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{args}{kur}, 'sshd', 're-init passes the kur name' );
 
 	$result  = test_app( 'Ereshkigal::App' => [ @s, 'clear-retries' ] );
 	$decoded = decode_json( $result->stdout );

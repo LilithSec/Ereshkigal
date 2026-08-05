@@ -226,6 +226,20 @@ denied_ok(
 lives_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'gate' } }, $gateuser ) }
 'clear_retries at a gateway is the gateway grant, not it\'s members\'';
 
+# and re_init, which rebuilds firewall state, authorizes the same way
+lives_ok { $ereshkigal->_cmd_re_init( { 'args' => { 'kur' => 'sshd' } }, $scoped ) }
+'re_init allowed for a scoped user on their own kur';
+denied_ok(
+	sub { $ereshkigal->_cmd_re_init( { 'args' => { 'kur' => 'smtp' } }, $scoped ) },
+	qr/not authorized/,
+	're_init denied for a scoped user on another kur'
+);
+denied_ok(
+	sub { $ereshkigal->_cmd_re_init( {}, $scoped ) },
+	qr/not authorized/,
+	'untargeted re_init denied for a scoped user'
+);
+
 # with enable_auth off everything is authorized regardless of lists
 $ereshkigal->{enable_auth} = 0;
 lives_ok { $ereshkigal->_authorize($nobody) } 'enable_auth off manager level';

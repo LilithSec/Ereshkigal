@@ -143,7 +143,29 @@ ereshkigal clear-retries blocklist --cidr 1.2.3.0/24
 
 This only stops the kur asking. Nothing is sent to the firewall, so
 anything genuinely still banished there stays banished — check before
-forgiving, or you leave a rule nothing is tracking.
+forgiving, or you leave a rule nothing is tracking. If the backend is
+healthy again, an ordinary `unban` settles the debt honestly instead,
+and `re-init` settles the lot.
+
+## Rebuilding a trampled setup
+
+When something outside Ereshkigal drops the rules — a `shorewall
+restart`, a `pf -F all`, a firewalld reload, an ipset flushed by hand —
+the kur's book still knows who should be down there. `re-init` tears
+the setup down and rebuilds it from that book:
+
+```shell
+ereshkigal re-init             # every kur rebuilds
+ereshkigal re-init sshd        # just the one
+```
+
+Bans are not enforced during the rebuild. It is brief, but on a busy
+edge pick your moment.
+
+Mostly this is a manual convenience: with `self_heal` on (the default)
+each kur already checks its setup before every ban and unban and
+rebuilds it if it has gone missing. Reach for `re-init` when you want
+that now rather than at the next ban, or when `self_heal` is off.
 
 ## Driving the socket directly
 
@@ -192,7 +214,8 @@ optional), `unban` (`{"ip":...}` or `{"all":true}`), `cidr_ban`
 (`{"cidrs":[...], "kur":..., "ban_time":...}` with kur/ban_time
 optional), `cidr_unban` (`{"cidr":...}`), `add_kur`
 (`{"name":..., "opts":{...}}`), `remove_kur` (`{"name":...}`),
-`checkpoint` (`{"kur":...}` optional), `clear_retries`
+`checkpoint` (`{"kur":...}` optional), `re_init` (`{"kur":...}`
+optional), `clear_retries`
 (`{"kur":..., "ip":...}` or `{"kur":..., "cidr":...}`, all optional),
 and `stop`. Responses are
 `{"status":"ok","result":...}` or `{"status":"error","error":"..."}`.

@@ -20,6 +20,7 @@ lib/Ereshkigal/App/Command/checkpoint.pm
 lib/Ereshkigal/App/Command/cidr_ban.pm
 lib/Ereshkigal/App/Command/cidr_unban.pm
 lib/Ereshkigal/App/Command/clear_retries.pm
+lib/Ereshkigal/App/Command/re_init.pm
 lib/Ereshkigal/App/Command/remove.pm
 lib/Ereshkigal/App/Command/start.pm
 lib/Ereshkigal/App/Command/status.pm

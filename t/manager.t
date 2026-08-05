@@ -117,6 +117,34 @@ $response = $client->call('unban');
 is( $response->{status}, 'error', 'unban with out args errors' );
 
 #
+# re_init against live kurs... the ban book is the authority, so what was
+# banished before the rebuild is still banished after it
+#
+
+$client->call_ok( 'ban', { 'ips' => [ '7.7.7.7', '8.8.8.8' ] } );
+
+$result = $client->call_ok('re_init');
+is( $result->{kurs}{sshd}{re_init}, 1, 're_init reached sshd' );
+is( $result->{kurs}{smtp}{re_init}, 1, 're_init reached smtp' );
+
+$result = $client->call_ok('banned');
+is_deeply(
+	[ sort( @{ $result->{kurs}{sshd}{banned} } ) ],
+	[ '7.7.7.7', '8.8.8.8' ],
+	'the bans were rebuilt from the book'
+);
+
+# targeted at one kur, and at a gateway
+$result = $client->call_ok( 're_init', { 'kur' => 'sshd' } );
+is( $result->{kurs}{sshd}{re_init}, 1, 're_init targeted at one kur reached it' );
+ok( !defined( $result->{kurs}{smtp} ), 'and left the other alone' );
+
+$response = $client->call( 're_init', { 'kur' => 'nope' } );
+is( $response->{status}, 'error', 're_init of a unknown kur errors' );
+
+$client->call_ok( 'unban', { 'all' => 1 } );
+
+#
 # status_kur / status_all
 #
 
