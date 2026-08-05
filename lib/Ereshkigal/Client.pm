@@ -148,7 +148,48 @@ sub call {
 	return $response;
 } ## end sub call
 
-# sends a single request on the socket and returns the decoded response
+# Sends one request over a already connected socket and reads back the one
+# line answer to it, which is the whole of the newline delimited JSON
+# protocol L<POE::Component::Server::JSONUnix> speaks. Used by L</call> for
+# both the initial request and the resend after a auth challenge, and by
+# _authenticate for the challenge itself, so it deliberately does no
+# connecting, no timing out, and no auth handling of it's own... the caller
+# owns all three.
+#
+# The request is JSON encoded, a newline appended, and written to the socket;
+# the answer is read to the first newline and JSON decoded.
+#
+# Args, all required and positional...
+#
+#     $self    :: The Ereshkigal::Client instance. Only used for it's socket
+#                 path, which goes into the error messages.
+#     $sock    :: A open IO::Socket::UNIX already connected to the server.
+#                 Left open on return, as the auth challenge and the resend
+#                 that follows it have to happen on this same connection.
+#     $request :: A hash ref of the request to send, which the server expects
+#                 to carry a 'command' key naming the command and, optionally,
+#                 a 'args' key holding that command's arguments hash ref. It
+#                 is encoded as given, so anything JSON::MaybeXS can not
+#                 encode dies here.
+#
+# Returns the decoded response as a hash ref. The server's own shape is
+# C<{ status =E<gt> 'ok', result =E<gt> ... }> on success and
+# C<{ status =E<gt> 'error', error =E<gt> '...' }> on failure, but no
+# checking of that is done here... a error response comes back as a plain
+# hash ref just like a successful one, for the caller to judge. L</call_ok>
+# is what turns a error status into a die.
+#
+# Dies, with a trailing newline so the message reads cleanly when it reaches
+# a user, if the socket gives EOF rather than a line, if the line will not
+# JSON decode, or if it decodes to anything other than a hash ref.
+#
+#     my $response = $self->_send_request( $sock, { 'command' => 'status' } );
+#     # $response is { status => 'ok', result => { pid => 42, ... } }
+#
+#     my $response = $self->_send_request(
+#         $sock,
+#         { 'command' => 'ban', 'args' => { 'ips' => ['1.2.3.4'] } }
+#     );
 sub _send_request {
 	my ( $self, $sock, $request ) = @_;
 
@@ -167,10 +208,41 @@ sub _send_request {
 	return $response;
 } ## end sub _send_request
 
-# completes the POE::Component::Server::JSONUnix unix ownership challenge on
-# the passed connection... auth_start hands back a cookie and a temp dir, the
-# cookie gets written to a file there owned by us, which is what proves the
-# identity, and auth_verify is pointed at it
+# Completes the L<POE::Component::Server::JSONUnix> unix ownership challenge
+# on a already connected socket, which is how a manager with enable_auth on
+# learns who is talking to it. Called by L</call> when a request comes back
+# refused with the authentication required error, after which that request is
+# resent on the same connection.
+#
+# The challenge runs in two commands. auth_start hands back a random cookie
+# and a temp dir the server can see; the cookie is written to a fresh file in
+# that dir, which by being owned by this process is the actual proof of
+# identity; auth_verify is then pointed at that file, and the server stats it
+# to learn the uid and username. The cookie file is removed either way, the
+# server doing it on success and this doing it otherwise, so a rejected
+# challenge leaves nothing behind.
+#
+# Args, both required and positional...
+#
+#     $self :: The Ereshkigal::Client instance. Only used for it's socket
+#              path, which goes into the error messages.
+#     $sock :: A open IO::Socket::UNIX already connected to the server. Auth
+#              state is per connection, so this must be the same socket the
+#              refused request went over and the one the resend will go over.
+#              Left open on return.
+#
+# Returns nothing meaningful, an empty return. Success is the absence of a
+# die... on return the connection is authenticated and the caller may resend.
+#
+# Dies, with a trailing newline, if auth_start answers anything but ok or
+# with out both a cookie and a temp_dir, if the cookie file can not be
+# written (a full or unwritable temp dir surfaces here rather than as a
+# confusing auth_verify failure later), or if auth_verify answers anything
+# but ok, which is what a genuine refusal looks like.
+#
+#     eval { $self->_authenticate($sock); };
+#     if ($@) { die( 'could not authenticate... ' . $@ ); }
+#     my $response = $self->_send_request( $sock, $request );
 sub _authenticate {
 	my ( $self, $sock ) = @_;
 
