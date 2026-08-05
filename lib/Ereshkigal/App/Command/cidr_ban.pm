@@ -48,8 +48,27 @@ sub command_names { return ( 'cidr-ban', 'cidr_ban' ); }
 sub abstract { return 'ban one or more CIDR ranges' }
 
 sub description {
-	return 'Ban one or more CIDR ranges. Sent to the named kur if --kur is given, otherwise to all kurs.';
-}
+	return <<'DESCRIPTION';
+Banish one or more CIDR ranges to the underworld.
+
+The range form of "ban", behaving the same way... every kur unless --kur
+names one, each range answered for separately, re-banning resets the
+sentence, and --ban-time in seconds with 0 meaning never.
+
+Host bits are masked off, so 1.2.3.4/24 is taken as 1.2.3.0/24 and the
+two cannot become separate bans.
+
+This only works where the operator has turned CIDR banning on, via
+enable_cidr, AND the backend can match on a prefix... several can not.
+A kur that cannot oblige either refuses or quietly ignores the request
+per its cidr_silent_drop setting, which is what lets one command be fanned
+across a mixed set of kurs. "status --all" reports cidr_enabled and
+cidr_supported per kur if you are unsure which is which.
+
+  ereshkigal cidr-ban 1.2.3.0/24
+  ereshkigal cidr-ban --kur blocklist --ban-time 0 2001:db8::/32
+DESCRIPTION
+} ## end sub description
 
 sub usage_desc { return '%c cidr-ban %o <CIDR> [<CIDR> ...]'; }
 

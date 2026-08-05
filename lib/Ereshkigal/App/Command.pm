@@ -114,6 +114,42 @@ sub _result_has_failures {
 	return 0;
 } ## end sub _result_has_failures
 
+# App::Cmd wires up a help command but no --help flag, so every subcommand
+# would answer "Unknown option: help" to the first thing most people reach
+# for. This adds it once here rather than in each subcommand's opt_spec.
+sub _option_processing_params {
+	my ( $class, @args ) = @_;
+
+	return ( $class->usage_desc(@args), $class->opt_spec(@args), [ 'help|h', 'show this help and exit' ] );
+}
+
+# handled here rather than in each validate_args so --help answers before
+# any of them get to complain about missing args... "ban --help" should
+# explain ban, not refuse for want of a IP
+sub prepare {
+	my ( $class, $app, @args ) = @_;
+
+	my ( $self, $opt, @rest ) = $class->SUPER::prepare( $app, @args );
+
+	if ( $opt->{help} ) {
+		print $self->_help_text;
+		exit 0;
+	}
+
+	return ( $self, $opt, @rest );
+} ## end sub prepare
+
+# the same shape the built in help command renders, so "ereshkigal help foo"
+# and "ereshkigal foo --help" agree
+sub _help_text {
+	my ($self) = @_;
+
+	my $description = $self->description;
+	$description = "\n" . $description if ( length($description) );
+
+	return join( "\n", $self->usage->leader_text, $description, $self->usage->option_text ) . "\n";
+} ## end sub _help_text
+
 =head1 AUTHOR
 
 Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>

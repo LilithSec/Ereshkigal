@@ -29,9 +29,27 @@ Standard L<App::Cmd::Command> methods... abstract, validate_args, and execute.
 
 sub abstract { return 'stop all the kur instances and the manager' }
 
-sub description { return 'Stop all the kur instances, tearing their firewall setup down, and then the manager.'; }
+sub description {
+	return <<'DESCRIPTION';
+Stop every kur instance and then the manager.
 
-sub usage_desc { return '%c stop'; }
+Each kur checkpoints its tablets, tears its firewall setup down, and
+exits; the manager follows. Tearing down removes the tables, sets,
+chains, and lists the kurs own, so EVERY ban stops being enforced. The
+host is unprotected by anything Ereshkigal was doing until it is started
+again.
+
+The bans themselves are not forgotten. The tablets are written before the
+teardown, so starting back up re-bans everything whose sentence has not
+run out in the meantime.
+
+This returns as soon as the shutdown has been requested, not once it has
+finished, which is why "start" waits for the old PID file to clear before
+taking over.
+DESCRIPTION
+} ## end sub description
+
+sub usage_desc { return '%c stop %o'; }
 
 sub validate_args {
 	my ( $self, $opt, $args ) = @_;

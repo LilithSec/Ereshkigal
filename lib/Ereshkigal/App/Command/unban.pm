@@ -35,9 +35,26 @@ and execute.
 sub abstract { return 'unban a IP or everything' }
 
 sub description {
-	return 'With a IP, each kur is checked for it and it is unbanned from each kur it is present on. '
-		. 'With --all, every kur is flushed, removing all bans everywhere.';
-}
+	return <<'DESCRIPTION';
+Release a IP from the underworld, or empty it entirely.
+
+With a IP, every kur is asked whether it is holding that address and it is
+released from each one that is. A kur that never had it says so rather
+than erroring, so it is safe to fire at all of them.
+
+With --all, every kur is flushed instead. That means BOTH single IP and
+range bans on every kur, released in one go, with no confirmation and no
+undo... the ban books are emptied and the firewall rules removed. The
+tablets are rewritten straight after, so a restart will not bring any of
+them back. If you meant one address, name it.
+
+  ereshkigal unban 1.2.3.4        # release the one
+  ereshkigal unban --all          # empty every underworld, everywhere
+
+Ranges banned with cidr-ban are matched by "cidr-unban", not by naming a
+IP inside them... but --all takes those too.
+DESCRIPTION
+} ## end sub description
 
 sub usage_desc { return '%c unban %o [<IP>]'; }
 

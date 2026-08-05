@@ -29,9 +29,24 @@ Standard L<App::Cmd::Command> methods... abstract, validate_args, and execute.
 
 sub abstract { return 'list banned IPs, grouped per kur' }
 
-sub description { return 'List the banned IPs of every kur instance.'; }
+sub description {
+	return <<'DESCRIPTION';
+List who each kur is holding.
 
-sub usage_desc { return '%c banned'; }
+Per kur: the banned IPs as the firewall itself reports them, an expires
+map giving when each sentence runs out with 0 meaning never, and the same
+pair for range bans under banned_cidr and cidr_expires.
+
+Also listed, under unban_retries and cidr_unban_retries, is anything whose
+unban failed at expiry and is still owed to the firewall... each with when
+it was first tried, when it was last tried, how many times, and when it is
+next due. Those are entries the kur has released but the firewall has not,
+so they will still appear in the banned list as well. "clear-retries"
+forgets them, with the caveats in its own help.
+DESCRIPTION
+} ## end sub description
+
+sub usage_desc { return '%c banned %o'; }
 
 sub validate_args {
 	my ( $self, $opt, $args ) = @_;

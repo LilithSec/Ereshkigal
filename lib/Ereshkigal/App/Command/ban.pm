@@ -41,8 +41,29 @@ and execute.
 sub abstract { return 'ban one or more IPs' }
 
 sub description {
-	return 'Ban one or more IPs. Sent to the named kur if --kur is given, otherwise to all kurs.';
-}
+	return <<'DESCRIPTION';
+Banish one or more IPs to the underworld.
+
+Without --kur every kur gets them, which is usually what you want... each
+one blocks per its own ports and protocols. With --kur only that instance
+does, and naming a fan_out gate sends them to every kur behind it.
+
+Each IP is answered for separately, so one bad address does not spoil the
+rest of the request. Re-banning something already held just resets its
+sentence rather than erroring.
+
+--ban-time is in seconds and overrides the kur's default for these bans
+only. A 0 means never time out, so nothing will release it but an unban.
+
+  ereshkigal ban 1.2.3.4 5.6.7.8
+  ereshkigal ban --kur sshd 1.2.3.4
+  ereshkigal ban --ban-time 0 1.2.3.4        # until told otherwise
+
+Both IPv4 and IPv6 are taken, in any spelling... a v6 address is
+canonicalized, so long and short forms of one address cannot become two
+separate bans. For a whole range use cidr-ban.
+DESCRIPTION
+} ## end sub description
 
 sub usage_desc { return '%c ban %o <IP> [<IP> ...]'; }
 

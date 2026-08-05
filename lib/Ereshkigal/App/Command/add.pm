@@ -41,9 +41,31 @@ and execute.
 sub abstract { return 'define and start a new kur instance at runtime' }
 
 sub description {
-	return 'Define and start a new kur instance in the running manager. Takes the same additional '
-		. 'args as the kur bin, which are passed through. Does not rewrite the config file.';
-}
+	return <<'DESCRIPTION';
+Raise a new underworld in the running manager, now.
+
+Defines a kur and starts it, building its firewall setup immediately. The
+options mirror what the kur bin takes and are handed straight through.
+
+With --fan-out in place of --backend the new kur is a gate instead: no
+process and no firewall of its own, just a name that commands fan out
+from to the kurs it lists. Handy as a single point of contact for an
+integration, which can then be authorized for the gate alone rather than
+each member. Gates cannot nest.
+
+The config file is NOT rewritten. A kur added this way is gone at the next
+manager start unless you also add it to the config yourself, which is
+easy to forget after an incident.
+
+Backend specific settings go via --option, repeated per setting. The one
+exception is --interfaces, which some backends want as a list rather than
+a single value.
+
+  ereshkigal add dns --backend pf --ports 53 --protocols tcp,udp --option kill=1
+  ereshkigal add edge --backend xdp --interfaces eth0,eth1 --enable-cidr 1
+  ereshkigal add gate --fan-out sshd,smtp
+DESCRIPTION
+} ## end sub description
 
 sub usage_desc { return '%c add %o <kur>'; }
 

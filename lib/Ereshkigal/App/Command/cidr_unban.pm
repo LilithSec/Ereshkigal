@@ -38,9 +38,24 @@ sub command_names { return ( 'cidr-unban', 'cidr_unban' ); }
 sub abstract { return 'unban a CIDR range' }
 
 sub description {
-	return 'Each kur is checked for the CIDR and it is unbanned from each kur it is present on. '
-		. 'To remove everything, including CIDR bans, use unban --all.';
-}
+	return <<'DESCRIPTION';
+Release a CIDR range from the underworld.
+
+Every kur is asked whether it is holding the range and it is released from
+each one that is. Host bits are masked off first, the same as when banning,
+so naming any address inside a banned network finds it.
+
+This releases the range as a range. A range ban is a single firewall entry
+covering the whole prefix, not one ban per address in it, so unbanning an
+individual IP inside a banned range will not punch a hole in it... that
+address stays blocked as long as the range is.
+
+To empty everything, ranges and single IPs alike, use "unban --all".
+
+  ereshkigal cidr-unban 1.2.3.0/24
+  ereshkigal cidr-unban 1.2.3.4/24     # same range, host bits masked off
+DESCRIPTION
+} ## end sub description
 
 sub usage_desc { return '%c cidr-unban %o <CIDR>'; }
 

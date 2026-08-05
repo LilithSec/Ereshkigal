@@ -57,11 +57,36 @@ sub command_names { return ( 'clear-retries', 'clear_retries' ); }
 sub abstract { return 'forget unbans still owed to the firewall' }
 
 sub description {
-	return
-		  'Forget unbans that failed at expiry and are still being retried, either all of them '
-		. 'or the single one named by --ip or --cidr. Only the book keeping is forgotten... nothing '
-		. 'is asked of the firewall.';
-}
+	return <<'DESCRIPTION';
+Forget unbans that are still owed to the firewall.
+
+When a ban's sentence runs out but the backend refuses the unban, the kur
+drops it from the ban book and keeps owing the firewall the removal,
+retrying with a backoff until it lands. Those debts survive a restart.
+"status --all" counts them per kur and "banned" names each one, with how
+many times it has been tried and when it is next due.
+
+This forgets them. With no args every kur forgets every debt it carries; a
+kur name scopes it to that one; --ip or --cidr, at most one of the two,
+forgets a single entry.
+
+BEWARE: nothing is sent to the firewall, this only stops the kur asking.
+If the rule really is still in place, forgetting it leaves it there with
+nothing tracking it, blocking that address indefinitely and no record
+anywhere of why. This is for a debt that can never be paid because the
+rule is already gone... removed by hand, or on a backend that never
+carried it.
+
+So check "banned" first. If the backend is healthy again, an ordinary
+"ereshkigal unban <IP>" is the honest way out: it asks the firewall to
+remove the rule for real, and settles the debt when it does.
+
+  ereshkigal clear-retries                        # every debt, every kur
+  ereshkigal clear-retries sshd                   # just that kur's
+  ereshkigal clear-retries --ip 1.2.3.4           # that one, everywhere
+  ereshkigal clear-retries blocklist --cidr 1.2.3.0/24
+DESCRIPTION
+} ## end sub description
 
 sub usage_desc { return '%c clear-retries %o [kur]'; }
 

@@ -34,7 +34,31 @@ and execute.
 
 sub abstract { return 'start the manager and all the configured kur instances' }
 
-sub description { return 'Start the manager, daemonizing unless told otherwise.'; }
+sub description {
+	return <<'DESCRIPTION';
+Start the manager and every kur the config defines.
+
+The manager reads the config, brings up a kur process per instance, and
+listens on its unix socket. Each kur builds its firewall setup and re-bans
+whatever its tablet was carrying, so bans that had not run out survive the
+restart. Anything whose sentence expired while it was down is unbanned
+instead, in case the firewall still had the rule.
+
+A kur that dies is restarted with a backoff, doubling to a cap of a
+minute.
+
+It daemonizes unless -f is given. Either way it refuses to start over a
+manager that is already running, and waits briefly first for a previous
+one that is still shutting down, so "restart" style invocations do not
+race.
+
+This needs to be able to build firewall state, which in practice means
+root.
+
+  ereshkigal start
+  ereshkigal start -f --config ./ereshkigal.toml    # foreground, for a look
+DESCRIPTION
+} ## end sub description
 
 sub usage_desc { return '%c start %o'; }
 
