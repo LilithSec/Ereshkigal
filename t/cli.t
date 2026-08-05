@@ -68,6 +68,13 @@ usage_error_ok( ['remove'], qr/single kur instance name/, 'remove with no name' 
 
 usage_error_ok( [ 'checkpoint', 'a', 'b' ], qr/at most one/, 'checkpoint with two args' );
 
+usage_error_ok( [ 'clear-retries', 'a', 'b' ], qr/at most one/, 'clear-retries with two args' );
+usage_error_ok(
+	[ 'clear-retries', '--ip', '1.2.3.4', '--cidr', '1.2.3.0/24' ],
+	qr/may not be used together/,
+	'clear-retries with both --ip and --cidr'
+);
+
 usage_error_ok( ['bogus'], qr/bogus/i, 'unknown subcommand' );
 
 # -s reaches the client for every client command
@@ -110,18 +117,19 @@ SKIP: {
 	mock_server(
 		$socket,
 		{
-			'status'     => { 'status' => 'ok', 'result' => { 'pid' => 42, 'uptime' => 1, 'kurs' => {} } },
-			'status_all' => { 'status' => 'ok', 'result' => { 'all' => 1 } },
-			'status_kur' => $echo,
-			'banned'     => { 'status' => 'ok', 'result' => { 'kurs' => { 'sshd' => { 'banned' => [] } } } },
-			'ban'        => $echo,
-			'unban'      => $echo,
-			'cidr_ban'   => $echo,
-			'cidr_unban' => $echo,
-			'add_kur'    => $echo,
-			'remove_kur' => { 'status' => 'error', 'error' => 'No such kur instance, "sshd"' },
-			'checkpoint' => $echo,
-			'stop'       => { 'status' => 'ok', 'result' => { 'stopping' => 1 } },
+			'status'        => { 'status' => 'ok', 'result' => { 'pid' => 42, 'uptime' => 1, 'kurs' => {} } },
+			'status_all'    => { 'status' => 'ok', 'result' => { 'all' => 1 } },
+			'status_kur'    => $echo,
+			'banned'        => { 'status' => 'ok', 'result' => { 'kurs' => { 'sshd' => { 'banned' => [] } } } },
+			'ban'           => $echo,
+			'unban'         => $echo,
+			'cidr_ban'      => $echo,
+			'cidr_unban'    => $echo,
+			'add_kur'       => $echo,
+			'remove_kur'    => { 'status' => 'error', 'error' => 'No such kur instance, "sshd"' },
+			'checkpoint'    => $echo,
+			'clear_retries' => $echo,
+			'stop'          => { 'status' => 'ok', 'result' => { 'stopping' => 1 } },
 		}
 	);
 
@@ -238,6 +246,20 @@ SKIP: {
 	$result  = test_app( 'Ereshkigal::App' => [ @s, 'checkpoint', 'sshd' ] );
 	$decoded = decode_json( $result->stdout );
 	is( $decoded->{args}{kur}, 'sshd', 'checkpoint passes the kur name' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 'clear-retries' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{command}, 'clear_retries', 'clear-retries calls clear_retries' );
+	ok( !defined( $decoded->{args} ), 'clear-retries with nothing named sends no args' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 'clear-retries', 'sshd', '--ip', '1.2.3.4' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{args}{kur}, 'sshd',    'clear-retries passes the kur name' );
+	is( $decoded->{args}{ip},  '1.2.3.4', 'clear-retries passes --ip' );
+
+	$result  = test_app( 'Ereshkigal::App' => [ @s, 'clear-retries', '--cidr', '1.2.3.0/24' ] );
+	$decoded = decode_json( $result->stdout );
+	is( $decoded->{args}{cidr}, '1.2.3.0/24', 'clear-retries passes --cidr' );
 
 	$result = test_app( 'Ereshkigal::App' => [ @s, 'stop' ] );
 	is( $result->exit_code, 0, 'stop exit 0' );

@@ -470,8 +470,15 @@ The JSON commands handled are as below.
           not rewrite the config file.
 
     - checkpoint :: Force the kur args.kur, or all kurs if args.kur is not
-          specified, to write their ban state CSV out now. If args.kur is a
+          specified, to write their ban state CSVs out now. If args.kur is a
           fan_out kur it expands to it's members.
+
+    - clear_retries :: Have the kur args.kur, or all kurs if args.kur is not
+          specified, forget unbans still owed to the firewall. args.ip or
+          args.cidr, at most one of them, names a single owed unban to
+          forget rather than the lot. Expands a fan_out kur the same way
+          checkpoint does. Nothing is asked of the firewall, so anything
+          genuinely still banished there stays that way.
 
     - stop :: Stop all kur instances and then the manager.
 
@@ -558,6 +565,10 @@ sub start_server {
 			'checkpoint' => sub {
 				my ( undef, $request, $ctx ) = @_;
 				return $self->_cmd_checkpoint( $request, $ctx );
+			},
+			'clear_retries' => sub {
+				my ( undef, $request, $ctx ) = @_;
+				return $self->_cmd_clear_retries( $request, $ctx );
 			},
 			'stop' => sub {
 				my ( undef, undef, $ctx ) = @_;
@@ -1438,6 +1449,55 @@ sub _cmd_checkpoint {
 
 	return { 'kurs' => $self->_fan_out( \@targets, 'checkpoint' ) };
 } ## end sub _cmd_checkpoint
+
+# handles the clear_retries command... fans it out the same way checkpoint
+# does, passing along the optional args.ip or args.cidr naming a single owed
+# unban to forget rather than the lot
+sub _cmd_clear_retries {
+	my ( $self, $request, $ctx ) = @_;
+
+	my $args = defined( $request->{args} ) ? $request->{args} : {};
+
+	if ( defined( $args->{ip} ) && defined( $args->{cidr} ) ) {
+		die('only one of args.ip and args.cidr may be given');
+	}
+
+	# validated and canonicalized here as well as kur side, so garbage is
+	# bounced once rather than by each kur it would have been fanned out to,
+	# and what is fanned out is the form the retry tablets are keyed by
+	my $fan_args = {};
+	if ( defined( $args->{ip} ) ) {
+		my $ip = normalize_ip( $args->{ip} );
+		if ( !defined($ip) ) {
+			die( '"' . $args->{ip} . '" does not appear to be a IPv4 or IPv6 IP' );
+		}
+		$fan_args->{ip} = $ip;
+	}
+	if ( defined( $args->{cidr} ) ) {
+		my $cidr = normalize_cidr( $args->{cidr} );
+		if ( !defined($cidr) ) {
+			die( '"' . $args->{cidr} . '" does not appear to be a IPv4 or IPv6 CIDR' );
+		}
+		$fan_args->{cidr} = $cidr;
+	}
+
+	my @targets;
+	if ( defined( $args->{kur} ) ) {
+		# as with checkpoint, authorization is against the requested name so
+		# a fan_out grant covers the fanned command, and it comes before the
+		# existence check so kur names can not be enumerated
+		$self->_authorize( $ctx, $args->{kur} );
+		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
+			die( 'No such kur instance, "' . $args->{kur} . '"' );
+		}
+		@targets = $self->_expand_kur_targets( $args->{kur} );
+	} else {
+		@targets = $self->_real_kur_names;
+		$self->_authorize( $ctx, @targets );
+	}
+
+	return { 'kurs' => $self->_fan_out( \@targets, 'clear_retries', %{$fan_args} ? $fan_args : undef ) };
+} ## end sub _cmd_clear_retries
 
 # handles the add_kur command... validates the definition in args.opts the
 # same way config load would, registers it under args.name, and has the

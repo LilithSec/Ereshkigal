@@ -337,6 +337,40 @@ ok( !defined( $all->{kurs}{sshd}{status} ), 'status_all leaves status unset too'
 $ereshkigal->{kurs}{sshd}{pid} = undef;
 
 #
+# clear_retries fans out like checkpoint, validating and canonicalizing what
+# it is given before any of it goes out
+#
+
+throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'ip' => 'notanip' } }, undef ) }
+qr/does not appear to be a IPv4 or IPv6 IP/, 'clear_retries refuses a invalid ip';
+throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'cidr' => 'notacidr' } }, undef ) }
+qr/does not appear to be a IPv4 or IPv6 CIDR/, 'clear_retries refuses a invalid cidr';
+throws_ok {
+	$ereshkigal->_cmd_clear_retries( { 'args' => { 'ip' => '1.2.3.4', 'cidr' => '1.2.3.0/24' } }, undef )
+}
+qr/only one of/, 'clear_retries refuses both a ip and a cidr';
+throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'nosuch' } }, undef ) }
+qr/No such kur instance/, 'clear_retries refuses a unknown kur';
+
+# nothing is running, so every target answers not running... which is enough
+# to prove the expansion and that each name is reached
+is_deeply(
+	$ereshkigal->_cmd_clear_retries( {}, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } } },
+	'clear_retries with nothing named goes to every real kur'
+);
+is_deeply(
+	$ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'gate' } }, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } } },
+	'clear_retries targeted at a fan_out kur expands to it\'s members'
+);
+is_deeply(
+	$ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'sshd', 'ip' => '1.2.3.4' } }, undef ),
+	{ 'kurs' => { 'sshd' => { 'error' => 'not running' } } },
+	'clear_retries targeted at one kur goes to just it'
+);
+
+#
 # the interfaces option and options validation
 #
 

@@ -287,6 +287,7 @@ sub new {
 	# expired while not running
 	$self->_load_bans;
 	$self->_load_cidr_bans;
+	$self->_load_retries;
 
 	return $self;
 } ## end sub new
@@ -348,6 +349,37 @@ sub cidr_state_path {
 	return $self->{cache_base_dir} . '/kur.' . $self->{name} . '.cidr.csv';
 }
 
+=head2 retry_state_path
+
+Returns the path of the unban retry state CSV for this instance, the tablet
+carrying entries whose unban at expiry failed and is still owed to the
+firewall.
+
+    my $retry_state_path = $kur->retry_state_path;
+
+=cut
+
+sub retry_state_path {
+	my ($self) = @_;
+
+	return $self->{cache_base_dir} . '/kur.' . $self->{name} . '.retry.csv';
+}
+
+=head2 cidr_retry_state_path
+
+Returns the path of the CIDR unban retry state CSV for this instance, the
+CIDR counterpart of L</retry_state_path>.
+
+    my $cidr_retry_state_path = $kur->cidr_retry_state_path;
+
+=cut
+
+sub cidr_retry_state_path {
+	my ($self) = @_;
+
+	return $self->{cache_base_dir} . '/kur.' . $self->{name} . '.cidr.retry.csv';
+}
+
 =head2 start_server
 
 Starts up the L<POE::Component::Server::JSONUnix> server for this instance,
@@ -388,16 +420,26 @@ The JSON commands handled are as below.
 
     - banned :: Return a list of banned IPs along with a expires map of
           when each times out, 0 meaning never. banned_cidr and cidr_expires
-          carry the same for CIDR bans.
+          carry the same for CIDR bans. unban_retries and cidr_unban_retries
+          carry the per entry book keeping for unbans still owed to the
+          firewall.
 
     - status :: Return instance status info and stats, including ban_time,
-          counts of timed and permanent bans, and the next expiry.
+          counts of timed and permanent bans, the next expiry, and how many
+          unbans are still owed to the firewall along with how long the
+          longest owed has been outstanding.
 
     - flush :: Unban all currently banned IPs.
 
     - re_init :: Re-init the backend, re-banning everything.
 
-    - checkpoint :: Write the ban state CSV out now.
+    - checkpoint :: Write the ban state CSVs out now.
+
+    - clear_retries :: Forget unbans still owed to the firewall, either the
+          single one named by args.ip or args.cidr, or all of them when
+          neither is given. Only the book keeping is forgotten, nothing is
+          asked of the firewall, so anything genuinely still banished there
+          stays that way.
 
     - stop :: Checkpoint, teardown the backend, and exit.
 
@@ -450,6 +492,10 @@ sub start_server {
 			},
 			'checkpoint' => sub {
 				return $self->_cmd_checkpoint;
+			},
+			'clear_retries' => sub {
+				my ( undef, $request ) = @_;
+				return $self->_cmd_clear_retries($request);
 			},
 			'stop' => sub {
 				my ( undef, undef, $ctx ) = @_;
@@ -529,36 +575,42 @@ sub _backend_do {
 # single IP and CIDR paths are identical beyond these
 my %family_spec = (
 	'ip' => {
-		'noun'         => 'IP',
-		'label'        => 'ip',
-		'log_label'    => 'ban',
-		'infix'        => '',
-		'normalizer'   => \&normalize_ip,
-		'ban_method'   => 'ban',
-		'unban_method' => 'unban',
-		'list_method'  => 'list',
-		'hash'         => 'bans',
-		'retry_hash'   => 'unban_retries',
-		'ban_stat'     => 'bans',
-		'unban_stat'   => 'unbans',
-		'expired_stat' => 'expired',
-		'checkpoint'   => '_checkpoint',
+		'noun'             => 'IP',
+		'label'            => 'ip',
+		'log_label'        => 'ban',
+		'infix'            => '',
+		'normalizer'       => \&normalize_ip,
+		'ban_method'       => 'ban',
+		'unban_method'     => 'unban',
+		'list_method'      => 'list',
+		'hash'             => 'bans',
+		'retry_hash'       => 'unban_retries',
+		'ban_stat'         => 'bans',
+		'unban_stat'       => 'unbans',
+		'expired_stat'     => 'expired',
+		'checkpoint'       => '_checkpoint',
+		'retry_checkpoint' => '_checkpoint_retries',
+		'retry_path'       => 'retry_state_path',
+		'retry_arg'        => 'ip',
 	},
 	'cidr' => {
-		'noun'         => 'CIDR',
-		'label'        => 'cidr',
-		'log_label'    => 'cidr ban',
-		'infix'        => 'cidr ',
-		'normalizer'   => \&normalize_cidr,
-		'ban_method'   => 'ban_cidr',
-		'unban_method' => 'unban_cidr',
-		'list_method'  => 'list_cidr',
-		'hash'         => 'cidr_bans',
-		'retry_hash'   => 'cidr_unban_retries',
-		'ban_stat'     => 'cidr_bans',
-		'unban_stat'   => 'cidr_unbans',
-		'expired_stat' => 'cidr_expired',
-		'checkpoint'   => '_checkpoint_cidr',
+		'noun'             => 'CIDR',
+		'label'            => 'cidr',
+		'log_label'        => 'cidr ban',
+		'infix'            => 'cidr ',
+		'normalizer'       => \&normalize_cidr,
+		'ban_method'       => 'ban_cidr',
+		'unban_method'     => 'unban_cidr',
+		'list_method'      => 'list_cidr',
+		'hash'             => 'cidr_bans',
+		'retry_hash'       => 'cidr_unban_retries',
+		'ban_stat'         => 'cidr_bans',
+		'unban_stat'       => 'cidr_unbans',
+		'expired_stat'     => 'cidr_expired',
+		'checkpoint'       => '_checkpoint_cidr',
+		'retry_checkpoint' => '_checkpoint_cidr_retries',
+		'retry_path'       => 'cidr_retry_state_path',
+		'retry_arg'        => 'cidr',
 	},
 );
 
@@ -616,6 +668,8 @@ sub _refresh_heal {
 			# a unban retry is no longer in the firewall
 			$self->{unban_retries}      = {};
 			$self->{cidr_unban_retries} = {};
+			$self->_checkpoint_retries;
+			$self->_checkpoint_cidr_retries;
 		}
 	} ## end if ( !$@ && !$healthy )
 
@@ -678,6 +732,8 @@ sub _ban_many {
 		# cancelled and the entry booked fresh
 		if ( defined( $self->{ $spec->{retry_hash} }{$entry} ) ) {
 			delete( $self->{ $spec->{retry_hash} }{$entry} );
+			my $retry_checkpoint_method = $spec->{retry_checkpoint};
+			$self->$retry_checkpoint_method;
 			$self->{stats}{ $spec->{ban_stat} }++;
 			$self->{ $spec->{hash} }{$entry} = { 'banned_at' => time, 'expires' => $expires };
 			$results->{$entry} = { 'status' => 'ok' };
@@ -750,7 +806,10 @@ sub _unban_one {
 	# being the only form either ever carries, so the backend's spelling is
 	# not a key to worry about here... a pending unban retry is now moot
 	delete( $self->{ $spec->{hash} }{$entry} );
-	delete( $self->{ $spec->{retry_hash} }{$entry} );
+	if ( defined( delete( $self->{ $spec->{retry_hash} }{$entry} ) ) ) {
+		my $retry_checkpoint_method = $spec->{retry_checkpoint};
+		$self->$retry_checkpoint_method;
+	}
 	$self->$checkpoint_method;
 	log_drek( 'info', 'unbanned ' . $spec->{infix} . $entry, undef, 'kur-' . $self->{name} );
 
@@ -929,12 +988,52 @@ sub _cmd_banned {
 	}
 
 	return {
-		'banned'       => \@banned,
-		'expires'      => $expires,
-		'banned_cidr'  => \@banned_cidr,
-		'cidr_expires' => $cidr_expires,
+		'banned'             => \@banned,
+		'expires'            => $expires,
+		'banned_cidr'        => \@banned_cidr,
+		'cidr_expires'       => $cidr_expires,
+		'unban_retries'      => $self->_retry_details( $family_spec{ip} ),
+		'cidr_unban_retries' => $self->_retry_details( $family_spec{cidr} ),
 	};
 } ## end sub _cmd_banned
+
+# the per entry retry book keeping for that family, as a plain hash of entry
+# to it's counts and times... these are unbans still owed to the firewall, so
+# they are deliberately not folded into the banned lists, which are what the
+# firewall is currently carrying on this kur's behalf
+sub _retry_details {
+	my ( $self, $spec ) = @_;
+
+	my $details = {};
+	foreach my $entry ( keys( %{ $self->{ $spec->{retry_hash} } } ) ) {
+		my $retry = $self->{ $spec->{retry_hash} }{$entry};
+		$details->{$entry} = {
+			'first_tried' => $retry->{first_tried},
+			'last_tried'  => $retry->{last_tried},
+			'times_tried' => $retry->{times_tried},
+			'next_try'    => $retry->{next_try},
+		};
+	}
+
+	return $details;
+} ## end sub _retry_details
+
+# the first_tried of the longest owed retry for that family, 0 when none are
+# owed... the age of that is what says whether the backend is briefly
+# unhappy or has been refusing since last week
+sub _retries_oldest {
+	my ( $self, $spec ) = @_;
+
+	my $oldest = 0;
+	foreach my $entry ( keys( %{ $self->{ $spec->{retry_hash} } } ) ) {
+		my $first_tried = $self->{ $spec->{retry_hash} }{$entry}{first_tried};
+		if ( !$oldest || $first_tried < $oldest ) {
+			$oldest = $first_tried;
+		}
+	}
+
+	return $oldest;
+} ## end sub _retries_oldest
 
 # handles the status command... the instance settings and stats plus ban
 # counts from the backend and ban hashes, split timed versus permanent, with
@@ -993,6 +1092,13 @@ sub _cmd_status {
 		'cidr_banned_count'   => scalar(@banned_cidr),
 		'cidr_bans_timed'     => $cidr_timed,
 		'cidr_bans_permanent' => $cidr_permanent,
+		# unbans that failed at expiry and are still owed to the firewall...
+		# oldest is the first_tried of the longest owed, so a operator can
+		# tell a blip from something wedged with out asking for banned
+		'unban_retries'             => scalar( keys( %{ $self->{unban_retries} } ) ),
+		'unban_retries_oldest'      => $self->_retries_oldest( $family_spec{ip} ),
+		'cidr_unban_retries'        => scalar( keys( %{ $self->{cidr_unban_retries} } ) ),
+		'cidr_unban_retries_oldest' => $self->_retries_oldest( $family_spec{cidr} ),
 	};
 } ## end sub _cmd_status
 
@@ -1013,6 +1119,8 @@ sub _cmd_flush {
 	$self->{cidr_unban_retries} = {};
 	$self->_checkpoint;
 	$self->_checkpoint_cidr;
+	$self->_checkpoint_retries;
+	$self->_checkpoint_cidr_retries;
 	log_drek( 'info', 'flushed all bans', undef, 'kur-' . $self->{name} );
 
 	return { 'flushed' => 1 };
@@ -1030,10 +1138,79 @@ sub _cmd_re_init {
 	$self->_backend_do('re_init');
 	$self->{unban_retries}      = {};
 	$self->{cidr_unban_retries} = {};
+	$self->_checkpoint_retries;
+	$self->_checkpoint_cidr_retries;
 	log_drek( 'info', 're_init done', undef, 'kur-' . $self->{name} );
 
 	return { 're_init' => 1 };
 } ## end sub _cmd_re_init
+
+# handles the clear_retries command... forgets unbans still owed to the
+# firewall, either a single named one via args.ip or args.cidr or the lot
+# when neither is given
+#
+# this is the escape hatch for a retry that will never succeed, the rule
+# having been removed by hand or the entry having never existed as far as
+# the backend is concerned. forgetting one does not touch the firewall, so
+# anything genuinely still banished there stays banished
+sub _cmd_clear_retries {
+	my ( $self, $request ) = @_;
+
+	my $args = defined( $request->{args} ) ? $request->{args} : {};
+
+	if ( defined( $args->{ip} ) && defined( $args->{cidr} ) ) {
+		die('only one of args.ip and args.cidr may be given');
+	}
+
+	my $ident   = 'kur-' . $self->{name};
+	my $cleared = { 'ip' => 0, 'cidr' => 0 };
+
+	foreach my $family ( 'ip', 'cidr' ) {
+		my $spec               = $family_spec{$family};
+		my $named              = $args->{ $spec->{retry_arg} };
+		my $other_family_named = defined( $args->{ $family_spec{ $family eq 'ip' ? 'cidr' : 'ip' }->{retry_arg} } );
+
+		# a named entry only clears from it's own family, and naming one
+		# family means the other is left alone entirely
+		if ( defined($named) ) {
+			if ( ref($named) ne '' ) {
+				die( 'args.' . $spec->{retry_arg} . ' must be a single ' . $spec->{noun} );
+			}
+			my $entry = $spec->{normalizer}->($named);
+			if ( !defined($entry) ) {
+				die(      'args.'
+						. $spec->{retry_arg} . ', "'
+						. $named
+						. '", does not appear to be a IPv4 or IPv6 '
+						. $spec->{noun} );
+			}
+			if ( defined( delete( $self->{ $spec->{retry_hash} }{$entry} ) ) ) {
+				$cleared->{$family} = 1;
+				my $retry_checkpoint_method = $spec->{retry_checkpoint};
+				$self->$retry_checkpoint_method;
+				log_drek( 'info', 'forgot the owed unban of ' . $spec->{infix} . $entry, undef, $ident );
+			}
+			next;
+		} ## end if ( defined($named) )
+
+		next if ($other_family_named);
+
+		my $count = scalar( keys( %{ $self->{ $spec->{retry_hash} } } ) );
+		if ($count) {
+			$self->{ $spec->{retry_hash} } = {};
+			$cleared->{$family} = $count;
+			my $retry_checkpoint_method = $spec->{retry_checkpoint};
+			$self->$retry_checkpoint_method;
+			log_drek( 'info', 'forgot ' . $count . ' owed ' . $spec->{infix} . 'unbans', undef, $ident );
+		}
+	} ## end foreach my $family ( 'ip', 'cidr' )
+
+	return {
+		'cleared'      => $cleared->{ip} + $cleared->{cidr},
+		'cleared_ip'   => $cleared->{ip},
+		'cleared_cidr' => $cleared->{cidr},
+	};
+} ## end sub _cmd_clear_retries
 
 # handles the checkpoint command... force writes both tablets now,
 # returning how many entries each is carrying
@@ -1042,12 +1219,16 @@ sub _cmd_checkpoint {
 
 	$self->_checkpoint;
 	$self->_checkpoint_cidr;
+	$self->_checkpoint_retries;
+	$self->_checkpoint_cidr_retries;
 	log_drek( 'info', 'checkpointed', undef, 'kur-' . $self->{name} );
 
 	return {
-		'checkpointed' => 1,
-		'bans'         => scalar( keys( %{ $self->{bans} } ) ),
-		'cidr_bans'    => scalar( keys( %{ $self->{cidr_bans} } ) ),
+		'checkpointed'       => 1,
+		'bans'               => scalar( keys( %{ $self->{bans} } ) ),
+		'cidr_bans'          => scalar( keys( %{ $self->{cidr_bans} } ) ),
+		'unban_retries'      => scalar( keys( %{ $self->{unban_retries} } ) ),
+		'cidr_unban_retries' => scalar( keys( %{ $self->{cidr_unban_retries} } ) ),
 	};
 } ## end sub _cmd_checkpoint
 
@@ -1083,12 +1264,24 @@ sub _stop_guts {
 	# leave a fresh state CSV behind
 	$self->_checkpoint;
 	$self->_checkpoint_cidr;
+	$self->_checkpoint_retries;
+	$self->_checkpoint_cidr_retries;
 
 	eval { $self->_backend_do('teardown'); };
 	my $teardown_error = $@;
 	if ($teardown_error) {
 		log_drek( 'err', 'teardown failed... ' . $teardown_error, undef, 'kur-' . $self->{name} );
-	}
+	} else {
+		# teardown takes the whole firewall setup with it, orphaned rules
+		# included, so anything that was owed has just been paid... left in
+		# place the tablets would have the next run retrying unbans for
+		# rules that no longer exist. a failed teardown may well have left
+		# them there, so those debts are kept
+		$self->{unban_retries}      = {};
+		$self->{cidr_unban_retries} = {};
+		$self->_checkpoint_retries;
+		$self->_checkpoint_cidr_retries;
+	} ## end else [ if ($teardown_error) ]
 
 	return $teardown_error;
 } ## end sub _stop_guts
@@ -1103,6 +1296,8 @@ sub _tick {
 	if ( $self->{checkpoint} && ( time - $self->{last_checkpoint} ) >= $self->{checkpoint} ) {
 		$self->_checkpoint;
 		$self->_checkpoint_cidr;
+		$self->_checkpoint_retries;
+		$self->_checkpoint_cidr_retries;
 	}
 
 	return;
@@ -1125,9 +1320,10 @@ sub _sweep_bans {
 sub _sweep_family {
 	my ( $self, $spec ) = @_;
 
-	my $ident   = 'kur-' . $self->{name};
-	my $now     = time;
-	my $changed = 0;
+	my $ident         = 'kur-' . $self->{name};
+	my $now           = time;
+	my $changed       = 0;
+	my $retry_changed = 0;
 
 	foreach my $banned_entry ( keys( %{ $self->{ $spec->{hash} } } ) ) {
 		my $entry = $self->{ $spec->{hash} }{$banned_entry};
@@ -1147,6 +1343,7 @@ sub _sweep_family {
 				'next_try'    => $now + 1,
 				'delay'       => 2,
 			};
+			$retry_changed = 1;
 			log_drek(
 				'err',
 				'unbanning expired '
@@ -1180,6 +1377,7 @@ sub _sweep_family {
 			$retry->{times_tried}++;
 			$retry->{next_try} = $now + $retry->{delay};
 			$retry->{delay}    = $retry->{delay} * 2 > 60 ? 60 : $retry->{delay} * 2;
+			$retry_changed     = 1;
 			log_drek(
 				'err',
 				'unban retry '
@@ -1193,6 +1391,7 @@ sub _sweep_family {
 			);
 		} else {
 			delete( $self->{ $spec->{retry_hash} }{$retry_entry} );
+			$retry_changed = 1;
 			log_drek( 'info', 'unban retry for ' . $spec->{log_label} . ' of ' . $retry_entry . ' succeeded',
 				undef, $ident );
 		}
@@ -1201,6 +1400,10 @@ sub _sweep_family {
 	if ($changed) {
 		my $checkpoint_method = $spec->{checkpoint};
 		$self->$checkpoint_method;
+	}
+	if ($retry_changed) {
+		my $retry_checkpoint_method = $spec->{retry_checkpoint};
+		$self->$retry_checkpoint_method;
 	}
 
 	return;
@@ -1228,6 +1431,76 @@ sub _checkpoint_cidr {
 
 	return;
 }
+
+# checkpoints the single IP unban retry state to its own tablet, so a unban
+# still owed to the firewall is not forgotten by a restart
+sub _checkpoint_retries {
+	my ($self) = @_;
+
+	$self->_write_retry_state( $family_spec{ip} );
+
+	return;
+}
+
+# checkpoints the CIDR unban retry state, mirroring _checkpoint_retries
+sub _checkpoint_cidr_retries {
+	my ($self) = @_;
+
+	$self->_write_retry_state( $family_spec{cidr} );
+
+	return;
+}
+
+# writes a retry hash out as a CSV to that family's retry tablet, atomically
+# via a temp file and rename the same way _write_state does... the times are
+# absolute rather than relative as a retry has no sentence to re-anchor, and
+# a next_try left in the past just means the retry is due at once
+#
+# an empty retry hash unlinks the tablet rather than leaving a header only
+# file behind, so nothing owed means nothing on disk
+sub _write_retry_state {
+	my ( $self, $spec ) = @_;
+
+	my $path_method = $spec->{retry_path};
+	my $state_file  = $self->$path_method;
+	my $retries     = $self->{ $spec->{retry_hash} };
+
+	if ( !%{$retries} ) {
+		if ( -e $state_file && !unlink($state_file) ) {
+			$self->{stats}{errors}++;
+			log_drek( 'err',
+				'removing the empty ' . $spec->{infix} . 'retry tablet "' . $state_file . '" failed... ' . $!,
+				undef, 'kur-' . $self->{name} );
+		}
+		return 1;
+	}
+
+	my $tmp_file = $state_file . '.tmp';
+	eval {
+		open( my $fh, '>', $tmp_file ) || die( 'open failed... ' . $! );
+		print $fh $spec->{label} . ",first_tried,last_tried,times_tried,next_try,delay\n";
+		foreach my $key ( sort( keys( %{$retries} ) ) ) {
+			my $retry = $retries->{$key};
+			print $fh join( ',',
+				$key,                  $retry->{first_tried}, $retry->{last_tried},
+				$retry->{times_tried}, $retry->{next_try},    $retry->{delay} ) . "\n";
+		}
+		# as with the ban tablets, buffered print failures only surface at
+		# close, and skipping the rename keeps the last good file in place
+		close($fh)                       || die( 'close failed... ' . $! );
+		rename( $tmp_file, $state_file ) || die( 'rename failed... ' . $! );
+	};
+	if ($@) {
+		unlink($tmp_file);
+		$self->{stats}{errors}++;
+		log_drek( 'err',
+			'checkpointing ' . $spec->{infix} . 'unban retry state to "' . $state_file . '" failed... ' . $@,
+			undef, 'kur-' . $self->{name} );
+		return 0;
+	}
+
+	return 1;
+} ## end sub _write_retry_state
 
 # writes a ban state hash out as a CSV of <label>,time,ban_time_left to the
 # given file, atomically via a temp file and rename... returns 1 on success
@@ -1298,6 +1571,116 @@ sub _load_cidr_bans {
 
 	return;
 } ## end sub _load_cidr_bans
+
+# loads both retry tablets... a unban that was still owed when the kur went
+# down is owed just as much now, so the entries come back with their counts
+# and backoff intact rather than starting over. the CIDR side is loaded
+# regardless of whether CIDR is currently available, as the debt is to the
+# firewall and does not care whether the operator has since turned the
+# feature off
+sub _load_retries {
+	my ($self) = @_;
+
+	foreach my $family ( 'ip', 'cidr' ) {
+		$self->_load_retry_state( $family_spec{$family} );
+	}
+
+	return;
+}
+
+# the shared per family retry tablet loader... rows that will not parse or
+# will not normalize are skipped, keeping the same canonical only invariant
+# the ban books have
+sub _load_retry_state {
+	my ( $self, $spec ) = @_;
+
+	my $path_method = $spec->{retry_path};
+	my $state_file  = $self->$path_method;
+
+	if ( !-f $state_file ) {
+		return;
+	}
+
+	my $ident = 'kur-' . $self->{name};
+
+	my @lines;
+	eval {
+		open( my $fh, '<', $state_file ) || die( 'open failed... ' . $! );
+		@lines = <$fh>;
+		close($fh);
+	};
+	if ($@) {
+		log_drek( 'err', 'loading ' . $spec->{infix} . 'unban retry state from "' . $state_file . '" failed... ' . $@,
+			undef, $ident );
+		return;
+	}
+
+	my $line_number = 0;
+	foreach my $line (@lines) {
+		$line_number++;
+		chomp($line);
+		if ( $line eq '' ) {
+			next;
+		}
+		if ( $line_number == 1 && $line =~ /^$spec->{label},/ ) {
+			# the header
+			next;
+		}
+
+		my @row = split( /,/, $line );
+		if ( @row != 6 || $row[0] eq '' || grep { $row[$_] !~ /^[0-9]+$/ } ( 1 .. 5 ) ) {
+			log_drek( 'err', 'skipping malformed line ' . $line_number . ' in "' . $state_file . '"... "' . $line . '"',
+				undef, $ident );
+			next;
+		}
+		my ( $entry, $first_tried, $last_tried, $times_tried, $next_try, $delay ) = @row;
+
+		my $normalized = $spec->{normalizer}->($entry);
+		if ( !defined($normalized) ) {
+			log_drek(
+				'err',
+				'skipping line '
+					. $line_number . ' in "'
+					. $state_file
+					. '"... "'
+					. $entry
+					. '" is not a valid '
+					. $spec->{noun},
+				undef,
+				$ident
+			);
+			next;
+		} ## end if ( !defined($normalized) )
+
+		$self->{ $spec->{retry_hash} }{$normalized} = {
+			'first_tried' => $first_tried,
+			'last_tried'  => $last_tried,
+			'times_tried' => $times_tried,
+			'next_try'    => $next_try,
+			# a tablet written by hand could carry a 0, which would peg the
+			# backoff at 0 forever, so it is floored at where a first failure
+			# would have left it
+			'delay' => $delay ? $delay : 2,
+		};
+		log_drek(
+			'info',
+			'unban of '
+				. $spec->{infix}
+				. $normalized
+				. ' still owed from a previous run, tried '
+				. $times_tried
+				. ' times',
+			undef,
+			$ident
+		);
+	} ## end foreach my $line (@lines)
+
+	# rewrite so the tablet reflects what actually got restored
+	my $checkpoint_method = $spec->{retry_checkpoint};
+	$self->$checkpoint_method;
+
+	return;
+} ## end sub _load_retry_state
 
 # the shared per family loader behind _load_bans and _load_cidr_bans...
 # parameterized the same way as the rest of the shared family helpers

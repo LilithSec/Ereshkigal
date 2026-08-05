@@ -99,9 +99,18 @@ backend and fails the same way, leaving the retry pending. An entry
 leaves the list only once its rule is genuinely gone — the retry
 lands, or a `flush`/`re_init` succeeds — or once it is wanted again,
 a re-ban cancelling the retry without touching the backend, since the
-rule never actually left. The list lives only in memory, so a kur
-that dies with entries pending leaves them to the next `re_init` or
-`flush`.
+rule never actually left. The list is written to its own tablet, so a
+debt outlives a restart with its count and backoff intact — the
+firewall is owed the removal just as much after one.
+
+A debt that can never be paid — the rule removed by hand, or a
+backend that never carried it — would otherwise be retried forever at
+the sixty second cap. `status` counts what is owed and how long the
+longest has been outstanding, `banned` names each one, and
+`clear-retries` forgives them, individually or in bulk. Forgiving one
+tells the kur to stop asking and nothing more; the firewall is not
+touched, so a rule that really is still there is left with nothing
+tracking it.
 
 ## The clay tablets
 
@@ -111,8 +120,19 @@ Each kur checkpoints its banishments to
 how many seconds of their sentence remained at that moment (`0` for
 eternal). Range bans, when a kur carries any, keep to a sibling
 `kur.<name>.cidr.csv` of the same shape, so the single IP tablet is
-untouched by them. The tablets are re-written when the events below
-happen.
+untouched by them.
+
+Unbans still owed to the firewall keep their own pair,
+`kur.<name>.retry.csv` and `kur.<name>.cidr.retry.csv`, of
+`ip,first_tried,last_tried,times_tried,next_try,delay` — what is
+owed, since when, how many times it has been asked for, when it is
+next due, and where the backoff had got to. These carry absolute
+times rather than a remaining figure, as a debt has no sentence to
+re-anchor and a `next_try` left in the past simply means it is due at
+once. A kur owing nothing has no retry tablet at all rather than a
+header-only one.
+
+The tablets are re-written when the events below happen.
 
 - on every arrival and departure (ban/unban/flush/expiry)
 - every `checkpoint` seconds (default 60) even without changes, so

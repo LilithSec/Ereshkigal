@@ -111,6 +111,34 @@ Normally you never need this — the tablets are rewritten on every
 ban/unban, every `checkpoint` seconds, and at stop — but it is there
 for taking a consistent snapshot before backups and the like.
 
+## Unbans the firewall would not take
+
+When a sentence runs out but the backend refuses the unban, the kur
+releases the soul from its books and keeps owing the firewall the
+removal, retrying with a backoff until it lands. Those debts survive
+a restart, and `status` counts them while `banned` names them:
+
+```shell
+ereshkigal status --all        # unban_retries per kur, plus how long
+                               # the longest owed has been outstanding
+ereshkigal banned              # unban_retries names each one, with
+                               # times_tried and when it is next due
+```
+
+A debt that will never be paid — the rule removed by hand, or a
+backend that never had it — is forgiven with:
+
+```shell
+ereshkigal clear-retries                        # all of them, every kur
+ereshkigal clear-retries sshd                   # just that kur's
+ereshkigal clear-retries --ip 1.2.3.4           # just that one, everywhere
+ereshkigal clear-retries blocklist --cidr 1.2.3.0/24
+```
+
+This only stops the kur asking. Nothing is sent to the firewall, so
+anything genuinely still banished there stays banished — check before
+forgiving, or you leave a rule nothing is tracking.
+
 ## Driving the socket directly
 
 Integrations (log watchers, IDS glue) do not need the CLI. The
@@ -158,7 +186,9 @@ optional), `unban` (`{"ip":...}` or `{"all":true}`), `cidr_ban`
 (`{"cidrs":[...], "kur":..., "ban_time":...}` with kur/ban_time
 optional), `cidr_unban` (`{"cidr":...}`), `add_kur`
 (`{"name":..., "opts":{...}}`), `remove_kur` (`{"name":...}`),
-`checkpoint` (`{"kur":...}` optional), and `stop`. Responses are
+`checkpoint` (`{"kur":...}` optional), `clear_retries`
+(`{"kur":..., "ip":...}` or `{"kur":..., "cidr":...}`, all optional),
+and `stop`. Responses are
 `{"status":"ok","result":...}` or `{"status":"error","error":"..."}`.
 
 Note that with `enable_auth` on, a raw `nc` integration must complete

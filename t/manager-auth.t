@@ -209,6 +209,23 @@ foreach my $command ( 'ban', 'cidr_ban' ) {
 throws_ok { $bare->_cmd_ban( { 'args' => { 'ips' => ['1.2.3.4'] } }, $global ) } qr/No kur instances/,
 	'a authorized caller still gets the no kur instances error';
 
+# clear_retries authorizes the same way the rest do... the scoped user for a
+# kur that is theirs, refused for one that is not and at manager level
+lives_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'sshd' } }, $scoped ) }
+'clear_retries allowed for a scoped user on their own kur';
+denied_ok(
+	sub { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'smtp' } }, $scoped ) },
+	qr/not authorized/,
+	'clear_retries denied for a scoped user on another kur'
+);
+denied_ok(
+	sub { $ereshkigal->_cmd_clear_retries( {}, $scoped ) },
+	qr/not authorized/,
+	'untargeted clear_retries denied for a scoped user'
+);
+lives_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'gate' } }, $gateuser ) }
+'clear_retries at a gateway is the gateway grant, not it\'s members\'';
+
 # with enable_auth off everything is authorized regardless of lists
 $ereshkigal->{enable_auth} = 0;
 lives_ok { $ereshkigal->_authorize($nobody) } 'enable_auth off manager level';
