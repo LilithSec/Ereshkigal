@@ -112,6 +112,17 @@ served by your web server, no reload at all:
 file   = "/usr/local/www/edl/banned.txt"
 ```
 
+## self_heal
+
+With no `check` command the probe is bare file-exists, so `self_heal`
+notices the file being deleted and re-renders it on the next ban or
+unban — but nothing more. A consumer that stopped reading the file, or
+a reload hook that has been silently failing, looks perfectly healthy.
+
+A `check` command closes that: point it at the consumer rather than
+the file (`nginx -t`, a `postmap -q` lookup, `ipset list <name>`) and a
+failure triggers a re-render plus reload on the next mutation.
+
 ## Gotchas
 
 - `header`/`footer` are emitted as their own lines; include any

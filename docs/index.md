@@ -5,8 +5,8 @@ who is sent below, how long they stay, and who is permitted to return
 to the world above.
 
 - [architecture](architecture.md) :: how the manager and the kur underworlds fit
-  together — processes, sockets, the protocol, sentences, the sweeper, and the clay
-  tablets
+  together — processes, sockets, the protocol, sentences, the sweeper, the clay
+  tablets, and the unbans a firewall would not take
 
 - [install](install.md) :: dependencies in detail, per-OS install, and running at boot
 

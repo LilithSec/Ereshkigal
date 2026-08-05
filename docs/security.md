@@ -35,8 +35,9 @@ Authorization then works from two pairs of lists:
 - Each kur's own `authed_users`/`authed_groups` **expand** the global
   lists for that kur only. They never replace them.
 - A command must be authorized for **every underworld it touches**.
-  `ban --kur sshd` touches one; a bare `ban`, `unban`, `banned`, or
-  `checkpoint` touches all of them. Commands about the manager
+  `ban --kur sshd` touches one; a bare `ban`, `cidr-ban`, `unban`,
+  `cidr-unban`, `banned`, `checkpoint`, `re-init`, or `clear-retries`
+  touches all of them. Commands about the manager
   itself — `stop`, `add`, `remove`, and the whole-manager views
   `status`/`status --all` — require the global lists.
 - UID 0 is always authorized.
@@ -106,9 +107,10 @@ and tmp-cleaner races on long-idle connections.
 ## The tablets name names
 
 The ban state CSVs under `/var/cache/ereshkigal/` list every banned
-IP and when each sentence ends. If revealing who you have banned (or
-when a ban lapses) matters in your environment, keep the cache dir
-readable only by root.
+IP and when each sentence ends, and the retry tablets beside them
+(`kur.<name>.retry.csv` and its CIDR sibling) name addresses too. If
+revealing who you have banned (or when a ban lapses) matters in your
+environment, keep the cache dir readable only by root.
 
 ## Ban-time footguns
 
@@ -119,8 +121,14 @@ readable only by root.
   (the anchor/table/chain/etc) if something outside removed it, before
   each ban or unban. It does not restore individual rules removed
   by hand behind the kur's back — the kur's book and the tablets are
-  the source of truth, and `re_init` (or a kur restart) will re-ban
-  from them.
+  the source of truth, and `ereshkigal re-init` (or a kur restart)
+  will re-ban from them.
+- `clear-retries` forgives an unban the firewall would not take, and
+  it does **not** touch the firewall. If the rule is in fact still
+  there, forgiving it leaves that address blocked indefinitely with
+  nothing tracking it — it will not appear in `banned` and no expiry
+  will ever release it. Confirm the rule is really gone first, or
+  settle the debt honestly with `unban` or `re-init`.
 - The one-second sweeper means a sentence can run up to a second
   long. If that matters, your threat model is more interesting than
   this software.

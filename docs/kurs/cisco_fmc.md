@@ -62,7 +62,7 @@ paper.
 | `password`   | *(required)*        | its password                                |
 | `group_id`   | *(required)*        | UUID of the network group to manage         |
 | `group_name` | `<prefix>_<name>`   | name carried in the PUT payload             |
-| `domain`     | *(global domain)*   | FMC domain UUID                             |
+| `domain`     | `e276abec-e0f2-11e3-8169-6d9ed49b625f` | FMC domain UUID; the default is the stock Global domain |
 | `timeout`    | `30`                | HTTP timeout in seconds                     |
 | `insecure`   | `0`                 | skip TLS certificate verification           |
 

@@ -33,8 +33,8 @@ fanning out to the listed member kurs.
 
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, opt_spec, validate_args,
-and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, opt_spec, validate_args, and execute.
 
 =cut
 
@@ -173,19 +173,5 @@ sub _split_comma_list {
 
 	return \@elements;
 } ## end sub _split_comma_list
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

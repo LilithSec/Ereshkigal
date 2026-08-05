@@ -59,13 +59,13 @@ it will die.
         Default :: []
 
     - prefix :: Prefix to use, passed to Net::Firewall::BlockerHelper.
-        Default :: kur
+        Default :: undef, left for the backend to default to kur
 
     - options :: Backend specific options hash, passed to Net::Firewall::BlockerHelper.
-        Default :: {}
+        Default :: undef, left for the backend to default to {}
 
     - self_heal :: Self heal setting, passed to Net::Firewall::BlockerHelper.
-        Default :: 1
+        Default :: undef, left for the backend to default to 1
 
     - ban_time :: How long bans should last in seconds. 0 means bans never
           time out. May be overridden per ban request.
@@ -78,8 +78,9 @@ it will die.
 
     - enable_cidr :: Boolean for whether CIDR banning is enabled for this
           instance. Even when set, CIDR commands only work if the backend
-          supports CIDR bans. The strings true/false/yes/no/on/off are
-          accepted alongside 1/0.
+          supports CIDR bans. Config files carry strings rather than
+          booleans, so the value is folded... undef, the empty string, 0,
+          false, no, and off are all off, and anything else at all is on.
         Default :: 0
 
     - cidr_silent_drop :: Boolean for how a CIDR command is handled when CIDR
@@ -87,16 +88,20 @@ it will die.
           enable_cidr is off or the backend does not support it. When set the
           command is silently dropped, returning dropped => 1, rather than
           erroring, which is the point of contact when fanning out to a mix of
-          CIDR capable and incapable instances.
+          CIDR capable and incapable instances. Folded the same way
+          enable_cidr is.
         Default :: 0
 
     - run_base_dir :: Base dir for run files. The socket and PID for this
           instance live under C<$run_base_dir/kur/> named for this instance.
         Default :: /var/run/ereshkigal
 
-    - cache_base_dir :: Base dir for cache files. The ban state for this
-          instance is persisted as a CSV at
-          C<$cache_base_dir/kur.$name.csv>, so timed bans survive a restart.
+    - cache_base_dir :: Base dir for cache files. The ban state and the
+          unban retry state for this instance are persisted as CSVs under
+          here, named for the instance, so timed bans and unbans still owed
+          to the firewall both survive a restart. See L</state_path>,
+          L</cidr_state_path>, L</retry_state_path>, and
+          L</cidr_retry_state_path> for the four.
         Default :: /var/cache/ereshkigal
 
 =cut
@@ -429,9 +434,13 @@ The JSON commands handled are as below.
           unbans are still owed to the firewall along with how long the
           longest owed has been outstanding.
 
-    - flush :: Unban all currently banned IPs.
+    - flush :: Unban everything currently banned, ranges as well as single
+          IPs, emptying both ban books and both unban retry books with them.
 
-    - re_init :: Re-init the backend, re-banning everything.
+    - re_init :: Have the backend tear it's firewall setup down and build it
+          again, re-banning everything the ban books carry. Bans are not
+          enforced while that is happening. Tearing down takes any rule a
+          failed unban left behind, so the retry books are emptied too.
 
     - checkpoint :: Write the ban state CSVs out now.
 
@@ -1823,56 +1832,6 @@ ban_time is not a non-negative int of seconds.
 
 checkpoint is not a non-negative int of seconds.
 
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 BUGS
-
-Please report any bugs or feature requests to C<bug-ereshkigal at rt.cpan.org>, or through
-the web interface at L<https://rt.cpan.org/NoAuth/ReportBug.html?Queue=Ereshkigal>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
-
-
-
-
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc Ereshkigal
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker (report bugs here)
-
-L<https://rt.cpan.org/NoAuth/Bugs.html?Dist=Ereshkigal>
-
-=item * CPAN Ratings
-
-L<https://cpanratings.perl.org/d/Ereshkigal>
-
-=item * Search CPAN
-
-L<https://metacpan.org/release/Ereshkigal>
-
-=back
-
-
-=head1 ACKNOWLEDGEMENTS
-
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2023 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-
 =cut
 
-1;    # End of Ereshkigal
+1;    # End of Ereshkigal::Kur

@@ -29,7 +29,8 @@ rewrite the config file... to make it permanent, remove it from the config.
 
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, validate_args, and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, validate_args, and execute.
 
 =cut
 
@@ -73,19 +74,5 @@ sub execute {
 
 	return;
 }
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

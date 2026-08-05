@@ -21,9 +21,24 @@ our $VERSION = '0.0.1';
 
     ereshkigal banned
 
+=head1 DESCRIPTION
+
+Lists who each kur is holding... the banned IPs as the firewall itself
+reports them, a C<expires> map giving when each sentence runs out with 0
+meaning never, and the same pair for range bans under C<banned_cidr> and
+C<cidr_expires>.
+
+Also listed, under C<unban_retries> and C<cidr_unban_retries>, is anything
+whose unban failed at expiry and is still owed to the firewall, each with
+when it was first and last tried, how many times, and when it is next due.
+Those are entries the kur has released but the firewall has not, so they
+appear in the banned list as well.
+L<clear_retries|Ereshkigal::App::Command::clear_retries> forgets them.
+
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, validate_args, and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, validate_args, and execute.
 
 =cut
 
@@ -65,19 +80,5 @@ sub execute {
 
 	return;
 }
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

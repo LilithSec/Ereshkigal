@@ -44,10 +44,17 @@ rule having been removed by hand or the backend having never had it to begin
 with. Nothing is asked of the firewall, so anything genuinely still banished
 there stays banished... this only stops the kur from asking.
 
+Which is the thing to be careful of. If the rule really is still in place,
+forgetting it leaves that address blocked indefinitely with nothing tracking
+it... it will not appear in C<banned> and no expiry will ever release it. So
+check C<banned> first, and where the backend is healthy again prefer a plain
+C<unban>, which asks the firewall to remove the rule for real and settles the
+debt when it does.
+
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, opt_spec, validate_args,
-and execute.
+The App::Cmd hooks this subcommand supplies... command_names, abstract,
+description, usage_desc, opt_spec, validate_args, and execute.
 
 =cut
 
@@ -128,19 +135,5 @@ sub execute {
 
 	return;
 } ## end sub execute
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

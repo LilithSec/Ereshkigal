@@ -91,9 +91,9 @@ families work; ranges need `type lpm` (see Settings).
 `check` verifies the table is still accessible. An `npfctl reload`
 empties dynamic table contents, and the table still answering means
 `check` passes — so a reload's damage is only healed when `re_init`
-runs (via the kur socket, or a kur restart, which re-bans from the
-tablet). If you reload npf often, make `re_init` part of that
-procedure.
+runs, either `ereshkigal re-init [<kur>]` or a kur restart, both of
+which re-ban from the tablet. If you reload npf often, make
+`ereshkigal re-init` part of that procedure.
 
 ## Gotchas
 

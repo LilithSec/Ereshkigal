@@ -44,8 +44,9 @@ moment the ban lands.
   holds single IPs); a kur with it set logs a warning at startup and
   answers range commands per `cidr_silent_drop`.
 - `prefix` / `name` — accepted and unused by the backend; xdp-filter's
-  map is global, not per-instance (which is also why `check` is a
-  global probe).
+  map is global, not per-instance (which is also why `check` has to
+  read the interface list out of `xdp-filter status` rather than
+  probing an object of its own).
 
 ## Options
 

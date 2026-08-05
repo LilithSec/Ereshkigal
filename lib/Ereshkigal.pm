@@ -50,6 +50,11 @@ C<sshd>. Keys inside are what kur/L<Net::Firewall::BlockerHelper> take...
 C<backend>, C<ports>, C<protocols>, C<prefix>, C<self_heal>, and the backend
 specific C<options> table.
 
+Values in the C<options> table must be plain scalars, with one exception...
+C<interfaces>, which backends such as xdp want as a array, may be given as
+one. Any other array or table valued option is refused at config load rather
+than being handed to the backend as a stringified ref.
+
 Top level keys are manager settings.
 
     - socket_group :: Group ownership of the manager socket.
@@ -116,15 +121,17 @@ Top level keys are manager settings.
 
 A kur hash may instead carry C<fan_out>, a array of other kur names, in
 place of C<backend>. Such a kur is manager side only... no process and no
-socket of it's own. Commands targeted at it (C<ban> with args.kur,
-C<checkpoint> with args.kur, C<status_kur>) fan out to it's members
+socket of it's own. Commands targeted at it (C<ban> and C<cidr_ban> with
+args.kur, C<checkpoint>, C<re_init>, and C<clear_retries> with args.kur,
+and C<status_kur>) fan out to it's members
 instead, making it usable as a single point of contact for driving a whole
 set of kurs. With enable_auth on, authorization for a command targeted at
 a fan_out kur is checked against the fan_out kur's own lists rather than
 it's members', so a integration may be granted just the gateway with out
 being listed on any member. Members must be defined non fan_out kurs...
-fan_out kurs may not nest. Untargeted commands (C<ban> with out args.kur,
-C<unban>, C<banned>, C<checkpoint> with out args.kur) touch only real
+fan_out kurs may not nest. Untargeted commands (C<ban> and C<cidr_ban> with
+out args.kur, C<unban>, C<cidr_unban>, C<banned>, and C<checkpoint>,
+C<re_init>, and C<clear_retries> with out args.kur) touch only real
 kurs, never fan_out ones.
 
     [kur.baphomet]
@@ -1262,12 +1269,14 @@ sub _cmd_banned {
 	foreach my $name ( keys( %{$kurs} ) ) {
 		if ( !defined( $kurs->{$name}{error} ) ) {
 			$kurs->{$name} = {
-				'banned'       => $kurs->{$name}{banned},
-				'expires'      => $kurs->{$name}{expires},
-				'banned_cidr'  => $kurs->{$name}{banned_cidr},
-				'cidr_expires' => $kurs->{$name}{cidr_expires},
+				'banned'             => $kurs->{$name}{banned},
+				'expires'            => $kurs->{$name}{expires},
+				'banned_cidr'        => $kurs->{$name}{banned_cidr},
+				'cidr_expires'       => $kurs->{$name}{cidr_expires},
+				'unban_retries'      => $kurs->{$name}{unban_retries},
+				'cidr_unban_retries' => $kurs->{$name}{cidr_unban_retries},
 			};
-		}
+		} ## end if ( !defined( $kurs->{$name}{error} ) )
 	} ## end foreach my $name ( keys( %{$kurs} ) )
 
 	return { 'kurs' => $kurs };
@@ -1633,8 +1642,9 @@ Failed to parse the config file as TOML.
 =head2 3, invalidKurDef
 
 A kur def in the config is invalid... bad name, not a hash, lacking a
-backend or a fan_out, having both, or a invalid fan_out (not a array of
-kur names, a unknown member, or a nested fan_out kur).
+backend or a fan_out, having both, a invalid fan_out (not a array of
+kur names, a unknown member, or a nested fan_out kur), or a options table
+carrying a non-scalar value for anything other than C<interfaces>.
 
 =head2 4, runBaseDirError
 

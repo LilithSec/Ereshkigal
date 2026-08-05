@@ -31,10 +31,26 @@ our $VERSION = '0.0.1';
     # a permanent ban
     ereshkigal ban --ban-time 0 1.2.3.4
 
+=head1 DESCRIPTION
+
+Bans one or more IPs. Without C<--kur> every kur gets them, each blocking per
+it's own ports and protocols; with C<--kur> only that instance does, and
+naming a fan_out gate sends them to every kur behind it.
+
+Each IP is answered for separately, so one bad address does not spoil the
+rest of the request, and re-banning something already banned just resets it's
+sentence rather than erroring.
+
+C<--ban-time> is in seconds and overrides the kur's default for these bans
+only, with 0 meaning never time out... nothing will release it but a
+C<unban>. Both IPv4 and IPv6 are taken in any spelling, v6 being
+canonicalized so long and short forms of one address can not become two
+bans. For whole ranges see L<cidr_ban|Ereshkigal::App::Command::cidr_ban>.
+
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, opt_spec, validate_args,
-and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, opt_spec, validate_args, and execute.
 
 =cut
 
@@ -102,19 +118,5 @@ sub execute {
 
 	return;
 } ## end sub execute
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

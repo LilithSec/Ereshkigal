@@ -40,12 +40,14 @@ our @EXPORT_OK = qw( normalize_ip normalize_cidr );
 
 =head1 DESCRIPTION
 
-This holds the C<normalize_ip> sub used for validating IPs and reducing them
-to a single canonical string form so variant spellings of the same IP, most
-notably IPv6 long form vs short form as well as case, can not be mistaken
-for differing IPs. Anything unparseable comes back as undef, letting garbage
-be bounced at the point of entry instead of being passed along for something
-further down to bounce.
+This holds the C<normalize_ip> and C<normalize_cidr> subs used for validating
+IPs and CIDR ranges and reducing them to a single canonical string form, so
+variant spellings of the same IP, most notably IPv6 long form vs short form
+as well as case, can not be mistaken for differing IPs. C<normalize_cidr>
+additionally masks the host bits off, so C<1.2.3.4/24> and C<1.2.3.0/24> are
+one range rather than two. Anything unparseable comes back as undef, letting
+garbage be bounced at the point of entry instead of being passed along for
+something further down to bounce.
 
 =head1 EXPORTS
 
@@ -209,19 +211,5 @@ sub normalize_cidr {
 	}
 	return $canonical . '/' . $prefix;
 } ## end sub normalize_cidr
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

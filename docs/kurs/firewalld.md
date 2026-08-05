@@ -104,8 +104,8 @@ This is exactly what `self_heal` (on by default) exists for: `check`
 queries each rule individually, the next ban/unban notices the loss
 and re-inits, restoring the rules and re-banning from the kur's book.
 If reloads are frequent and bans are sparse, note the window between
-a reload and the next ban/unban — a `re_init` via the kur's socket
-closes it on demand.
+a reload and the next ban/unban — `ereshkigal re-init [<kur>]` closes
+it on demand.
 
 ## Gotchas
 

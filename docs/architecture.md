@@ -17,7 +17,7 @@
           |                       |
      socket: .../kur/sshd.sock    .../kur/smtp.sock
      pid:    .../kur/sshd.pid     .../kur/smtp.pid
-     tablets: /var/cache/ereshkigal/kur.sshd.csv   kur.smtp.csv
+     tablets: /var/cache/ereshkigal/kur.sshd*.csv  kur.smtp*.csv
           |                       |
           v                       v
      Net::Firewall::         Net::Firewall::
@@ -43,7 +43,10 @@ its own socket.
 | `/var/run/ereshkigal/pid`              | the manager PID                                  |
 | `/var/run/ereshkigal/kur/<name>.sock`  | a kur's socket (always 0600)                     |
 | `/var/run/ereshkigal/kur/<name>.pid`   | a kur's PID                                      |
-| `/var/cache/ereshkigal/kur.<name>.csv` | a kur's clay tablets                             |
+| `/var/cache/ereshkigal/kur.<name>.csv` | a kur's ban tablet                               |
+| `/var/cache/ereshkigal/kur.<name>.cidr.csv` | its range ban tablet, when it carries any   |
+| `/var/cache/ereshkigal/kur.<name>.retry.csv` | unbans still owed to the firewall, when any |
+| `/var/cache/ereshkigal/kur.<name>.cidr.retry.csv` | the range equivalent                   |
 
 The run and cache base dirs are configurable; the layout under them is
 not.
@@ -74,9 +77,10 @@ one JSON object per line in each direction.
 
 The manager commands are `status`, `status_all`, `status_kur`,
 `banned`, `ban`, `unban`, `cidr_ban`, `cidr_unban`, `add_kur`,
-`remove_kur`, `checkpoint`, and `stop`. The kur commands are `ban`,
-`unban`, `cidr_ban`, `cidr_unban`, `banned`, `status`, `flush`,
-`re_init`, `checkpoint`, and `stop`. The kur sockets are 0600 and only
+`remove_kur`, `checkpoint`, `re_init`, `clear_retries`, and `stop`.
+The kur commands are `ban`, `unban`, `cidr_ban`, `cidr_unban`,
+`banned`, `status`, `flush`, `re_init`, `checkpoint`,
+`clear_retries`, and `stop`. The kur sockets are 0600 and only
 Ereshkigal is expected to speak to them. See [usage](usage.md) for
 driving the socket from your own integrations.
 
@@ -139,6 +143,11 @@ The tablets are re-written when the events below happen.
   the time-left figures never go stale
 - at `stop`, right before the firewall teardown
 - on demand via the `checkpoint` command
+
+The retry tablets follow the same triggers, plus whenever a debt is
+taken on, retried, paid, or forgiven — and they are emptied once more
+after a successful teardown at `stop`, since tearing down takes any
+rule the kur failed to remove with it.
 
 Writes to the file are done in an atomic manner.
 

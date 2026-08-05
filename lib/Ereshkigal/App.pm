@@ -43,18 +43,4 @@ sub global_opt_spec {
 	return ( [ 'socket|s=s', 'path of the manager unix socket', { default => '/var/run/ereshkigal/socket' } ], );
 }
 
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
-
 1;

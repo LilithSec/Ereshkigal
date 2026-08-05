@@ -125,7 +125,7 @@ MetaCPAN, under `Net::Firewall::BlockerHelper::backends::<backend>`.
 | `checkpoint`    | top level / 60   | seconds between tablet recopies; `0` = mutations/stop only        |
 | `enable_cidr`   | top level / off  | whether this kur banishes whole ranges; needs a range-capable backend |
 | `cidr_silent_drop`| top level / off | drop rather than error range commands where CIDR is unavailable |
-| `options`       | `{}`             | backend specific options table — see each backend's page          |
+| `options`       | `{}`             | backend specific options table; scalars only bar `interfaces` — see each backend's page |
 | `authed_users`  | `[]`             | users granted access to this kur (with `enable_auth`)             |
 | `authed_groups` | `[]`             | groups granted access to this kur (with `enable_auth`)            |
 
@@ -139,6 +139,11 @@ Notes that apply across the board...
 - `ports` entries may be ints (1–65535) or service names resolvable
   via `getservbyname`; `protocols` entries are checked against
   `/etc/protocols`. Duplicates are dropped.
+- `options` values must be plain scalars. The one exception is
+  `interfaces`, which backends like xdp want as an array and which may
+  be given as one; any other array or table valued option is refused
+  at config load rather than reaching the backend as a stringified
+  ref.
 - `self_heal` is the fail2ban actioncheck-before-action behavior:
   each ban/unban first asks the backend to `check` its setup and
   re-inits it if something external (a firewall reload, a flushed
@@ -150,7 +155,7 @@ Notes that apply across the board...
   way off, or when a backend's `check` cannot see the damage.
 - Most backends take no `ports`/`protocols` at all — they block the
   whole IP or operate somewhere ports have no meaning. The strict
-  ones (`npf`, `route`, `cloudflare`, `netscaler`, `nsupdate`,
+  ones (`npf`, `linux_ip_route`, `cloudflare`, `netscaler`, `nsupdate`,
   `routeros_api`, `panos`, `fortigate`, `abuseipdb`, `pfsense`,
   `vyos`, `f5_bigip`, `fastly`, `akamai`, `dns_rpz`, `cisco_fmc`,
   `checkpoint`, `juniper_srx`) treat specifying either as a fatal
@@ -174,7 +179,7 @@ Notes that apply across the board...
 | `ufw`          | Linux with ufw             | ports/protocols    | yes (ss/conntrack)  |
 | `shorewall`    | Linux with Shorewall       | whole IP           | no                  |
 | `npf`          | NetBSD                     | whole IP (rule in npf.conf) | no          |
-| `route`        | Linux (iproute2)           | whole IP           | no                  |
+| `linux_ip_route` | Linux (iproute2)           | whole IP           | no                  |
 | `xdp`          | Linux, NIC-level           | whole IP           | unneeded (all packets die) |
 | `hosts_deny`   | anywhere with libwrap      | per daemon         | no                  |
 | `routeros`     | MikroTik (ssh)             | whole IP (rules it creates) | no          |

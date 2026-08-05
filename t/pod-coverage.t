@@ -21,4 +21,14 @@ eval "use Pod::Coverage $min_pc";
 plan skip_all => "Pod::Coverage $min_pc required for testing POD coverage"
     if $@;
 
-all_pod_coverage_ok();
+# the App::Cmd subcommand hooks are documented collectively per module
+# rather than one =head2 apiece, as they are framework callbacks and not a
+# API anyone calls... prepare is the same, overridden in the base class to
+# wire --help into every subcommand
+all_pod_coverage_ok(
+	{
+		'also_private' => [
+			qr/^(?:abstract|description|usage_desc|opt_spec|validate_args|execute|command_names|prepare)$/
+		]
+	}
+);

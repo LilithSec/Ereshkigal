@@ -47,10 +47,16 @@ and `cache_base_dir` point somewhere that user can write.
 IPv6 addresses are lowercased on the way in, matching every other
 backend, so `2001:DB8::1` and `2001:db8::1` are one ban.
 
+## self_heal
+
+Never fires. `check` cannot fail, so the probe before each ban/unban
+always passes and there is never a re_init — which is the point: a
+dummy kur costs the same one no-op probe a real one costs, without
+any of the healing being exercised. If you are testing self_heal
+itself, you want a real backend or the `shell` one.
+
 ## Behavior worth knowing
 
-- Because `check` always passes, `self_heal` never triggers here —
-  there is nothing to heal.
 - The kur-level machinery all still works for real: sentences expire
   via the sweeper, the tablet is written and reloaded across
   restarts, `banned`/`status`/`flush`/`re_init` behave exactly as

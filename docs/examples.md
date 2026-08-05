@@ -148,6 +148,55 @@ The `sshd-mon` user can `ereshkigal status sshd` and
 and anything touching other kurs is refused at the gate. See
 [security](security.md) for the full trust model.
 
+## One gate onto many underworlds
+
+Granting an integration each kur it should reach means editing every
+one of them whenever the set changes. A [gate](kurs/gate.md) inverts
+that: one name, authorized once, opening onto as many underworlds as
+you like.
+
+```toml
+enable_auth   = true
+authed_groups = [ "wheel" ]
+
+[kur.sshd]
+backend   = "pf"
+ports     = [ "22" ]
+protocols = [ "tcp" ]
+
+[kur.smtp]
+backend   = "pf"
+ports     = [ "25", "587" ]
+protocols = [ "tcp" ]
+
+[kur.edge]
+backend = "cloudflare"
+
+[kur.edge.options]
+token = "someAPItoken"
+zone  = "somezoneID"
+
+# the gate... no process, no firewall of it's own, just a name
+[kur.baphomet]
+fan_out      = [ "sshd", "smtp", "edge" ]
+authed_users = [ "baphomet" ]
+```
+
+The `baphomet` user is on none of the three member kurs, yet:
+
+```shell
+ereshkigal ban --kur baphomet 1.2.3.4
+```
+
+lands that IP on pf twice over and at the Cloudflare edge, answering
+per member. Adding a fourth underworld to the fan_out extends the
+integration's reach without touching its authorization, and dropping
+one narrows it — the integration never learns either happened.
+
+Gates may not nest, and members must be real kurs. Untargeted
+commands (a bare `ban`, `unban`, `banned`) never route through a gate;
+they go to the real kurs directly.
+
 ## An underworld of pure imagination
 
 The `dummy` backend remembers what it was told and touches no

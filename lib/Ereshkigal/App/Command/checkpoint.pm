@@ -25,9 +25,24 @@ our $VERSION = '0.0.1';
     # just sshd
     ereshkigal checkpoint sshd
 
+=head1 DESCRIPTION
+
+Forces kurs to write their tablets out now. Each kur persists what it is
+holding to CSVs under the cache dir, so timed bans survive a restart with the
+right time left on them.
+
+Those writes already happen on every ban and unban, every C<checkpoint>
+seconds, and at stop, so this is rarely needed... it is for taking a
+consistent snapshot before a backup or a manual look at the files. Writes are
+atomic, so a checkpoint racing a backup can not hand out half a file.
+
+With no args every kur checkpoints; with a kur name only that one, and naming
+a fan_out gate reaches every kur behind it.
+
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, validate_args, and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, validate_args, and execute.
 
 =cut
 
@@ -70,19 +85,5 @@ sub execute {
 
 	return;
 }
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

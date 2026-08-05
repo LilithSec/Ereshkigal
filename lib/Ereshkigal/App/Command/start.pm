@@ -25,10 +25,26 @@ our $VERSION = '0.0.1';
     ereshkigal start --foreground
     ereshkigal start --config /usr/local/etc/ereshkigal.toml
 
+=head1 DESCRIPTION
+
+Starts the manager and every kur the config defines. The manager reads the
+config, brings up a kur process per instance, and listens on it's unix
+socket. Each kur builds it's firewall setup and re-bans whatever it's tablet
+was carrying, so bans that had not run out survive the restart; anything that
+expired while it was down is unbanned instead, in case the firewall still had
+the rule. A kur that dies is restarted with a backoff, doubling to a cap of a
+minute.
+
+It daemonizes unless C<--foreground> is given. Either way it refuses to start
+over a manager that is already running, and waits briefly first for a
+previous one still shutting down, so restart style invocations do not race.
+
+Building firewall state means this generally has to run as root.
+
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, opt_spec, validate_args,
-and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, opt_spec, validate_args, and execute.
 
 =cut
 
@@ -158,19 +174,5 @@ sub _wait_for_pid_clear {
 
 	return;
 } ## end sub _wait_for_pid_clear
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

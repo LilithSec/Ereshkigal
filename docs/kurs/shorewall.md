@@ -66,11 +66,11 @@ IPv4 IPs go through the `shorewall` command, IPv6 through
 `check` only verifies the `shorewall` command answers — and
 `shorewall6` too, but only while something IPv6 is actually banned,
 so hosts without shorewall6 installed are not flagged unhealthy. A
-`shorewall restart` clears
-the dynamic blacklist without failing `check`, so the recovery path
-for a restart is `re_init` via the kur socket, or a kur restart
-re-banning from the tablet. If Shorewall restarts are part of your
-routine, pair them with a `re_init`.
+`shorewall restart` clears the dynamic blacklist without failing
+`check`, so the recovery path for a restart is
+`ereshkigal re-init [<kur>]`, or a kur restart re-banning from the
+tablet. If Shorewall restarts are part of your routine, pair them
+with a `re-init`.
 
 ## Gotchas
 

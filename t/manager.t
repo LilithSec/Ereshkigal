@@ -98,6 +98,17 @@ is_deeply(
 	'manager banned aggregation matches the kur socket'
 );
 
+# the manager rebuilds each row rather than passing it through, so every
+# field the kur reports has to be carried over deliberately... the retry
+# books are what the CLI help points people at, so they must survive
+is_deeply(
+	[ sort( keys( %{ $result->{kurs}{sshd} } ) ) ],
+	[ sort( keys( %{ $sshd_client->call_ok('banned') } ) ) ],
+	'the manager carries over every field the kur reports for banned'
+);
+ok( defined( $result->{kurs}{sshd}{unban_retries} ),      'banned carries unban_retries through the manager' );
+ok( defined( $result->{kurs}{sshd}{cidr_unban_retries} ), 'and the CIDR retry book too' );
+
 #
 # unban
 #

@@ -21,9 +21,25 @@ our $VERSION = '0.0.1';
 
     ereshkigal stop
 
+=head1 DESCRIPTION
+
+Stops every kur instance and then the manager. Each kur checkpoints it's
+tablets, tears it's firewall setup down, and exits; the manager follows.
+
+Tearing down removes the tables, sets, chains, and lists the kurs own, so
+every ban stops being enforced... the host is unprotected by anything
+Ereshkigal was doing until it is started again. The bans themselves are not
+forgotten, the tablets being written before the teardown, so starting back up
+re-bans everything whose sentence has not run out in the meantime.
+
+This returns as soon as the shutdown has been requested rather than once it
+has finished, which is why L<start|Ereshkigal::App::Command::start> waits for
+the old PID file to clear before taking over.
+
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, validate_args, and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, validate_args, and execute.
 
 =cut
 
@@ -68,19 +84,5 @@ sub execute {
 
 	return;
 }
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

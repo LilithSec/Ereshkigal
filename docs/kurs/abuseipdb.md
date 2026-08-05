@@ -101,6 +101,14 @@ publish.
 | `re_init`  | teardown (no-op) + init                                                      |
 | `teardown` | nothing (ban book kept)                                                      |
 
+## self_heal
+
+There is nothing on the AbuseIPDB side to establish, so there is
+nothing to repair. `check` re-runs the same credential probe `init`
+does, which catches a revoked or expired key, but a failure has no
+setup to rebuild — the re_init that follows just probes again. Treat a
+kur stuck failing `check` as a credentials problem, not a firewall one.
+
 ## Gotchas
 
 - Because unban costs no API call, `ban_time` here only governs the

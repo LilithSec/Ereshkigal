@@ -95,6 +95,20 @@ everything your commands created).
   substitution is the same for IPv4 and IPv6 (IPv6 arrives
   lowercased).
 
+## self_heal
+
+Entirely as strong as the `check` command you supply. With one set,
+each ban and unban runs it first and, on a nonzero exit, runs
+`teardown` (best effort), `init`, and your `ban` per banned IP — so
+`init` and `ban` must both tolerate being run against a setup that is
+already partly there. With `check` unset the kur is always healthy and
+`self_heal` never fires, which means an externally destroyed setup
+stays destroyed until you `ereshkigal re-init` or restart the kur.
+
+Give it a real `check` if you can. A probe as cheap as grepping for
+your own rule turns this backend from fire-and-forget into something
+that repairs itself.
+
 ## Gotchas
 
 - Quoting inside the templates is on you; the backend appends `2>&1`

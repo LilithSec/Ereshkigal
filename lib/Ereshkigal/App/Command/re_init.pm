@@ -29,12 +29,23 @@ our $VERSION = '0.0.1';
 
 Has each kur tear its firewall setup down and build it again from scratch,
 re-banning everything its ban book carries. This is the repair for a setup
-that something outside Ereshkigal has interfered with.
+that something outside Ereshkigal has interfered with... a C<shorewall
+restart> or C<pf -F all> that dropped the rules, a firewalld reload, an ipset
+flushed by hand. It also settles unban debts, as tearing down takes any rule
+a failed unban left behind with it.
+
+Bans are not enforced during the rebuild. It is brief, but it is a real
+window.
+
+Mostly a convenience... with C<self_heal> on, which is the default, each kur
+already checks its setup before every ban and unban and rebuilds it if it has
+gone missing. This is for when that is wanted now rather than at the next
+ban, or when C<self_heal> is off.
 
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, validate_args, and
-execute.
+The App::Cmd hooks this subcommand supplies... command_names, abstract,
+description, usage_desc, validate_args, and execute.
 
 =cut
 
@@ -92,19 +103,5 @@ sub execute {
 
 	return;
 }
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;

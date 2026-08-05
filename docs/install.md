@@ -11,10 +11,21 @@
 | Net::Server (Net::Server::Daemonize)| p5-Net-Server     | libnet-server-perl      |
 | POE                                | p5-POE             | libpoe-perl             |
 | POE::Component::Server::JSONUnix   | (cpanm)            | (cpanm)                 |
+| Regexp::IPv4                       | (cpanm)            | (cpanm)                 |
+| Regexp::IPv6                       | p5-Regexp-IPv6     | libregexp-ipv6-perl     |
 | TOML::Tiny                         | (cpanm)            | libtoml-tiny-perl       |
 
+Two of those carry a minimum version: `Net::Firewall::BlockerHelper`
+0.1.0 (what added CIDR bans and the `linux_ip_route` backend) and
+`POE::Component::Server::JSONUnix` 0.1.0. An older BlockerHelper will
+install but leaves range banning broken, so check that one if you have
+it from a distro package.
+
 Test-time only: Test::More (core) and Test::Exception
-(p5-Test-Exception / libtest-exception-perl).
+(p5-Test-Exception / libtest-exception-perl). The author tests
+additionally want Test::CheckManifest, Test::Pod, and
+Test::Pod::Coverage, but those only run with `RELEASE_TESTING=1` and
+skip cleanly otherwise, so a plain `make test` does not need them.
 
 Package names are current as of writing. Anything marked `(cpanm)` —
 or missing from your release — installs cleanly from CPAN via

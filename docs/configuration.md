@@ -34,7 +34,7 @@ Inside a `[kur.<name>]` hash...
 
 | key             | what                                                                     |
 |-----------------|--------------------------------------------------------------------------|
-| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `pfsense`, `vyos`, `panos`, `fortigate`, `cisco_fmc`, `checkpoint`, `juniper_srx`, `f5_bigip`, `netscaler`, `bgp_rtbh`, `cloudflare`, `fastly`, `akamai`, `aws_wafv2`, `cloud_armor`, `azure`, `nsupdate`, `dns_rpz`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs](kurs.md) |
+| `backend`       | required unless `fan_out` is set; the Net::Firewall::BlockerHelper backend — `pf`, `ipfw`, `iptables`, `nftables`, `firewalld`, `ufw`, `shorewall`, `npf`, `linux_ip_route`, `xdp`, `hosts_deny`, `routeros`, `routeros_api`, `opnsense`, `pfsense`, `vyos`, `panos`, `fortigate`, `cisco_fmc`, `checkpoint`, `juniper_srx`, `f5_bigip`, `netscaler`, `bgp_rtbh`, `cloudflare`, `fastly`, `akamai`, `aws_wafv2`, `cloud_armor`, `azure`, `nsupdate`, `dns_rpz`, `abuseipdb`, `file_reload`, `shell`, or `dummy` — see [kurs](kurs.md) |
 | `fan_out`       | array of other kur names, in place of `backend`; makes this a gate (see below) |
 | `ports`         | array of ports to block for; all if unset                                |
 | `protocols`     | array of protocols to block for; backend-dependent default if unset      |
@@ -61,8 +61,9 @@ authed_users = [ "baphomet" ]
 
 Such a kur is a gate — one name that opens onto several underworlds.
 It has no process and no socket of its own; commands targeted at it
-(`ban --kur`, `checkpoint <name>`, `status <name>`) fan out to its
-members instead, with results reported per member. With `enable_auth`
+(`ban --kur`, `cidr-ban --kur`, `checkpoint <name>`, `re-init <name>`,
+`clear-retries <name>`, `status <name>`) fan out to its members
+instead, with results reported per member. With `enable_auth`
 on, authorization for a command aimed at a gate is checked against the
 gate's own lists, not its members' — which is the point: an outside
 integration (a log watcher, IDS glue) can be granted just the gate and
@@ -70,7 +71,8 @@ drive a whole set of kurs through a single point of contact, without
 being listed on — or knowing about — any member.
 
 Members must be real kurs (gates may not nest), and untargeted
-commands (`ban` with no `--kur`, `unban`, `banned`, bare `checkpoint`)
+commands (`ban`/`cidr-ban` with no `--kur`, `unban`, `cidr-unban`,
+`banned`, and bare `checkpoint`, `re-init`, and `clear-retries`)
 never touch gates, only real kurs. In `status`, a gate shows its
 member list and counts as running when every member is.
 

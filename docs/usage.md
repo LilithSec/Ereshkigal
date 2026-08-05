@@ -36,7 +36,8 @@ ereshkigal status --all     # the above plus every kur's full status block
 ereshkigal status sshd      # one underworld in detail... uptime, stats, ban counts,
                             # sentence defaults, when the tablets were last copied
 ereshkigal banned           # the rolls... every banned IP per kur, with the epoch
-                            # each sentence ends (0 = eternal)
+                            # each sentence ends (0 = eternal), plus any unbans
+                            # still owed to the firewall (see below)
 ```
 
 ## Sending IPs below and calling them back
@@ -54,6 +55,13 @@ ereshkigal unban 1.2.3.4    # each kur is checked and the IP released wherever i
                             # per kur
 ereshkigal unban --all      # empty every underworld (flush)
 ```
+
+Note the asymmetry: `ban` and `cidr-ban` take `--kur` to aim at one
+underworld, but `unban` and `cidr-unban` have no such option and never
+needed one. They always ask every kur whether it is holding the
+address and release it wherever it actually is, which is why the
+response reports `was_banned` per kur. `ereshkigal unban --kur sshd`
+is an error, not a narrower unban.
 
 Sentences default per the config layering (request > kur > global >
 600 seconds). Banning an IP already below just refreshes its sentence.

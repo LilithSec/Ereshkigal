@@ -25,10 +25,27 @@ our $VERSION = '0.0.1';
     # remove all bans everywhere
     ereshkigal unban --all
 
+=head1 DESCRIPTION
+
+With a IP, every kur is asked whether it is holding that address and it is
+released from each one that is, reporting C<was_banned> per kur. A kur that
+never had it says so rather than erroring, so it is safe to fire at all of
+them. There is deliberately no C<--kur>... an unban goes wherever the address
+actually is.
+
+With C<--all> every kur is flushed instead. That is both single IP and range
+bans on every kur, released in one go, with no confirmation and no undo. The
+tablets are rewritten straight after, so a restart will not bring any of them
+back.
+
+Ranges banned with L<cidr_ban|Ereshkigal::App::Command::cidr_ban> are matched
+by L<cidr_unban|Ereshkigal::App::Command::cidr_unban> rather than by naming a
+IP inside them, though C<--all> takes those too.
+
 =head1 METHODS
 
-Standard L<App::Cmd::Command> methods... abstract, opt_spec, validate_args,
-and execute.
+The App::Cmd hooks this subcommand supplies... abstract, description,
+usage_desc, opt_spec, validate_args, and execute.
 
 =cut
 
@@ -89,19 +106,5 @@ sub execute {
 
 	return;
 } ## end sub execute
-
-=head1 AUTHOR
-
-Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is Copyright (c) 2026 by Zane C. Bowers-Hadley.
-
-This is free software, licensed under:
-
-  The Artistic License 2.0 (GPL Compatible)
-
-=cut
 
 1;
