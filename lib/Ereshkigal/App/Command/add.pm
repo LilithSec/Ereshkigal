@@ -72,12 +72,12 @@ sub usage_desc { return '%c add %o <kur>'; }
 sub opt_spec {
 	return (
 		[ 'backend=s',          'the Net::Firewall::BlockerHelper backend to use' ],
-		[ 'fan-out=s',          'comma seperated list of kurs to fan out to, in place of --backend' ],
-		[ 'ports=s',            'comma seperated list of ports to block' ],
-		[ 'protocols=s',        'comma seperated list of protocols to block' ],
+		[ 'fan-out=s',          'comma separated list of kurs to fan out to, in place of --backend' ],
+		[ 'ports=s',            'comma separated list of ports to block' ],
+		[ 'protocols=s',        'comma separated list of protocols to block' ],
 		[ 'prefix=s',           'the prefix to use' ],
 		[ 'option=s@',          'a backend specific option, key=value, may be given multiple times' ],
-		[ 'interfaces=s',       'comma seperated list of interfaces, handed over as the interfaces option array' ],
+		[ 'interfaces=s',       'comma separated list of interfaces, handed over as the interfaces option array' ],
 		[ 'self-heal=i',        'if the firewall setup should be checked and re-inited before each ban/unban' ],
 		[ 'ban-time=i',         'seconds bans should last for this kur, 0 meaning never time out' ],
 		[ 'checkpoint=i',       'seconds between ban state CSV rewrites for this kur' ],
@@ -157,7 +157,7 @@ sub execute {
 	return;
 } ## end sub execute
 
-# Turns one of this command's comma seperated option values into the array
+# Turns one of this command's comma separated option values into the array
 # ref the manager expects for it. The kur bin takes --ports 22,80 and the
 # like as a single string, but add_kur is a JSON request where ports is a
 # array, so the splitting has to happen somewhere and it happens here.
@@ -179,17 +179,17 @@ sub execute {
 #                      opt object carries.
 #     $option_value :: The raw string as given on the command line. Must be
 #                      defined... callers guard with a defined check on the
-#                      opt accessor, and a undef reaching here warns and
+#                      opt accessor, and an undef reaching here warns and
 #                      then behaves as the empty string, which is a usage
 #                      error anyway.
 #
-# Returns a array ref of the elements, in the order given and with
+# Returns an array ref of the elements, in the order given and with
 # duplicates left alone... a caller wanting them deduped does that its
 # self, and for ports the manager does it anyway.
 #
 # Does not return if the value yields nothing, as "" or "," would. That
 # calls usage_error, which dies with the message and the usage screen, so
-# --ports with a empty value is refused rather than quietly becoming a
+# --ports with an empty value is refused rather than quietly becoming a
 # ports list of none.
 #
 #     my $ports = $self->_split_comma_list( 'ports', '22, 80,443' );

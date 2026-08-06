@@ -126,7 +126,7 @@ print $csv_fh "ip,time,ban_time_left\n" . '10.0.0.1,' . $now . ',500' . "\n"    
 	. '10.0.0.4,junk,50' . "\n"                                                 # malformed... time
 	. '10.0.0.5,' . $now . ',junk' . "\n"                                       # malformed... left
 	. '010.0.0.7,' . $now . ',500' . "\n"                                       # will not normalize... leading zero octet
-	. 'notanip,' . $now . ',500' . "\n"                                         # will not normalize... not a IP at all
+	. 'notanip,' . $now . ',500' . "\n"                                         # will not normalize... not an IP at all
 	. "\n"                                                                      # blank
 	. '10.0.0.6,' . $now . ',500' . "\n";                                       # good row after the junk
 close($csv_fh);
@@ -158,7 +158,7 @@ is_deeply(
 	'restored rows re-banned into the fresh backend'
 );
 
-# after loading a updated CSV is written back out
+# after loading an updated CSV is written back out
 $rows = read_ban_csv( $dir . '/cache/kur.loader.csv' );
 is_deeply(
 	[ sort( keys( %{$rows} ) ) ],

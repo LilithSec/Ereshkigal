@@ -58,7 +58,7 @@ eval { $client->call_ok('bad'); };
 is( $@, "nope\n", 'call_ok dies with the error text and a trailing newline' );
 
 $response = $client->call('nosuchcommand');
-is( $response->{status}, 'error', 'a error response comes back as a plain hash from call' );
+is( $response->{status}, 'error', 'an error response comes back as a plain hash from call' );
 
 #
 # failure modes
@@ -162,7 +162,7 @@ throws_ok { Ereshkigal::Client->call_many( 'sockets' => {} ) } qr/No command spe
 	'call_many dies with out a command';
 
 is_deeply( Ereshkigal::Client->call_many( 'sockets' => {}, 'command' => 'ping' ),
-	{}, 'a empty sockets hash returns a empty hash' );
+	{}, 'an empty sockets hash returns an empty hash' );
 
 my $cm_a_socket = $dir . '/cm-a.sock';
 my $cm_b_socket = $dir . '/cm-b.sock';
@@ -204,8 +204,8 @@ $per_name = Ereshkigal::Client->call_many(
 	'sockets' => { 'a' => $cm_a_socket, 'b' => $cm_b_socket },
 	'command' => 'mixed',
 );
-is_deeply( $per_name->{a}, { 'result' => { 'fine' => 1 } }, 'a error on one socket does not disturb the others' );
-is_deeply( $per_name->{b}, { 'error'  => 'nope b' },        'a error status response lands as that name\'s error' );
+is_deeply( $per_name->{a}, { 'result' => { 'fine' => 1 } }, 'an error on one socket does not disturb the others' );
+is_deeply( $per_name->{b}, { 'error'  => 'nope b' },        'an error status response lands as that name\'s error' );
 
 $per_name = Ereshkigal::Client->call_many(
 	'sockets' => { 'a' => $cm_a_socket, 'ghost' => $dir . '/nothere.sock' },
@@ -218,7 +218,7 @@ $per_name = Ereshkigal::Client->call_many(
 	'sockets' => { 'a' => $cm_a_socket, 'b' => $cm_b_socket },
 	'command' => 'garbage',
 );
-like( $per_name->{a}{error}, qr/Undecodable response/, 'a undecodable response is a error for that name' );
+like( $per_name->{a}{error}, qr/Undecodable response/, 'an undecodable response is an error for that name' );
 is( $per_name->{b}{error}, 'unknown command: garbage', 'the other socket still got it\'s answer' );
 
 $per_name = Ereshkigal::Client->call_many(
@@ -231,7 +231,7 @@ is_deeply( $per_name->{a}{result}{args}, { 'foo' => 'bar' }, 'call_many passes a
 $per_name = Ereshkigal::Client->call_many( 'sockets' => { 'a' => $cm_a_socket }, 'command' => 'echo' );
 is( $per_name->{a}{result}{has_args}, 0, 'no args means no args key on the wire' );
 
-# a stalled socket must not keep a answered one from returning... this is
+# a stalled socket must not keep an answered one from returning... this is
 # the concurrency assertion that matters
 my $cm_stall_socket = $dir . '/cm-stall.sock';
 mock_server( $cm_stall_socket, { 'slowcheck' => { '__no_reply__' => 1 }, 'ping' => { '__no_reply__' => 1 } } );
@@ -300,8 +300,8 @@ $per_name = Ereshkigal::Client->call_many(
 );
 $elapsed = time - $started;
 cmp_ok( $elapsed, '<=', 8, 'a listener that never accepts does not hang the fan out' );
-ok( defined( $per_name->{deaf} ),        'the deaf socket still got a answer' );
-ok( defined( $per_name->{deaf}{error} ), 'and that answer is a error' );
+ok( defined( $per_name->{deaf} ),        'the deaf socket still got an answer' );
+ok( defined( $per_name->{deaf}{error} ), 'and that answer is an error' );
 is_deeply(
 	$per_name->{ok},
 	{ 'result' => { 'quick' => 1 } },

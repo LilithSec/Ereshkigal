@@ -7,7 +7,7 @@ use Ereshkigal::App -command;
 
 =head1 NAME
 
-Ereshkigal::App::Command::unban - Unban a IP or everything.
+Ereshkigal::App::Command::unban - Unban an IP or everything.
 
 =head1 VERSION
 
@@ -27,7 +27,7 @@ our $VERSION = '0.0.1';
 
 =head1 DESCRIPTION
 
-With a IP, every kur is asked whether it is holding that address and it is
+With an IP, every kur is asked whether it is holding that address and it is
 released from each one that is, reporting C<was_banned> per kur. A kur that
 never had it says so rather than erroring, so it is safe to fire at all of
 them. There is deliberately no C<--kur>... an unban goes wherever the address
@@ -49,13 +49,13 @@ usage_desc, opt_spec, validate_args, and execute.
 
 =cut
 
-sub abstract { return 'unban a IP or everything' }
+sub abstract { return 'unban an IP or everything' }
 
 sub description {
 	return <<'DESCRIPTION';
-Release a IP from the underworld, or empty it entirely.
+Release an IP from the underworld, or empty it entirely.
 
-With a IP, every kur is asked whether it is holding that address and it is
+With an IP, every kur is asked whether it is holding that address and it is
 released from each one that is. A kur that never had it says so rather
 than erroring, so it is safe to fire at all of them.
 
@@ -83,7 +83,7 @@ sub validate_args {
 	my ( $self, $opt, $args ) = @_;
 
 	if ( $opt->all && @{$args} ) {
-		$self->usage_error('--all and a IP may not be used together');
+		$self->usage_error('--all and an IP may not be used together');
 	}
 	if ( !$opt->all && @{$args} != 1 ) {
 		$self->usage_error('either --all or a single IP must be specified');

@@ -12,7 +12,7 @@ use Ereshkigal::App;
 
 my $dir = test_dir();
 
-# checks a invocation fails with a message matching the regex
+# checks an invocation fails with a message matching the regex
 sub usage_error_ok {
 	my ( $argv, $regex, $test_name ) = @_;
 
@@ -38,7 +38,7 @@ usage_error_ok( [ 'status', '--all', 'sshd' ], qr/may not be used together/, 'st
 usage_error_ok( ['ban'], qr/at least one IP/, 'ban with no IPs' );
 
 usage_error_ok( ['unban'], qr/either --all or a single IP/, 'unban with no args' );
-usage_error_ok( [ 'unban', '--all',   '1.2.3.4' ], qr/may not be used together/,    'unban --all with a IP' );
+usage_error_ok( [ 'unban', '--all',   '1.2.3.4' ], qr/may not be used together/,    'unban --all with an IP' );
 usage_error_ok( [ 'unban', '1.2.3.4', '5.6.7.8' ], qr/either --all or a single IP/, 'unban with two IPs' );
 
 usage_error_ok( ['cidr-ban'], qr/at least one CIDR/, 'cidr-ban with no CIDRs' );
@@ -220,7 +220,7 @@ SKIP: {
 	$result  = test_app( 'Ereshkigal::App' => [ @s, 'unban', '1.2.3.4' ] );
 	$decoded = decode_json( $result->stdout );
 	is( $decoded->{args}{ip}, '1.2.3.4', 'unban passes the IP' );
-	ok( !$decoded->{args}{all}, 'unban with a IP does not send all' );
+	ok( !$decoded->{args}{all}, 'unban with an IP does not send all' );
 
 	$result  = test_app( 'Ereshkigal::App' => [ @s, 'unban', '--all' ] );
 	$decoded = decode_json( $result->stdout );
@@ -274,7 +274,7 @@ SKIP: {
 	is_deeply( $decoded->{args}{opts}, { 'fan_out' => [ 'sshd', 'smtp' ] }, 'add --fan-out passes the member list' );
 
 	$result = test_app( 'Ereshkigal::App' => [ @s, 'remove', 'sshd' ] );
-	isnt( $result->exit_code, 0, 'a error response exits nonzero' );
+	isnt( $result->exit_code, 0, 'an error response exits nonzero' );
 	my $combined = join( '', defined( $result->error ) ? $result->error : '', $result->stderr );
 	like( $combined, qr/No such kur instance/, 'the error message is shown' );
 

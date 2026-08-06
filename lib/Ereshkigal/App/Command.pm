@@ -87,7 +87,7 @@ sub run_command {
 # it needs nothing from the invocant.
 #
 # Three kinds of failure marker are looked for, and any one of them is
-# enough... a non empty rejected hash, a kur carrying a error, or a per
+# enough... a non empty rejected hash, a kur carrying an error, or a per
 # entry status of error. Both result shapes are handled, the manager's
 # fanned out one with everything under kurs and the single kur one with
 # ips/cidrs at the top level, that second being what comes back when -s is
@@ -127,7 +127,7 @@ sub run_command {
 #     );
 #     # 1, for the smtp error
 #
-#     # a IP the manager would not validate
+#     # an IP the manager would not validate
 #     _result_has_failures(
 #         { 'rejected' => { 'nope' => { 'status' => 'error' } } }
 #     );
@@ -169,7 +169,7 @@ sub _result_has_failures {
 # so without this each subcommand answers "Unknown option: help" to the
 # first thing most people reach for. Doing it here means the twelve
 # subcommands do not each have to remember to put it in their own opt_spec,
-# and can not drift from one another over it.
+# and cannot drift from one another over it.
 #
 # The parent returns the usage_desc string followed by the opt_spec entries,
 # which App::Cmd hands to _process_args and on to
@@ -206,11 +206,11 @@ sub _option_processing_params {
 # constructed command object, so the --help added by
 # _option_processing_params actually does something. Handled here rather
 # than in each subcommand's validate_args because prepare runs first...
-# "ban --help" should explain ban, not refuse for want of a IP, and it only
+# "ban --help" should explain ban, not refuse for want of an IP, and it only
 # behaves that way because the help is answered before validate_args ever
 # sees the empty arg list. It is public rather than underscored only
 # because App::Cmd names the hook, and it carries no POD for the same
-# reason its siblings do not... it is a framework callback, not a API
+# reason its siblings do not... it is a framework callback, not an API
 # anyone here calls.
 #
 # The parent is left to do all the real work, parsing the options and
@@ -224,7 +224,7 @@ sub _option_processing_params {
 #               things like global_options can be reached from it.
 #     @args  :: The rest of the command line for this subcommand, options
 #               and positionals both, still unparsed. The parent hands it to
-#               Getopt::Long::Descriptive, so a unknown option in here is
+#               Getopt::Long::Descriptive, so an unknown option in here is
 #               what dies with "Unknown option".
 #
 # Returns the parent's three part list unchanged... the constructed
@@ -238,7 +238,7 @@ sub _option_processing_params {
 #
 #     my ( $cmd, $opt, @args )
 #         = $class->prepare( $app, '--kur', 'sshd', '1.2.3.4' );
-#     # $cmd is a Ereshkigal::App::Command::ban, $opt->kur is 'sshd',
+#     # $cmd is an Ereshkigal::App::Command::ban, $opt->kur is 'sshd',
 #     # and @args is ( '1.2.3.4' )
 #
 #     $class->prepare( $app, '--help' );
@@ -266,7 +266,7 @@ sub prepare {
 # The three pieces are the usage leader line, the subcommand's description,
 # and the option listing, joined with newlines. The description gets a
 # leading newline of its own so it sits in a paragraph of its own under
-# the usage line, but only when there is one... a subcommand with a empty
+# the usage line, but only when there is one... a subcommand with an empty
 # description gets no stray blank line for it.
 #
 # Takes no arguments beyond the invocant, which must be a constructed

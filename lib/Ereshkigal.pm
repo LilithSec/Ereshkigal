@@ -51,7 +51,7 @@ C<backend>, C<ports>, C<protocols>, C<prefix>, C<self_heal>, and the backend
 specific C<options> table.
 
 Values in the C<options> table must be plain scalars, with one exception...
-C<interfaces>, which backends such as xdp want as a array, may be given as
+C<interfaces>, which backends such as xdp want as an array, may be given as
 one. Any other array or table valued option is refused at config load rather
 than being handed to the backend as a stringified ref.
 
@@ -98,7 +98,7 @@ Top level keys are manager settings.
 
     - cidr_silent_drop :: How a kur handles a CIDR command when CIDR banning
           is not available for it, either because enable_cidr is off or the
-          backend can not do CIDR. When set such a kur silently drops the
+          backend cannot do CIDR. When set such a kur silently drops the
           command rather than erroring, which keeps a fan out across a mix of
           CIDR capable and incapable kurs from being spoiled by the incapable
           ones. May be overridden per kur via cidr_silent_drop in its hash.
@@ -109,30 +109,30 @@ Top level keys are manager settings.
           socket, along with authorization via authed_users/authed_groups.
         Default :: 0
 
-    - authed_users :: A array of users with global access.
+    - authed_users :: An array of users with global access.
         Default :: []
 
-    - authed_groups :: A array of groups with global access.
+    - authed_groups :: An array of groups with global access.
         Default :: []
 
     - auth_temp_dir :: Dir used for the ownership challenge cookie files,
           passed through to L<POE::Component::Server::JSONUnix>.
         Default :: undef
 
-A kur hash may instead carry C<fan_out>, a array of other kur names, in
+A kur hash may instead carry C<fan_out>, an array of other kur names, in
 place of C<backend>. Such a kur is manager side only... no process and no
 socket of its own. Commands targeted at it (C<ban> and C<cidr_ban> with
 args.kur, C<checkpoint>, C<re_init>, and C<clear_retries> with args.kur,
-and C<status_kur>) fan out to its members
-instead, making it usable as a single point of contact for driving a whole
-set of kurs. With enable_auth on, authorization for a command targeted at
-a fan_out kur is checked against the fan_out kur's own lists rather than
-its members', so a integration may be granted just the gateway without
-being listed on any member. Members must be defined non fan_out kurs...
-fan_out kurs may not nest. Untargeted commands (C<ban> and C<cidr_ban> with
-out args.kur, C<unban>, C<cidr_unban>, C<banned>, and C<checkpoint>,
-C<re_init>, and C<clear_retries> without args.kur) touch only real
-kurs, never fan_out ones.
+and C<status_kur>) fan out to its members instead, making it usable as a
+single point of contact for driving a whole set of kurs. With enable_auth
+on, authorization for a command targeted at a fan_out kur is checked
+against the fan_out kur's own lists rather than its members', so a
+integration may be granted just the gate without being listed on any
+member. Members must be defined non fan_out kurs... fan_out kurs may not
+nest. Untargeted commands (C<ban> and C<cidr_ban> without args.kur,
+C<unban>, C<cidr_unban>, C<banned>, and C<checkpoint>, C<re_init>, and
+C<clear_retries> without args.kur) touch only real kurs, never fan_out
+ones.
 
     [kur.baphomet]
     fan_out      = [ "sshd", "smtp" ]
@@ -149,7 +149,7 @@ sockets are 0600 and only ereshkigal is expected to be able to write to
 them, so enforcement is entirely the manager's responsibility.
 
 A refused command comes back as a normal JSONUnix error response carrying
-a machine-readable C<code>, C<permission_denied> for a authorization
+a machine-readable C<code>, C<permission_denied> for an authorization
 refusal, matching the C<code> field convention of
 L<POE::Component::Server::JSONUnix>'s own permission and auth errors, so a
 consumer may branch on the code rather than matching the message text.
@@ -272,7 +272,7 @@ sub new {
 			$self->{perror} = 1;
 			$self->{error}  = 2;
 			$self->{errorString}
-				= 'socket_mode, "' . $config->{socket_mode} . '", is not a octal mode string such as "0660"';
+				= 'socket_mode, "' . $config->{socket_mode} . '", is not an octal mode string such as "0660"';
 			$self->warn;
 		}
 		$self->{socket_mode} = oct( '' . $config->{socket_mode} );
@@ -461,9 +461,9 @@ The JSON commands handled are as below.
     - cidr_ban :: Ban the CIDR ranges args.cidrs, otherwise behaving like
           ban including the args.kur targeting and args.ban_time forwarding.
           CIDRs are validated and reduced to their canonical network form
-          before being fanned out. A targeted kur, or a untargeted fan out,
+          before being fanned out. A targeted kur, or an untargeted fan out,
           for which CIDR is not available answers per kur with either a drop
-          or a error depending on its cidr_silent_drop.
+          or an error depending on its cidr_silent_drop.
 
     - cidr_unban :: Validate and normalize args.cidr, erroring if it fails to
           validate, then check each kur for it and unban it from each kur it
@@ -619,13 +619,13 @@ sub start_server {
 } ## end sub start_server
 
 # Validates one kur definition, the hash that sits under kur.<name> in the
-# config or arrives as args.opts on a add_kur request. Both paths run this so
+# config or arrives as args.opts on an add_kur request. Both paths run this so
 # a kur added at runtime is held to exactly the same rules as one loaded from
 # disk. It deliberately does not check fan_out members against the registry,
 # as at config load that can only be done once every kur is registered...
 # _check_fan_out_members is the second pass for that.
 #
-# The checks run as a if/elsif chain, so the first thing wrong is the thing
+# The checks run as an if/elsif chain, so the first thing wrong is the thing
 # reported. In order... the name matches /^[a-zA-Z0-9\-]+$/, the def is a
 # hash, exactly one of backend and fan_out is present, fan_out is a non empty
 # array of valid kur names, ban_time and checkpoint are non-negative ints,
@@ -644,14 +644,14 @@ sub start_server {
 #                options, authed_users, and authed_groups. Anything else is
 #                ignored here. A non hash ref, including undef, is caught and
 #                reported.
-#     $perror :: Boolean for whether a failure is a Error::Helper permanent
+#     $perror :: Boolean for whether a failure is an Error::Helper permanent
 #                error as well as a die. Pass 1 from config load, where a bad
 #                def means the object is unusable and new should die via
 #                Error::Helper with flag 3, invalidKurDef. Pass 0 from
-#                add_kur, where the die is caught and turned into a error
+#                add_kur, where the die is caught and turned into an error
 #                response and the manager carries on serving.
 #
-# Returns nothing meaningful, a empty return, when the def is good.
+# Returns nothing meaningful, an empty return, when the def is good.
 #
 # Dies with a plain string describing the first problem found. When $perror
 # is true it also sets perror, error 3, and errorString and calls warn first,
@@ -676,11 +676,11 @@ sub _check_kur_def {
 	} elsif ( !defined( $def->{backend} ) && !defined( $def->{fan_out} ) ) {
 		$error = 'The def for the kur "' . $name . '" lacks a backend or a fan_out';
 	} elsif ( defined( $def->{fan_out} ) && ( ref( $def->{fan_out} ) ne 'ARRAY' || !@{ $def->{fan_out} } ) ) {
-		$error = 'The fan_out for the kur "' . $name . '" is not a array of one or more kur names';
+		$error = 'The fan_out for the kur "' . $name . '" is not an array of one or more kur names';
 	} elsif ( defined( $def->{fan_out} )
 		&& grep { !defined($_) || ref($_) ne '' || $_ !~ /^[a-zA-Z0-9\-]+$/ } @{ $def->{fan_out} } )
 	{
-		$error = 'The fan_out for the kur "' . $name . '" contains a invalid kur name';
+		$error = 'The fan_out for the kur "' . $name . '" contains an invalid kur name';
 	} elsif ( defined( $def->{ban_time} ) && $def->{ban_time} !~ /^[0-9]+$/ ) {
 		$error
 			= 'The ban_time for the kur "'
@@ -730,16 +730,16 @@ sub _check_kur_def {
 #     $name   :: The name of the fan_out kur whose members are being checked,
 #                as a string. Used in the error messages.
 #     $def    :: A hash ref of that kur's definition, which must carry a
-#                fan_out key holding a array ref of member kur names.
+#                fan_out key holding an array ref of member kur names.
 #                _check_kur_def is expected to have validated its shape
 #                already, so a missing or malformed fan_out here just walks
 #                nothing and passes.
 #     $perror :: Boolean, exactly as _check_kur_def takes it. 1 from config
-#                load so a bad gate is a Error::Helper permanent error with
+#                load so a bad gate is an Error::Helper permanent error with
 #                flag 3, invalidKurDef; 0 from add_kur so the die can be
-#                turned into a error response.
+#                turned into an error response.
 #
-# Returns nothing meaningful, a empty return, when every member checks out.
+# Returns nothing meaningful, an empty return, when every member checks out.
 #
 # Dies with a plain string naming the offending member and why. When $perror
 # is true it sets perror, error 3, and errorString and warns first.
@@ -751,7 +751,7 @@ sub _check_fan_out_members {
 	my $error;
 	foreach my $member ( @{ $def->{fan_out} } ) {
 		if ( !defined( $self->{kurs}{$member} ) ) {
-			$error = 'The fan_out for the kur "' . $name . '" contains a unknown kur, "' . $member . '"';
+			$error = 'The fan_out for the kur "' . $name . '" contains an unknown kur, "' . $member . '"';
 			last;
 		}
 		if ( defined( $self->{kurs}{$member}{opts}{fan_out} ) ) {
@@ -778,41 +778,41 @@ sub _check_fan_out_members {
 	return;
 } ## end sub _check_fan_out_members
 
-# Judges whether a value is usable as a authed_users or authed_groups list,
-# which has to be a array of plain strings. Used by _check_kur_def for the
+# Judges whether a value is usable as an authed_users or authed_groups list,
+# which has to be an array of plain strings. Used by _check_kur_def for the
 # per kur lists and by new for the manager wide ones, which is why it reports
 # rather than dies... each caller wants to wrap the answer in its own
 # message naming which list was wrong. It is a plain sub rather than a
 # method, taking no invocant.
 #
-# Checks the value is a array ref and then that every element is defined and
+# Checks the value is an array ref and then that every element is defined and
 # not a ref. Empty arrays are fine, an empty list simply granting nobody.
 #
 # Args, required and positional...
 #
-#     $list :: The value to judge. Anything at all may be passed... a array
+#     $list :: The value to judge. Anything at all may be passed... an array
 #              ref of strings is the only thing that passes, and undef, a
-#              plain string, a hash ref, or a array containing refs or undefs
-#              all come back with a error string.
+#              plain string, a hash ref, or an array containing refs or undefs
+#              all come back with an error string.
 #
-# Returns undef when the value is a valid list, or a error string fragment
-# otherwise... either 'not a array' or 'not a array of just strings'. The
+# Returns undef when the value is a valid list, or an error string fragment
+# otherwise... either 'not an array' or 'not an array of just strings'. The
 # fragments are written to read as the tail of a sentence, callers prefixing
 # them with something like 'The authed_users for the kur "sshd" is '.
 #
 #     my $error = _authed_list_error( [ 'zane', 'root' ] );   # undef
-#     my $error = _authed_list_error('zane');                 # 'not a array'
+#     my $error = _authed_list_error('zane');                 # 'not an array'
 #     my $error = _authed_list_error( [ 'zane', {} ] );
-#     # 'not a array of just strings'
+#     # 'not an array of just strings'
 sub _authed_list_error {
 	my ($list) = @_;
 
 	if ( ref($list) ne 'ARRAY' ) {
-		return 'not a array';
+		return 'not an array';
 	}
 	foreach my $item ( @{$list} ) {
 		if ( !defined($item) || ref($item) ne '' ) {
-			return 'not a array of just strings';
+			return 'not an array of just strings';
 		}
 	}
 
@@ -824,12 +824,12 @@ sub _authed_list_error {
 # array or hash valued option would otherwise reach the backend stringified
 # as ARRAY(0x...) and fail confusingly at init... this catches it at config
 # load instead. The one exception is interfaces, which backends such as xdp
-# want as a array and which rides its own --interfaces flag. Like
+# want as an array and which rides its own --interfaces flag. Like
 # _authed_list_error it reports rather than dies, and is a plain sub taking
 # no invocant.
 #
 # Checks the value is a hash ref, then walks every key. A scalar value passes
-# immediately. The interfaces key additionally passes when it is a array ref
+# immediately. The interfaces key additionally passes when it is an array ref
 # containing only scalars. Anything else fails, naming the key.
 #
 # Args, required and positional...
@@ -840,7 +840,7 @@ sub _authed_list_error {
 #                 names are not judged at all, only their values, as which
 #                 options a backend takes is the backend's business.
 #
-# Returns undef when the table is usable, or a error string fragment
+# Returns undef when the table is usable, or an error string fragment
 # otherwise... 'not a hash', or a longer one naming the offending key. As
 # with _authed_list_error the fragments read as the tail of a sentence the
 # caller prefixes.
@@ -849,7 +849,7 @@ sub _authed_list_error {
 #     my $error = _options_error( { 'interfaces' => ['eth0'] } );     # undef
 #     my $error = _options_error( { 'bad' => ['a'] } );
 #     # 'carrying a non-scalar value for the option "bad"... only interfaces
-#     # may be a array, and only of plain scalars'
+#     # may be an array, and only of plain scalars'
 sub _options_error {
 	my ($options) = @_;
 
@@ -863,7 +863,7 @@ sub _options_error {
 			next;
 		}
 		return 'carrying a non-scalar value for the option "' . $key
-			. '"... only interfaces may be a array, and only of plain scalars';
+			. '"... only interfaces may be an array, and only of plain scalars';
 	}
 
 	return undef;
@@ -891,9 +891,9 @@ sub _options_error {
 #                  and username off it.
 #     $username :: The username to match against $users, as a plain string.
 #                  _authorize passes '' rather than undef when the context
-#                  has no username, so a empty string simply matches nothing.
-#     $users    :: A array ref of usernames granted access. May be empty.
-#     $groups   :: A array ref of group names granted access. May be empty. A
+#                  has no username, so an empty string simply matches nothing.
+#     $users    :: An array ref of usernames granted access. May be empty.
+#     $groups   :: An array ref of group names granted access. May be empty. A
 #                  group that does not exist just never matches rather than
 #                  erroring.
 #
@@ -955,7 +955,7 @@ sub _user_in_lists {
 #              is not entitled to either... callers rely on this to keep kur
 #              names from being enumerated.
 #
-# Returns nothing meaningful, a empty return, when the user is allowed.
+# Returns nothing meaningful, an empty return, when the user is allowed.
 #
 # Dies with a HASH ref rather than a string when refusing, which is how a
 # machine readable code reaches the JSONUnix error response. The shape is
@@ -970,7 +970,7 @@ sub _user_in_lists {
 #     # one named kur, as a targeted ban does
 #     $self->_authorize( $ctx, 'sshd' );
 #
-#     # every real kur, as a untargeted command does
+#     # every real kur, as an untargeted command does
 #     $self->_authorize( $ctx, $self->_real_kur_names );
 sub _authorize {
 	my ( $self, $ctx, @kurs ) = @_;
@@ -1027,7 +1027,7 @@ sub _authorize {
 	return;
 } ## end sub _authorize
 
-# Builds a Ereshkigal::Client aimed at one kur's socket, carrying the
+# Builds an Ereshkigal::Client aimed at one kur's socket, carrying the
 # manager wide timeout. Used where a single kur has to be spoken to on its
 # own rather than fanned to, which is the two shutdown paths, _poe_stop_all
 # and _poe_remove_kur. Everything else goes through _fan_out, as that answers
@@ -1060,7 +1060,7 @@ sub _kur_client {
 }
 
 # The names of the kurs that are actual processes, sorted... fan_out kurs
-# are manager side only and get excluded everywhere a untargeted command
+# are manager side only and get excluded everywhere an untargeted command
 # resolves its targets. Every untargeted command runs through this, which is
 # what keeps a gate from being double counted... banning with no --kur
 # reaches each real kur once rather than once directly and again through
@@ -1070,7 +1070,7 @@ sub _kur_client {
 # whose opts carry a fan_out key, whether or not it is running... this is
 # about what a kur is, not what state it is in.
 #
-# Returns the names as a sorted list, not a array ref, so it drops straight
+# Returns the names as a sorted list, not an array ref, so it drops straight
 # into a call expecting a list. A manager with no real kurs returns the empty
 # list, which callers are careful to authorize on before reporting.
 #
@@ -1098,9 +1098,9 @@ sub _real_kur_names {
 # Args, required and positional...
 #
 #     $name :: The kur instance name that was targeted, as a plain string. A
-#              name that is not registered is not a error here... it comes
+#              name that is not registered is not an error here... it comes
 #              back as itself, and the fan out then answers it with a not
-#              running error. Callers that want a unknown kur to be a error
+#              running error. Callers that want an unknown kur to be an error
 #              check the registry themselves, after authorizing.
 #
 # Returns a list of kur names to actually act on. For a gate that is its
@@ -1136,9 +1136,9 @@ sub _expand_kur_targets {
 #
 # Args...
 #
-#     $targets :: Required. A array ref of kur names to reach, already
+#     $targets :: Required. An array ref of kur names to reach, already
 #                 expanded, so a gate's members rather than the gate. May be
-#                 empty, which answers with a empty hash and dials nothing.
+#                 empty, which answers with an empty hash and dials nothing.
 #                 Names not in the registry are answered as not running.
 #     $command :: Required. The command name to send each kur, as a plain
 #                 string... 'ban', 'banned', 'checkpoint', 're_init' and so
@@ -1151,7 +1151,7 @@ sub _expand_kur_targets {
 # Returns a hash ref keyed by kur name, every name in $targets present. Each
 # value is either that kur's result, whatever shape the kur's own handler
 # returned, or { error => '...' } when it could not be reached or answered
-# with a error status. A caller can tell the two apart by looking for a error
+# with an error status. A caller can tell the two apart by looking for an error
 # key, which is what _cmd_status_all and _cmd_status_kur do.
 #
 #     my $kurs = $self->_fan_out( [ 'sshd', 'smtp' ], 'banned' );
@@ -1206,7 +1206,7 @@ sub _fan_out {
 # CIDR toggles do the same and are collapsed to a clean 1 or 0 so the kur is
 # not left folding config strings. ports and protocols are comma joined.
 # Backend options ride --option key=value, sorted for a stable command line,
-# with interfaces the one exception... it may be a array and so rides its
+# with interfaces the one exception... it may be an array and so rides its
 # own --interfaces flag, comma joined, for the kur bin to split back apart.
 # _options_error has already refused any other array valued option by now.
 #
@@ -1217,11 +1217,11 @@ sub _fan_out {
 #
 #     $name :: The kur instance name, as a plain string. Must already be
 #              registered... its opts hash is read straight out of the
-#              registry, so a unknown name warns and builds a broken command.
+#              registry, so an unknown name warns and builds a broken command.
 #
 # Returns the command as a list, ready to hand to POE::Wheel::Run as its
 # Program... the kur bin path first, then the flags. Not a string, so no
-# quoting is needed or applied and a option value carrying spaces survives.
+# quoting is needed or applied and an option value carrying spaces survives.
 #
 #     my @cmd = $self->_build_kur_cmd('sshd');
 #     # ( '/usr/local/bin/kur', '--foreground', '--name', 'sshd',
@@ -1296,14 +1296,14 @@ sub _build_kur_cmd {
 # the registry, sorted, rather than spawning inline, so the session is fully
 # up before any child process work begins.
 #
-# POE calling convention... invoked as a object state, so @_ carries OBJECT
+# POE calling convention... invoked as an object state, so @_ carries OBJECT
 # and KERNEL...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
 #     $_[KERNEL] :: The POE kernel, used to set the alias and to yield the
 #                   per kur spawn_kur events.
 #
-# Returns nothing meaningful, a empty return. POE ignores the return of a
+# Returns nothing meaningful, an empty return. POE ignores the return of a
 # state handler.
 #
 #     # not called directly... the kernel fires it when the session starts
@@ -1337,18 +1337,18 @@ sub _poe_start {
 # POE::Wheel::Run wired to the kur_stdout and kur_stderr events, and asks the
 # kernel to send kur_reaped when it exits. The registry entry then records
 # the wheel, the PID, and the spawn time, and both the wheel_to_kur and
-# pid_to_kur lookups gain a entry... those two are how the output and reap
+# pid_to_kur lookups gain an entry... those two are how the output and reap
 # handlers, which are only told a wheel ID or a PID, learn which kur they are
 # about.
 #
-# POE calling convention... invoked as a object state...
+# POE calling convention... invoked as an object state...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
 #     $_[KERNEL] :: The POE kernel, used for sig_child.
 #     $_[ARG0]   :: The kur instance name to spawn, as a plain string. A name
 #                   that is not registered is ignored rather than erroring.
 #
-# Returns nothing meaningful, a empty return.
+# Returns nothing meaningful, an empty return.
 #
 #     $kernel->yield( 'spawn_kur', 'sshd' );
 #     $poe_kernel->post( 'ereshkigal_manager', 'spawn_kur', 'sshd' );
@@ -1398,14 +1398,14 @@ sub _poe_spawn_kur {
 # being set and it firing, the kur may have been removed or the manager may
 # have begun shutting down, and spawn_kur is where both are noticed.
 #
-# POE calling convention... invoked as a object state...
+# POE calling convention... invoked as an object state...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
 #     $_[KERNEL] :: The POE kernel, used to yield spawn_kur.
 #     $_[ARG0]   :: The kur instance name to restart, as a plain string,
 #                   passed straight through to spawn_kur.
 #
-# Returns nothing meaningful, a empty return.
+# Returns nothing meaningful, an empty return.
 #
 #     # from _poe_kur_reaped, after a death, with the current backoff
 #     $kernel->delay_set( 'restart_kur', $delay, $name );
@@ -1427,7 +1427,7 @@ sub _poe_restart_kur {
 # is looked up through wheel_to_kur. A line arriving after the entry has gone
 # is logged against 'unknown' rather than dropped or warned about.
 #
-# POE calling convention... invoked as a object state, and note it does not
+# POE calling convention... invoked as an object state, and note it does not
 # take KERNEL...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
@@ -1437,7 +1437,7 @@ sub _poe_restart_kur {
 #     $_[ARG1]   :: The ID of the POE::Wheel::Run the line came from, used to
 #                   resolve the kur name via wheel_to_kur.
 #
-# Returns nothing meaningful, a empty return.
+# Returns nothing meaningful, an empty return.
 #
 #     # not called directly... wired up when the wheel is created
 #     POE::Wheel::Run->new( 'StdoutEvent' => 'kur_stdout', ... );
@@ -1462,7 +1462,7 @@ sub _poe_kur_stdout {
 # from wheel_to_kur, and a line that outlives the entry is logged against
 # 'unknown'.
 #
-# POE calling convention... invoked as a object state, without KERNEL...
+# POE calling convention... invoked as an object state, without KERNEL...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
 #     $_[ARG0]   :: The line the child wrote to stderr, as a string, chomped
@@ -1470,7 +1470,7 @@ sub _poe_kur_stdout {
 #     $_[ARG1]   :: The ID of the POE::Wheel::Run it came from, used to
 #                   resolve the kur name via wheel_to_kur.
 #
-# Returns nothing meaningful, a empty return.
+# Returns nothing meaningful, an empty return.
 #
 #     # not called directly... wired up when the wheel is created
 #     POE::Wheel::Run->new( 'StderrEvent' => 'kur_stderr', ... );
@@ -1504,7 +1504,7 @@ sub _poe_kur_stderr {
 # the cap. The restart is then scheduled at the current delay and the delay
 # doubled for next time, capped at 60 seconds, and the restart count bumped.
 #
-# POE calling convention... invoked as a object state via sig_child, so note
+# POE calling convention... invoked as an object state via sig_child, so note
 # the argument slots are the signal handler's rather than ARG0 onward...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
@@ -1524,7 +1524,7 @@ sub _poe_kur_stderr {
 #                   crash is, and logged as the error it is. The status is
 #                   only ever wording.
 #
-# Returns nothing meaningful, a empty return.
+# Returns nothing meaningful, an empty return.
 #
 #     # not called directly... armed per child when it is spawned
 #     $kernel->sig_child( $wheel->PID, 'kur_reaped' );
@@ -1570,7 +1570,7 @@ sub _poe_kur_reaped {
 	# gone. The stops that were asked for never reach here, stop_all having
 	# set shutting_down and remove_kur having cleared enabled before either
 	# takes a kur down, so what is left is a kur that went away on its own.
-	# That is a error whatever status it managed to exit with, and is logged
+	# That is an error whatever status it managed to exit with, and is logged
 	# as one... the status only changes the wording, never the decision
 	log_drek( 'err', 'kur "' . $name . '" ' . $how . ', restarting in ' . $delay . ' seconds' );
 
@@ -1598,7 +1598,7 @@ sub _poe_kur_reaped {
 # is still around, and it is about to not be... without this every add and
 # remove cycle would leak a wheel_to_kur entry.
 #
-# POE calling convention... invoked as a object state, and note it does not
+# POE calling convention... invoked as an object state, and note it does not
 # take KERNEL...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
@@ -1606,7 +1606,7 @@ sub _poe_kur_reaped {
 #                   name that is no longer registered returns immediately, so
 #                   a doubled post is harmless.
 #
-# Returns nothing meaningful, a empty return.
+# Returns nothing meaningful, an empty return.
 #
 #     # from _cmd_remove_kur, after marking the entry disabled
 #     $poe_kernel->post( 'ereshkigal_manager', 'remove_kur', $name );
@@ -1664,12 +1664,12 @@ sub _poe_remove_kur {
 # Finally the session's alarms are cleared and the alias dropped, which is
 # what actually lets the session, and so the kernel, finish.
 #
-# POE calling convention... invoked as a object state...
+# POE calling convention... invoked as an object state...
 #
 #     $_[OBJECT] :: This Ereshkigal instance.
 #     $_[KERNEL] :: The POE kernel, used to clear alarms and drop the alias.
 #
-# Returns nothing meaningful, a empty return.
+# Returns nothing meaningful, an empty return.
 #
 #     # from the stop command handler, after its response has been queued
 #     $poe_kernel->post( 'ereshkigal_manager', 'stop_all' );
@@ -1803,7 +1803,7 @@ sub _cmd_status {
 # _cmd_status_kur uses, so a consumer checks one place for either view.
 #
 # Returns the same hash ref shape _cmd_status does, with each asked kur's row
-# gaining either a status key holding that kur's whole status hash or a error
+# gaining either a status key holding that kur's whole status hash or an error
 # key holding why it could not be had.
 #
 #     my $status = $self->_cmd_status_all;
@@ -1840,14 +1840,14 @@ sub _cmd_status_all {
 # the manager is carrying. Every targeted command handler does this.
 #
 # A running kur is asked through _fan_out rather than a bare client call, so
-# a live process with a wedged socket degrades to a error entry rather than
-# dying the whole command, and that error is reported under a error key
+# a live process with a wedged socket degrades to an error entry rather than
+# dying the whole command, and that error is reported under an error key
 # beside status rather than nested inside it... the same shape
 # _cmd_status_all uses.
 #
 # Args...
 #
-#     $request :: Required. The decoded request hash ref. Must carry a args
+#     $request :: Required. The decoded request hash ref. Must carry an args
 #                 key holding a hash ref with a name key naming the kur, as a
 #                 plain string. A missing args or name dies.
 #     $ctx     :: The JSONUnix context for the connection, handed to
@@ -1856,7 +1856,7 @@ sub _cmd_status_all {
 #
 # Returns, for a real kur, a hash ref of { name, running, pid, restarts,
 # enabled }, gaining either a status key holding that kur's full status hash
-# or a error key when it is running but could not be reached. For a gate it
+# or an error key when it is running but could not be reached. For a gate it
 # is { name, fan_out => [ members ], enabled, kurs => { per member } }, with
 # no running or pid of its own.
 #
@@ -1906,7 +1906,7 @@ sub _cmd_status_kur {
 
 	if ( $status->{running} ) {
 		# via _fan_out rather than a bare call_ok so a live process with a
-		# wedged socket degrades to a error entry, reported under the same
+		# wedged socket degrades to an error entry, reported under the same
 		# error key status_all uses rather than nested inside status
 		my $answer = $self->_fan_out( [$name], 'status' )->{$name};
 		if ( defined( $answer->{error} ) ) {
@@ -1924,11 +1924,11 @@ sub _cmd_status_kur {
 # anything else the kur happened to include.
 #
 # Takes only the invocant. Authorization has already been done by the
-# dispatch entry, against every real kur, this being a untargeted command.
+# dispatch entry, against every real kur, this being an untargeted command.
 # Gates are not asked, _real_kur_names excluding them, as their members are
 # each asked in their own right.
 #
-# The trimming is a explicit whitelist rather than a passthrough, so any
+# The trimming is an explicit whitelist rather than a passthrough, so any
 # field a kur learns to report has to be added here as well or it will never
 # reach a consumer... the retry books are in the list for exactly that
 # reason, having once been dropped on the way out.
@@ -1937,7 +1937,7 @@ sub _cmd_status_kur {
 # the trimming only applying to successful answers.
 #
 # Returns a hash ref of { kurs => { name => row } }. A successful row carries
-# banned as a array ref of the IPs the firewall itself reports, expires as a
+# banned as an array ref of the IPs the firewall itself reports, expires as a
 # hash ref of IP to the epoch its sentence ends with 0 meaning never, the
 # same pair as banned_cidr and cidr_expires for ranges, and unban_retries and
 # cidr_unban_retries as hash refs of entry to its retry book keeping. A
@@ -1976,7 +1976,7 @@ sub _cmd_banned {
 # Args...
 #
 #     $request :: Required. The decoded request hash ref. Must carry args
-#                 holding a ips key with a array ref of one or more IPs, and
+#                 holding an ips key with an array ref of one or more IPs, and
 #                 may carry a kur key naming one kur or gate to send them to
 #                 and a ban_time key overriding how long they last. See
 #                 _cmd_ban_common, which does the judging.
@@ -2010,11 +2010,11 @@ sub _cmd_ban {
 # Handles the unban command... args.all set fans flush out to every real kur,
 # otherwise args.ip is normalized and unban fanned out instead.
 #
-# There is deliberately no kur targeting here, unlike ban... a unban goes
+# There is deliberately no kur targeting here, unlike ban... an unban goes
 # wherever the address actually is, every real kur being asked whether it is
 # holding it and releasing it if so. That is why the per kur answers carry
 # was_banned rather than a plain success, and why a kur that never had the IP
-# is not a error.
+# is not an error.
 #
 # The all form is a flush rather than a mass unban, so it empties range bans
 # alongside single IPs on every kur in one command.
@@ -2026,12 +2026,12 @@ sub _cmd_ban {
 # Args...
 #
 #     $request :: Required. The decoded request hash ref. Must carry args
-#                 holding either a true all key or a ip key with a single
+#                 holding either a true all key or an ip key with a single
 #                 IPv4 or IPv6 address as a plain string. Neither one dies.
 #                 The IP is normalized here rather than kur side, so garbage
 #                 is bounced once instead of by every kur, and what is fanned
 #                 out is the canonical form... which is what lets a variant
-#                 spelling of a IPv6 address still find its ban.
+#                 spelling of an IPv6 address still find its ban.
 #
 # Returns a hash ref of { kurs => { name => per kur result } }. For the all
 # form each result is that kur's flush answer, { flushed => 1 }; for a single
@@ -2039,7 +2039,7 @@ sub _cmd_ban {
 # { error => '...' } as always.
 #
 # Dies with a plain string when neither args.all nor args.ip is given, or
-# when args.ip will not normalize as a IP.
+# when args.ip will not normalize as an IP.
 #
 #     my $result = $self->_cmd_unban( { 'args' => { 'ip' => '1.2.3.4' } } );
 #     # { kurs => { sshd => { ip => '1.2.3.4', was_banned => 1 },
@@ -2052,7 +2052,7 @@ sub _cmd_unban {
 
 	my $args = $request->{args};
 	if ( !defined($args) || ( !$args->{all} && !defined( $args->{ip} ) ) ) {
-		die('Either args.all must be true or args.ip must be a IP');
+		die('Either args.all must be true or args.ip must be an IP');
 	}
 
 	my @all = $self->_real_kur_names;
@@ -2065,7 +2065,7 @@ sub _cmd_unban {
 		# spellings of the same IP all find the ban
 		my $ip = normalize_ip( $args->{ip} );
 		if ( !defined($ip) ) {
-			die( '"' . $args->{ip} . '" does not appear to be a IPv4 or IPv6 IP' );
+			die( '"' . $args->{ip} . '" does not appear to be an IPv4 or IPv6 IP' );
 		}
 		# the kur checks if the IP is present and only unbans it if it is,
 		# reporting back via was_banned
@@ -2088,7 +2088,7 @@ sub _cmd_unban {
 # Args...
 #
 #     $request :: Required. The decoded request hash ref. Must carry args
-#                 holding a cidrs key with a array ref of one or more ranges,
+#                 holding a cidrs key with an array ref of one or more ranges,
 #                 and may carry kur and ban_time exactly as ban does. Host
 #                 bits are masked off during pre-flight, so 1.2.3.4/24 and
 #                 1.2.3.0/24 are the same range and dedupe against each other.
@@ -2140,9 +2140,9 @@ sub _cmd_cidr_ban {
 # Args, all required and positional...
 #
 #     $request :: The decoded request hash ref. Must carry args holding the
-#                 spec's arg_key with a array ref of one or more entries. May
+#                 spec's arg_key with an array ref of one or more entries. May
 #                 also carry kur, naming one kur or gate rather than all of
-#                 them, and ban_time, a override in seconds passed through
+#                 them, and ban_time, an override in seconds passed through
 #                 unvalidated for the kur to judge, 0 meaning never expire.
 #     $ctx     :: The JSONUnix context for the connection, handed to
 #                 _authorize. May be undef when enable_auth is off.
@@ -2187,7 +2187,7 @@ sub _cmd_ban_common {
 	my $args    = $request->{args};
 	my $arg_key = $spec->{arg_key};
 	if ( !defined($args) || ref( $args->{$arg_key} ) ne 'ARRAY' || !@{ $args->{$arg_key} } ) {
-		die( 'args.' . $arg_key . ' must be a array of one or more ' . $spec->{noun} . 's' );
+		die( 'args.' . $arg_key . ' must be an array of one or more ' . $spec->{noun} . 's' );
 	}
 
 	# targets are resolved and authorization checked before anything is done
@@ -2238,7 +2238,7 @@ sub _cmd_ban_common {
 		if ( !defined($entry) ) {
 			my $key = defined($raw_entry) ? $raw_entry : '';
 			$rejected->{$key}
-				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be a ' . $spec->{noun_long} };
+				= { 'status' => 'error', 'error' => '"' . $key . '" does not appear to be an ' . $spec->{noun_long} };
 			next;
 		}
 		if ( !$seen{$entry} ) {
@@ -2247,7 +2247,7 @@ sub _cmd_ban_common {
 		}
 	} ## end foreach my $raw_entry ( @{ $args->{$arg_key} } )
 	if ( !@entries ) {
-		die( 'None of the ' . $spec->{noun} . 's in args.' . $arg_key . ' appear to be a ' . $spec->{noun_long} );
+		die( 'None of the ' . $spec->{noun} . 's in args.' . $arg_key . ' appear to be an ' . $spec->{noun_long} );
 	}
 
 	my $kur_args = { $arg_key => \@entries };
@@ -2304,7 +2304,7 @@ sub _cmd_cidr_unban {
 	# spellings of the same range all find the ban
 	my $cidr = normalize_cidr( $args->{cidr} );
 	if ( !defined($cidr) ) {
-		die( '"' . $args->{cidr} . '" does not appear to be a IPv4 or IPv6 CIDR' );
+		die( '"' . $args->{cidr} . '" does not appear to be an IPv4 or IPv6 CIDR' );
 	}
 
 	# the kur checks if the CIDR is present and only unbans it if it is,
@@ -2321,7 +2321,7 @@ sub _cmd_cidr_unban {
 # Authorization follows the same pattern every targeted command uses... a
 # named kur is authorized against the name as given, before the registry is
 # consulted, so a gate grant covers the fanned command and kur names cannot
-# be enumerated by the difference between a refusal and a unknown name. The
+# be enumerated by the difference between a refusal and an unknown name. The
 # untargeted form authorizes against every real kur, which with none
 # registered is the manager level check.
 #
@@ -2353,7 +2353,7 @@ sub _cmd_checkpoint {
 	if ( defined($args) && defined( $args->{kur} ) ) {
 		# like ban, authorization is against the requested name, so a
 		# fan_out kur grant covers the fanned command... and it comes before
-		# the existence check so kur names can not be enumerated
+		# the existence check so kur names cannot be enumerated
 		$self->_authorize( $ctx, $args->{kur} );
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
 			die( 'No such kur instance, "' . $args->{kur} . '"' );
@@ -2407,7 +2407,7 @@ sub _cmd_re_init {
 	if ( defined($args) && defined( $args->{kur} ) ) {
 		# as with checkpoint, authorization is against the requested name so
 		# a fan_out grant covers the fanned command, and it comes before the
-		# existence check so kur names can not be enumerated
+		# existence check so kur names cannot be enumerated
 		$self->_authorize( $ctx, $args->{kur} );
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
 			die( 'No such kur instance, "' . $args->{kur} . '"' );
@@ -2452,7 +2452,7 @@ sub _cmd_re_init {
 # Returns a hash ref of { kurs => { name => per kur result } }, each result
 # being { cleared => N, cleared_ip => N, cleared_cidr => N } counting what
 # that kur actually forgot, or { error => '...' } for one that could not be
-# reached. Forgetting something that was not owed is not a error... it simply
+# reached. Forgetting something that was not owed is not an error... it simply
 # counts zero.
 #
 # Dies with a plain string when both args.ip and args.cidr are given, when
@@ -2480,14 +2480,14 @@ sub _cmd_clear_retries {
 	if ( defined( $args->{ip} ) ) {
 		my $ip = normalize_ip( $args->{ip} );
 		if ( !defined($ip) ) {
-			die( '"' . $args->{ip} . '" does not appear to be a IPv4 or IPv6 IP' );
+			die( '"' . $args->{ip} . '" does not appear to be an IPv4 or IPv6 IP' );
 		}
 		$fan_args->{ip} = $ip;
 	}
 	if ( defined( $args->{cidr} ) ) {
 		my $cidr = normalize_cidr( $args->{cidr} );
 		if ( !defined($cidr) ) {
-			die( '"' . $args->{cidr} . '" does not appear to be a IPv4 or IPv6 CIDR' );
+			die( '"' . $args->{cidr} . '" does not appear to be an IPv4 or IPv6 CIDR' );
 		}
 		$fan_args->{cidr} = $cidr;
 	}
@@ -2496,7 +2496,7 @@ sub _cmd_clear_retries {
 	if ( defined( $args->{kur} ) ) {
 		# as with checkpoint, authorization is against the requested name so
 		# a fan_out grant covers the fanned command, and it comes before the
-		# existence check so kur names can not be enumerated
+		# existence check so kur names cannot be enumerated
 		$self->_authorize( $ctx, $args->{kur} );
 		if ( !defined( $self->{kurs}{ $args->{kur} } ) ) {
 			die( 'No such kur instance, "' . $args->{kur} . '"' );
@@ -2516,7 +2516,7 @@ sub _cmd_clear_retries {
 #
 # The definition is run through the same _check_kur_def and, for a gate,
 # _check_fan_out_members the config path uses, with perror off so a bad
-# definition is a error response rather than a dead manager. That parity is
+# definition is an error response rather than a dead manager. That parity is
 # the point... a kur added at runtime is held to exactly the rules one from
 # the config is.
 #
@@ -2537,7 +2537,7 @@ sub _cmd_clear_retries {
 #
 #     $request :: Required. The decoded request hash ref. Must carry args
 #                 holding a name key, the new kur's name as a plain string,
-#                 and a opts key holding its definition hash ref, which
+#                 and an opts key holding its definition hash ref, which
 #                 takes the same keys a config kur hash does... backend or
 #                 fan_out, ports, protocols, prefix, self_heal, ban_time,
 #                 checkpoint, enable_cidr, cidr_silent_drop, options,
@@ -2600,7 +2600,7 @@ sub _cmd_add_kur {
 # drop it.
 #
 # The gate check is why this is not simply a post. Config load refuses a
-# fan_out naming a unknown kur, so removal cannot be allowed to create that
+# fan_out naming an unknown kur, so removal cannot be allowed to create that
 # same dangling state at runtime... every registered kur is scanned for gates
 # naming this one, and if any do the removal is refused naming them. Remove
 # the gate first, or the member stays.
@@ -2648,7 +2648,7 @@ sub _cmd_remove_kur {
 		die( 'No such kur instance, "' . $name . '"' );
 	}
 
-	# config load refuses a fan_out naming a unknown kur, so removal can not
+	# config load refuses a fan_out naming an unknown kur, so removal cannot
 	# be allowed to create that same dangling state at runtime... remove the
 	# gate first, or the member stays
 	my @gates_using;
@@ -2691,8 +2691,8 @@ Failed to parse the config file as TOML.
 =head2 3, invalidKurDef
 
 A kur def in the config is invalid... bad name, not a hash, lacking a
-backend or a fan_out, having both, a invalid fan_out (not a array of
-kur names, a unknown member, or a nested fan_out kur), or a options table
+backend or a fan_out, having both, an invalid fan_out (not an array of
+kur names, an unknown member, or a nested fan_out kur), or an options table
 carrying a non-scalar value for anything other than C<interfaces>.
 
 =head2 4, runBaseDirError
@@ -2714,7 +2714,7 @@ checkpoint is not a non-negative int of seconds.
 
 =head2 8, invalidAuthedList
 
-authed_users or authed_groups is not a array of strings.
+authed_users or authed_groups is not an array of strings.
 
 =head1 AUTHOR
 
@@ -2722,12 +2722,9 @@ Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-ereshkigal at rt.cpan.org>, or through
-the web interface at L<https://rt.cpan.org/NoAuth/ReportBug.html?Queue=Ereshkigal>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
-
-
-
+Please report any bugs or feature requests via GitHub at
+L<https://github.com/LilithSec/Ereshkigal/issues>, or to
+C<bug-ereshkigal at rt.cpan.org>.
 
 =head1 SUPPORT
 
@@ -2739,7 +2736,11 @@ You can also look for information at:
 
 =over 4
 
-=item * RT: CPAN's request tracker (report bugs here)
+=item * GitHub (source and issues)
+
+L<https://github.com/LilithSec/Ereshkigal>
+
+=item * RT: CPAN's request tracker
 
 L<https://rt.cpan.org/NoAuth/Bugs.html?Dist=Ereshkigal>
 
@@ -2752,10 +2753,6 @@ L<https://cpanratings.perl.org/d/Ereshkigal>
 L<https://metacpan.org/release/Ereshkigal>
 
 =back
-
-
-=head1 ACKNOWLEDGEMENTS
-
 
 =head1 LICENSE AND COPYRIGHT
 

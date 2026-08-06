@@ -25,7 +25,7 @@ our $VERSION = '0.0.1';
     # ban on just the kur instance sshd
     ereshkigal ban --kur sshd 1.2.3.4
 
-    # a hour long ban
+    # an hour long ban
     ereshkigal ban --ban-time 3600 1.2.3.4
 
     # a permanent ban
@@ -44,7 +44,7 @@ sentence rather than erroring.
 C<--ban-time> is in seconds and overrides the kur's default for these bans
 only, with 0 meaning never time out... nothing will release it but a
 C<unban>. Both IPv4 and IPv6 are taken in any spelling, v6 being
-canonicalized so long and short forms of one address can not become two
+canonicalized so long and short forms of one address cannot become two
 bans. For whole ranges see L<cidr_ban|Ereshkigal::App::Command::cidr_ban>.
 
 =head1 METHODS

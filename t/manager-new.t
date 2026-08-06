@@ -48,12 +48,12 @@ qr/lacks a backend/, 'dies when a kur def lacks a backend';
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq([kur."bad.name"]\nbackend = "dummy"\n)) )
 }
-qr/does not match/, 'dies on a invalid kur name';
+qr/does not match/, 'dies on an invalid kur name';
 
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq(socket_group = "nosuchgroupzzz"\n)) )
 }
-qr/Failed to resolve the socket group/, 'dies on a unknown socket_group';
+qr/Failed to resolve the socket group/, 'dies on an unknown socket_group';
 
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq(ban_time = "abc"\n)) )
@@ -78,12 +78,12 @@ qr/checkpoint for the kur/, 'dies on a non-int kur checkpoint';
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq(authed_users = "zane"\n)) )
 }
-qr/authed_users is not a array/, 'dies on a non-array top level authed_users';
+qr/authed_users is not an array/, 'dies on a non-array top level authed_users';
 
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq(authed_groups = "wheel"\n)) )
 }
-qr/authed_groups is not a array/, 'dies on a non-array top level authed_groups';
+qr/authed_groups is not an array/, 'dies on a non-array top level authed_groups';
 
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq([kur.sshd]\nbackend      = "dummy"\nauthed_users = "zane"\n)) )
@@ -230,23 +230,23 @@ qr/both a backend and a fan_out/, 'dies on a kur with both a backend and a fan_o
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq([kur.gate]\nfan_out = "sshd"\n)) )
 }
-qr/not a array of one or more/, 'dies on a non-array fan_out';
+qr/not an array of one or more/, 'dies on a non-array fan_out';
 
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq([kur.gate]\nfan_out = [ ]\n)) )
 }
-qr/not a array of one or more/, 'dies on a empty fan_out';
+qr/not an array of one or more/, 'dies on an empty fan_out';
 
 throws_ok {
 	Ereshkigal->new( 'config' => write_cfg(qq([kur.gate]\nfan_out = [ "bad.name" ]\n)) )
 }
-qr/contains a invalid kur name/, 'dies on a fan_out with a invalid member name';
+qr/contains an invalid kur name/, 'dies on a fan_out with an invalid member name';
 
 throws_ok {
 	Ereshkigal->new(
 		'config' => write_cfg( qq([kur.sshd]\nbackend = "dummy"\n\n) . qq([kur.gate]\nfan_out = [ "nosuch" ]\n) ) )
 }
-qr/contains a unknown kur/, 'dies on a fan_out with a unknown member';
+qr/contains an unknown kur/, 'dies on a fan_out with an unknown member';
 
 throws_ok {
 	Ereshkigal->new(
@@ -314,7 +314,7 @@ is_deeply(
 );
 
 $fanned = $ereshkigal->_fan_out( ['nosuch'], 'ping' );
-is_deeply( $fanned, { 'nosuch' => { 'error' => 'not running' } }, '_fan_out treats a unknown kur as not running' );
+is_deeply( $fanned, { 'nosuch' => { 'error' => 'not running' } }, '_fan_out treats an unknown kur as not running' );
 
 #
 # a running kur whose socket can not be reached reports under the same error
@@ -342,15 +342,15 @@ $ereshkigal->{kurs}{sshd}{pid} = undef;
 #
 
 throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'ip' => 'notanip' } }, undef ) }
-qr/does not appear to be a IPv4 or IPv6 IP/, 'clear_retries refuses a invalid ip';
+qr/does not appear to be an IPv4 or IPv6 IP/, 'clear_retries refuses an invalid ip';
 throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'cidr' => 'notacidr' } }, undef ) }
-qr/does not appear to be a IPv4 or IPv6 CIDR/, 'clear_retries refuses a invalid cidr';
+qr/does not appear to be an IPv4 or IPv6 CIDR/, 'clear_retries refuses an invalid cidr';
 throws_ok {
 	$ereshkigal->_cmd_clear_retries( { 'args' => { 'ip' => '1.2.3.4', 'cidr' => '1.2.3.0/24' } }, undef )
 }
-qr/only one of/, 'clear_retries refuses both a ip and a cidr';
+qr/only one of/, 'clear_retries refuses both an ip and a cidr';
 throws_ok { $ereshkigal->_cmd_clear_retries( { 'args' => { 'kur' => 'nosuch' } }, undef ) }
-qr/No such kur instance/, 'clear_retries refuses a unknown kur';
+qr/No such kur instance/, 'clear_retries refuses an unknown kur';
 
 #
 # a bad ban_time is bounced once at the manager rather than by every kur...
@@ -378,7 +378,7 @@ is_deeply(
 #
 
 throws_ok { $ereshkigal->_cmd_re_init( { 'args' => { 'kur' => 'nosuch' } }, undef ) }
-qr/No such kur instance/, 're_init refuses a unknown kur';
+qr/No such kur instance/, 're_init refuses an unknown kur';
 is_deeply(
 	$ereshkigal->_cmd_re_init( {}, undef ),
 	{ 'kurs' => { 'sshd' => { 'error' => 'not running' }, 'smtp' => { 'error' => 'not running' } } },
@@ -430,7 +430,7 @@ $ereshkigal = Ereshkigal->new(
 );
 @cmd     = $ereshkigal->_build_kur_cmd('edge');
 $cmd_str = join( ' ', @cmd );
-like( $cmd_str, qr/--interfaces eth0,eth1/, 'a array interfaces option rides --interfaces' );
+like( $cmd_str, qr/--interfaces eth0,eth1/, 'an array interfaces option rides --interfaces' );
 like( $cmd_str, qr/--option mode=src/,      'scalar options still ride --option' );
 unlike( $cmd_str, qr/--option interfaces/, 'interfaces does not also ride --option' );
 
@@ -448,6 +448,6 @@ throws_ok {
 		)
 	)
 } ## end throws_ok
-qr/non-scalar value for the option "bad"/, 'dies on a array valued option other than interfaces';
+qr/non-scalar value for the option "bad"/, 'dies on an array valued option other than interfaces';
 
 done_testing;

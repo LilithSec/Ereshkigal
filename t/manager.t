@@ -53,12 +53,12 @@ is( $result->{kurs}{sshd}{ips}{'9.9.9.9'}{status}, 'ok', 'targeted ban applied o
 ok( !defined( $result->{kurs}{smtp} ), 'targeted ban did not touch smtp' );
 
 my $response = $client->call( 'ban', { 'ips' => ['1.1.1.1'], 'kur' => 'nope' } );
-is( $response->{status}, 'error', 'ban to a unknown kur errors' );
+is( $response->{status}, 'error', 'ban to an unknown kur errors' );
 like( $response->{error}, qr/No such kur instance/, 'unknown kur error message' );
 
 $result = $client->call_ok( 'ban', { 'ips' => [ 'not-an-ip', '2.2.2.2' ] } );
 is( $result->{rejected}{'not-an-ip'}{status}, 'error', 'invalid IP rejected by the manager' );
-like( $result->{rejected}{'not-an-ip'}{error}, qr/does not appear to be a IPv4 or IPv6 IP/, 'rejected error message' );
+like( $result->{rejected}{'not-an-ip'}{error}, qr/does not appear to be an IPv4 or IPv6 IP/, 'rejected error message' );
 ok( !defined( $result->{kurs}{sshd}{ips}{'not-an-ip'} ), 'rejected IP not fanned out to the kurs' );
 is( $result->{kurs}{sshd}{ips}{'2.2.2.2'}{status}, 'ok', 'valid IP in the same request applied' );
 ok( !defined( $result->{rejected}{'2.2.2.2'} ), 'valid IP not in rejected' );
@@ -75,7 +75,7 @@ $result = $client->call_ok( 'unban', { 'ip' => '2001:DB8::1' } );
 is( $result->{kurs}{sshd}{was_banned}, 1, 'unban via a variant spelling finds the ban' );
 
 $response = $client->call( 'unban', { 'ip' => 'not-an-ip' } );
-is( $response->{status}, 'error', 'unban of a invalid IP errors' );
+is( $response->{status}, 'error', 'unban of an invalid IP errors' );
 
 $result = $client->call_ok( 'ban', { 'ips' => ['5.5.5.5'], 'ban_time' => 3600, 'kur' => 'smtp' } );
 is( $result->{kurs}{smtp}{ips}{'5.5.5.5'}{status}, 'ok', 'ban with a ban_time ok' );
@@ -151,7 +151,7 @@ is( $result->{kurs}{sshd}{re_init}, 1, 're_init targeted at one kur reached it' 
 ok( !defined( $result->{kurs}{smtp} ), 'and left the other alone' );
 
 $response = $client->call( 're_init', { 'kur' => 'nope' } );
-is( $response->{status}, 'error', 're_init of a unknown kur errors' );
+is( $response->{status}, 'error', 're_init of an unknown kur errors' );
 
 $client->call_ok( 'unban', { 'all' => 1 } );
 
@@ -163,7 +163,7 @@ $result = $client->call_ok( 'status_kur', { 'name' => 'sshd' } );
 is( $result->{running},         1,       'status_kur running' );
 is( $result->{status}{backend}, 'dummy', 'status_kur nested kur status' );
 $response = $client->call( 'status_kur', { 'name' => 'nope' } );
-is( $response->{status}, 'error', 'status_kur of a unknown kur errors' );
+is( $response->{status}, 'error', 'status_kur of an unknown kur errors' );
 
 $result = $client->call_ok('status_all');
 is( $result->{kurs}{sshd}{status}{backend}, 'dummy', 'status_all carries kur status blocks' );
@@ -201,7 +201,7 @@ $status = $client->call_ok('status');
 ok( !defined( $status->{kurs}{dns} ), 'dns gone from status after remove' );
 
 $response = $client->call( 'remove_kur', { 'name' => 'nope' } );
-is( $response->{status}, 'error', 'remove_kur of a unknown kur errors' );
+is( $response->{status}, 'error', 'remove_kur of an unknown kur errors' );
 
 #
 # fan_out kurs... a gateway with no process of it's own that expands to
@@ -234,7 +234,7 @@ ok( !defined( $result->{kurs}{gate} ),                               'banned has
 ok( ( grep { $_ eq '7.7.7.7' } @{ $result->{kurs}{sshd}{banned} } ), 'the gateway ban shows on the member rolls' );
 
 $response = $client->call( 'add_kur', { 'name' => 'gate2', 'opts' => { 'fan_out' => ['nosuch'] } } );
-is( $response->{status}, 'error', 'add_kur with a unknown member errors' );
+is( $response->{status}, 'error', 'add_kur with an unknown member errors' );
 $response = $client->call( 'add_kur', { 'name' => 'gate2', 'opts' => { 'fan_out' => ['gate'] } } );
 is( $response->{status}, 'error', 'fan_out kurs may not nest' );
 $response
@@ -262,11 +262,11 @@ is( $result->{kurs}{sshd}{checkpointed}, 1, 'targeted checkpoint hit sshd' );
 ok( !defined( $result->{kurs}{smtp} ), 'targeted checkpoint did not touch smtp' );
 
 $response = $client->call( 'checkpoint', { 'kur' => 'nope' } );
-is( $response->{status}, 'error', 'checkpoint of a unknown kur errors' );
+is( $response->{status}, 'error', 'checkpoint of an unknown kur errors' );
 
 #
 # fan out with a down kur... a kur who's backend can never init lives in
-# restart backoff, and fan out commands must answer a error for it with out
+# restart backoff, and fan out commands must answer an error for it with out
 # the live kurs being disturbed
 #
 
@@ -274,16 +274,16 @@ $result = $client->call_ok( 'add_kur', { 'name' => 'down', 'opts' => { 'backend'
 is( $result->{added}, 'down', 'added a kur that can never start' );
 
 $result = $client->call_ok( 'ban', { 'ips' => ['3.3.3.3'] } );
-ok( defined( $result->{kurs}{down}{error} ), 'fan out ban answers a error for the down kur' );
+ok( defined( $result->{kurs}{down}{error} ), 'fan out ban answers an error for the down kur' );
 is( $result->{kurs}{sshd}{ips}{'3.3.3.3'}{status}, 'ok', 'fan out ban still applied on sshd' );
 is( $result->{kurs}{smtp}{ips}{'3.3.3.3'}{status}, 'ok', 'fan out ban still applied on smtp' );
 
 $result = $client->call_ok('banned');
-ok( defined( $result->{kurs}{down}{error} ),                         'banned answers a error for the down kur' );
+ok( defined( $result->{kurs}{down}{error} ),                         'banned answers an error for the down kur' );
 ok( ( grep { $_ eq '3.3.3.3' } @{ $result->{kurs}{sshd}{banned} } ), 'banned still reports the live kurs' );
 
 $result = $client->call_ok( 'unban', { 'ip' => '3.3.3.3' } );
-ok( defined( $result->{kurs}{down}{error} ), 'unban answers a error for the down kur' );
+ok( defined( $result->{kurs}{down}{error} ), 'unban answers an error for the down kur' );
 is( $result->{kurs}{sshd}{was_banned}, 1, 'unban still removed it from sshd' );
 
 $result = $client->call_ok( 'remove_kur', { 'name' => 'down' } );

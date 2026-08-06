@@ -64,7 +64,7 @@ is( $client->call_ok( 'status_kur', { 'name' => 'drop' } )->{status}{cidr_enable
 	0, 'per kur enable_cidr override off on drop' );
 
 #
-# targeted cidr_ban on a enabled kur
+# targeted cidr_ban on an enabled kur
 #
 
 my $result = $client->call_ok( 'cidr_ban', { 'cidrs' => ['1.2.3.0/24'], 'kur' => 'sshd' } );
@@ -88,7 +88,7 @@ is_deeply(
 is_deeply( $result->{kurs}{smtp}{banned_cidr}, [], 'smtp carries no CIDR bans' );
 
 #
-# a untargeted cidr_ban fans to every real kur, each answering per its own CIDR
+# an untargeted cidr_ban fans to every real kur, each answering per its own CIDR
 # disposition... enabled bans, disabled errors, disabled with silent drop drops
 #
 
@@ -103,14 +103,14 @@ is( $result->{kurs}{drop}{dropped}, 1, 'fan out cidr_ban silently dropped on the
 
 $result = $client->call_ok( 'cidr_ban', { 'cidrs' => [ 'not-a-cidr', '192.168.0.0/16' ], 'kur' => 'sshd' } );
 is( $result->{rejected}{'not-a-cidr'}{status}, 'error', 'invalid CIDR rejected by the manager' );
-like( $result->{rejected}{'not-a-cidr'}{error}, qr/does not appear to be a IPv4 or IPv6 CIDR/, 'rejected message' );
+like( $result->{rejected}{'not-a-cidr'}{error}, qr/does not appear to be an IPv4 or IPv6 CIDR/, 'rejected message' );
 is( $result->{kurs}{sshd}{cidrs}{'192.168.0.0/16'}{status}, 'ok', 'valid CIDR in the same request applied' );
 
 my $response = $client->call( 'cidr_ban', { 'cidrs' => ['not-a-cidr'] } );
 is( $response->{status}, 'error', 'cidr_ban with nothing but invalid CIDRs errors' );
 
 $response = $client->call( 'cidr_ban', { 'cidrs' => ['1.2.3.0/24'], 'kur' => 'nope' } );
-is( $response->{status}, 'error', 'cidr_ban to a unknown kur errors' );
+is( $response->{status}, 'error', 'cidr_ban to an unknown kur errors' );
 like( $response->{error}, qr/No such kur instance/, 'unknown kur message' );
 
 #
@@ -127,7 +127,7 @@ $result = $client->call_ok( 'cidr_unban', { 'cidr' => '10.1.2.3/8' } );
 is( $result->{kurs}{sshd}{was_banned}, 1, 'cidr_unban via a host address finds the network ban' );
 
 $response = $client->call( 'cidr_unban', { 'cidr' => 'not-a-cidr' } );
-is( $response->{status}, 'error', 'cidr_unban of a invalid CIDR errors' );
+is( $response->{status}, 'error', 'cidr_unban of an invalid CIDR errors' );
 
 $response = $client->call('cidr_unban');
 is( $response->{status}, 'error', 'cidr_unban with out args errors' );

@@ -40,7 +40,7 @@ is_deeply( [ sort( @{ $result->{banned} } ) ], [ '1.2.3.4', '5.6.7.8' ], 'banned
 # invalid IPs error per IP with out killing the valid ones in the same request
 $result = $kur->_cmd_ban( { 'args' => { 'ips' => [ 'not-an-ip', '9.9.9.9' ] } } );
 is( $result->{ips}{'not-an-ip'}{status}, 'error', 'invalid IP errors' );
-like( $result->{ips}{'not-an-ip'}{error}, qr/does not appear to be a IPv4 or IPv6 IP/, 'invalid IP error message' );
+like( $result->{ips}{'not-an-ip'}{error}, qr/does not appear to be an IPv4 or IPv6 IP/, 'invalid IP error message' );
 is( $result->{ips}{'9.9.9.9'}{status}, 'ok', 'valid IP in the same request still banned' );
 is( $kur->{stats}{errors},             1,    'stats errors bumped' );
 is( $kur->{stats}{bans},               3,    'stats bans now 3' );
@@ -62,8 +62,8 @@ $result = $kur->_cmd_banned;
 is( ( grep { $_ eq '1.2.3.4' } @{ $result->{banned} } ), 0, 'unbanned IP gone from the banned list' );
 
 $result = $kur->_cmd_unban( { 'args' => { 'ip' => '1.2.3.4' } } );
-is( $result->{was_banned}, 0, 'unban of a absent IP reports was_banned 0' );
-is( $kur->{stats}{unbans}, 1, 'stats unbans unchanged for a absent IP' );
+is( $result->{was_banned}, 0, 'unban of an absent IP reports was_banned 0' );
+is( $kur->{stats}{unbans}, 1, 'stats unbans unchanged for an absent IP' );
 
 throws_ok { $kur->_cmd_unban( {} ) } qr/args\.ip/, 'dies with out args';
 throws_ok { $kur->_cmd_unban( { 'args' => { 'ip' => ['1.2.3.4'] } } ) } qr/args\.ip/, 'dies on a ref for ip';
@@ -96,8 +96,8 @@ is( ( grep { $_ eq '2001:db8::1' } @{ $result->{banned} } ), 0, 'IPv6 IP gone fr
 $result = $kur->_cmd_ban( { 'args' => { 'ips' => ['010.0.0.1'] } } );
 is( $result->{ips}{'010.0.0.1'}{status}, 'error', 'leading zero octet IPv4 refused' );
 
-throws_ok { $kur->_cmd_unban( { 'args' => { 'ip' => 'not-an-ip' } } ) } qr/does not appear to be a IPv4 or IPv6 IP/,
-	'unban of a invalid IP dies';
+throws_ok { $kur->_cmd_unban( { 'args' => { 'ip' => 'not-an-ip' } } ) } qr/does not appear to be an IPv4 or IPv6 IP/,
+	'unban of an invalid IP dies';
 
 #
 # status

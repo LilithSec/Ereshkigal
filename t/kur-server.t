@@ -58,7 +58,7 @@ is_deeply( [ sort( @{ $result->{banned} } ) ], [ '1.2.3.4', '5.6.7.8' ], 'banned
 $result = $client->call_ok( 'unban', { 'ip' => '1.2.3.4' } );
 is( $result->{was_banned}, 1, 'unban of a present IP' );
 $result = $client->call_ok( 'unban', { 'ip' => '1.2.3.4' } );
-is( $result->{was_banned}, 0, 'unban of a absent IP' );
+is( $result->{was_banned}, 0, 'unban of an absent IP' );
 
 $result = $client->call_ok('status');
 is( $result->{name},         'testy', 'status name' );
@@ -97,7 +97,7 @@ $result = $client->call_ok( 'ban', { 'ips' => ['8.8.8.8'], 'ban_time' => 0 } );
 is( $result->{ips}{'8.8.8.8'}{status}, 'ok', 'permanent ban ok' );
 
 $result = $client->call_ok('banned');
-ok( $result->{expires}{'7.7.7.7'} > 0, 'timed ban has a expiry' );
+ok( $result->{expires}{'7.7.7.7'} > 0, 'timed ban has an expiry' );
 is( $result->{expires}{'8.8.8.8'}, 0, 'permanent ban has no expiry' );
 
 my $ban_expired = 0;
@@ -131,7 +131,7 @@ my $raw = IO::Socket::UNIX->new(
 print $raw "this is not json\n";
 my $raw_line = <$raw>;
 close($raw);
-like( $raw_line, qr/invalid JSON/, 'malformed JSON gets a error response' );
+like( $raw_line, qr/invalid JSON/, 'malformed JSON gets an error response' );
 
 is( $client->call_ok('ping')->{pong}, 1, 'server still alive after the bad input' );
 

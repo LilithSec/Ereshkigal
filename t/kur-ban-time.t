@@ -65,7 +65,7 @@ throws_ok { $kur->_cmd_ban( { 'args' => { 'ips' => ['1.1.1.1'], 'ban_time' => -1
 	'dies on a negative args.ban_time';
 
 #
-# re-banning a banned IP refreshes it's timer with out being a error
+# re-banning a banned IP refreshes it's timer with out being an error
 #
 
 my $bans_before = $kur->{stats}{bans};
@@ -134,7 +134,7 @@ is_deeply( $saved, {}, 'flush persisted' );
 # persistence across a restart... a fresh kur over the same dirs reloads
 # the state CSV, dropping and unbanning whatever expired while down... the
 # expired row is hand written with a backdated time as a checkpoint can
-# never write a already expired row
+# never write an already expired row
 #
 
 my $now = time;

@@ -180,7 +180,7 @@ SKIP: {
 	denied_ok( sub { $ereshkigal->_authorize( $me, 'smtp' ) }, qr/not authorized/, 'but not the other kur' );
 } ## end SKIP:
 
-# a untargeted command on a manager carrying no real kurs is authorized
+# an untargeted command on a manager carrying no real kurs is authorized
 # before the emptiness is reported, so a refusal does not leak whether the
 # manager has anything defined... the empty list makes it the manager level
 # check, matching every other untargeted command
@@ -207,7 +207,7 @@ foreach my $command ( 'ban', 'cidr_ban' ) {
 
 # and an authorized caller still gets told there is nothing to ban on
 throws_ok { $bare->_cmd_ban( { 'args' => { 'ips' => ['1.2.3.4'] } }, $global ) } qr/No kur instances/,
-	'a authorized caller still gets the no kur instances error';
+	'an authorized caller still gets the no kur instances error';
 
 # clear_retries authorizes the same way the rest do... the scoped user for a
 # kur that is theirs, refused for one that is not and at manager level

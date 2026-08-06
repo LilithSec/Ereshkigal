@@ -34,7 +34,7 @@ right time left on them.
 Those writes already happen on every ban and unban, every C<checkpoint>
 seconds, and at stop, so this is rarely needed... it is for taking a
 consistent snapshot before a backup or a manual look at the files. Writes are
-atomic, so a checkpoint racing a backup can not hand out half a file.
+atomic, so a checkpoint racing a backup cannot hand out half a file.
 
 With no args every kur checkpoints; with a kur name only that one, and naming
 a fan_out gate reaches every kur behind it.

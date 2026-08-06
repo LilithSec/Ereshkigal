@@ -155,7 +155,7 @@ sub execute {
 # It polls rather than watching for anything, up to forty times with a
 # quarter second between, so a little over ten seconds in the worst case. It
 # returns the moment any of four things is true... the PID file is gone, it
-# can not be opened, it holds nothing that looks like a PID, or the PID it
+# cannot be opened, it holds nothing that looks like a PID, or the PID it
 # holds names a process that is neither running nor merely unsignalable by
 # us. The first three are all a stale PID file, which daemonize happily
 # reclaims on its own.
@@ -172,7 +172,7 @@ sub execute {
 #                  missing file is the state being waited for and returns at
 #                  once.
 #
-# Returns nothing meaningful, a empty return. There is no telling from the
+# Returns nothing meaningful, an empty return. There is no telling from the
 # return whether the wait succeeded or timed out, deliberately, as the
 # caller does not act on it either way.
 #

@@ -22,6 +22,17 @@ our $VERSION = '0.0.1';
     # check every kur for the CIDR and unban it where present
     ereshkigal cidr-unban 1.2.3.0/24
 
+=head1 DESCRIPTION
+
+Every kur is asked whether it is holding the range and it is released from
+each one that is. Host bits are masked off first, the same as when banning,
+so naming any address inside a banned network finds it.
+
+The range is released as a range. A range ban is one firewall entry
+covering the whole prefix rather than one ban per address inside it, so
+unbanning a single IP within a banned range will not punch a hole in
+it... that address stays blocked as long as the range is.
+
 There is no --all form... C<ereshkigal unban --all> already flushes CIDR bans
 alongside single IP bans.
 

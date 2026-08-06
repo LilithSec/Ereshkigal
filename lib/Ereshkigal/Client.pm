@@ -78,7 +78,7 @@ sub new {
 =head2 call
 
 Sends a single request and returns the decoded response hash. Will die on
-connect failure, timeout, or a undecodable response.
+connect failure, timeout, or an undecodable response.
 
     my $response = $client->call( $command, $args );
 
@@ -148,10 +148,10 @@ sub call {
 	return $response;
 } ## end sub call
 
-# Sends one request over a already connected socket and reads back the one
+# Sends one request over an already connected socket and reads back the one
 # line answer to it, which is the whole of the newline delimited JSON
 # protocol POE::Component::Server::JSONUnix speaks. Used by call for both the
-# initial request and the resend after a auth challenge, and by _authenticate
+# initial request and the resend after an auth challenge, and by _authenticate
 # for the challenge itself, so it deliberately does no connecting, no timing
 # out, and no auth handling of its own... the caller owns all three.
 #
@@ -160,20 +160,20 @@ sub call {
 #
 # Args, both required and positional...
 #
-#     $sock    :: A open IO::Socket::UNIX already connected to the server.
+#     $sock    :: An open IO::Socket::UNIX already connected to the server.
 #                 Left open on return, as the auth challenge and the resend
 #                 that follows it have to happen on this same connection.
 #     $request :: A hash ref of the request to send, which the server expects
 #                 to carry a 'command' key naming the command and, optionally,
 #                 a 'args' key holding that command's arguments hash ref. It
-#                 is encoded as given, so anything JSON::MaybeXS can not
+#                 is encoded as given, so anything JSON::MaybeXS cannot
 #                 encode dies here.
 #
 # Returns the decoded response as a hash ref. The server's own shape is
 # { status => 'ok', result => ... } on success and
 # { status => 'error', error => '...' } on failure, but no checking of that
-# is done here... a error response comes back as a plain hash ref just like a
-# successful one, for the caller to judge. call_ok is what turns a error
+# is done here... an error response comes back as a plain hash ref just like a
+# successful one, for the caller to judge. call_ok is what turns an error
 # status into a die.
 #
 # Dies, with a trailing newline so the message reads cleanly when it reaches
@@ -206,7 +206,7 @@ sub _send_request {
 } ## end sub _send_request
 
 # Completes the POE::Component::Server::JSONUnix unix ownership challenge on
-# a already connected socket, which is how a manager with enable_auth on
+# an already connected socket, which is how a manager with enable_auth on
 # learns who is talking to it. Called by call when a request comes back
 # refused with the authentication required error, after which that request is
 # resent on the same connection.
@@ -221,7 +221,7 @@ sub _send_request {
 #
 # Args, required and positional...
 #
-#     $sock :: A open IO::Socket::UNIX already connected to the server. Auth
+#     $sock :: An open IO::Socket::UNIX already connected to the server. Auth
 #              state is per connection, so this must be the same socket the
 #              refused request went over and the one the resend will go over.
 #              Left open on return.
@@ -230,7 +230,7 @@ sub _send_request {
 # die... on return the connection is authenticated and the caller may resend.
 #
 # Dies, with a trailing newline, if auth_start answers anything but ok or
-# without both a cookie and a temp_dir, if the cookie file can not be
+# without both a cookie and a temp_dir, if the cookie file cannot be
 # written (a full or unwritable temp dir surfaces here rather than as a
 # confusing auth_verify failure later), or if auth_verify answers anything
 # but ok, which is what a genuine refusal looks like.
@@ -304,16 +304,16 @@ method taking a whole hash of sockets rather than using a per socket object.
     - timeout :: Timeout in seconds for the whole fan out, bounding it as a
           whole rather than each socket individually, so the wall time is
           the slowest socket capped at one timeout instead of the sum. This
-          covers the connects as well, each of which is bounded by a even
+          covers the connects as well, each of which is bounded by an even
           share of what is left of it, so a socket whose listener never
-          accepts can not hang the fan out or starve the rest of it. 0
+          accepts cannot hang the fan out or starve the rest of it. 0
           means no timeout.
         Default :: 30
 
 The return is a hash keyed the same as sockets, each value being either
-C<{ result =E<gt> ... }> for a response with a ok status or
+C<{ result =E<gt> ... }> for a response with an ok status or
 C<{ error =E<gt> "..." }> for anything else... connect failure, EOF, a
-undecodable response, a error status response, or the deadline passing. A
+undecodable response, an error status response, or the deadline passing. A
 failure with one socket never disturbs the others.
 
 Unlike L</call>, no authentication challenge handling happens... kur
@@ -361,8 +361,8 @@ sub call_many {
 		# a unix stream connect to a live listener normally completes at once
 		# and a dead socket refuses at once, but a listener whose accept queue
 		# has filled blocks, so each connect is bounded rather than being left
-		# to wedge the whole fan out... the bound is a even share of what is
-		# left of the deadline, so one wedged listener can not eat the budget
+		# to wedge the whole fan out... the bound is an even share of what is
+		# left of the deadline, so one wedged listener cannot eat the budget
 		# the rest need, and never less than a second as alarm(0) would mean
 		# no alarm at all
 		my $remaining;

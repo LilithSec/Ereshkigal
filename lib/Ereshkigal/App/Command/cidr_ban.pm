@@ -25,15 +25,25 @@ our $VERSION = '0.0.1';
     # ban on just the kur instance sshd
     ereshkigal cidr-ban --kur sshd 1.2.3.0/24
 
-    # a hour long ban
+    # an hour long ban
     ereshkigal cidr-ban --ban-time 3600 1.2.3.0/24
 
     # a permanent ban
     ereshkigal cidr-ban --ban-time 0 1.2.3.0/24
 
+=head1 DESCRIPTION
+
+Bans one or more CIDR ranges. The range form of
+L<ban|Ereshkigal::App::Command::ban>, behaving the same way... every kur
+unless C<--kur> names one, each range answered for separately, re-banning
+resetting the sentence, and C<--ban-time> in seconds with 0 meaning never.
+
+Host bits are masked off, so C<1.2.3.4/24> is taken as C<1.2.3.0/24> and
+the two cannot become separate bans.
+
 Only works on a kur whose backend supports CIDR bans and which has CIDR
-banning enabled. A kur that can not or will not do CIDR either drops the
-command or reports a error per its cidr_silent_drop setting.
+banning enabled. A kur that cannot or will not do CIDR either drops the
+command or reports an error per its cidr_silent_drop setting.
 
 =head1 METHODS
 
@@ -59,7 +69,7 @@ Host bits are masked off, so 1.2.3.4/24 is taken as 1.2.3.0/24 and the
 two cannot become separate bans.
 
 This only works where the operator has turned CIDR banning on, via
-enable_cidr, AND the backend can match on a prefix... several can not.
+enable_cidr, AND the backend can match on a prefix... several cannot.
 A kur that cannot oblige either refuses or quietly ignores the request
 per its cidr_silent_drop setting, which is what lets one command be fanned
 across a mixed set of kurs. "status --all" reports cidr_enabled and

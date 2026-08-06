@@ -60,7 +60,7 @@ is( $kur->{stats}{cidr_bans},                  2, 'stats cidr_bans unchanged for
 # invalid CIDRs error per item with out killing the valid ones in the request
 $result = $kur->_cmd_cidr_ban( { 'args' => { 'cidrs' => [ 'not-a-cidr', '172.16.0.0/12' ] } } );
 is( $result->{cidrs}{'not-a-cidr'}{status}, 'error', 'invalid CIDR errors' );
-like( $result->{cidrs}{'not-a-cidr'}{error}, qr/does not appear to be a IPv4 or IPv6 CIDR/, 'invalid CIDR message' );
+like( $result->{cidrs}{'not-a-cidr'}{error}, qr/does not appear to be an IPv4 or IPv6 CIDR/, 'invalid CIDR message' );
 is( $result->{cidrs}{'172.16.0.0/12'}{status}, 'ok', 'valid CIDR in the same request still banned' );
 
 # a bare IP is not a CIDR
@@ -86,12 +86,12 @@ is( $result->{was_banned}, 1,            'unban via a host address inside the ne
 is( $result->{cidr},       '10.0.0.0/8', 'unban reports the masked network back' );
 
 $result = $kur->_cmd_cidr_unban( { 'args' => { 'cidr' => '1.2.3.0/24' } } );
-is( $result->{was_banned}, 0, 'unban of a absent CIDR reports was_banned 0' );
+is( $result->{was_banned}, 0, 'unban of an absent CIDR reports was_banned 0' );
 
 throws_ok { $kur->_cmd_cidr_unban( {} ) } qr/args\.cidr/, 'dies with out args';
 throws_ok { $kur->_cmd_cidr_unban( { 'args' => { 'cidr' => ['1.2.3.0/24'] } } ) } qr/args\.cidr/, 'dies on a ref';
 throws_ok { $kur->_cmd_cidr_unban( { 'args' => { 'cidr' => 'not-a-cidr' } } ) }
-qr/does not appear to be a IPv4 or IPv6 CIDR/, 'unban of a invalid CIDR dies';
+qr/does not appear to be an IPv4 or IPv6 CIDR/, 'unban of an invalid CIDR dies';
 
 #
 # status reflects the CIDR state
@@ -116,7 +116,7 @@ is_deeply( $result->{banned},      [], 'single IP bans empty after flush' );
 is_deeply( $result->{banned_cidr}, [], 'CIDR bans empty after flush' );
 
 #
-# a instance with CIDR left disabled, the default... commands are refused
+# an instance with CIDR left disabled, the default... commands are refused
 #
 
 my $off = Ereshkigal::Kur->new(
@@ -131,7 +131,7 @@ is( $off->{enable_cidr},   0, 'enable_cidr defaults off' );
 is( $off->_cidr_available, 0, 'CIDR not available when disabled' );
 
 # the toggles are folded from whatever the config carried... the false-ish
-# strings and a empty string, which a templater may well emit, all mean off,
+# strings and an empty string, which a templater may well emit, all mean off,
 # while anything else is on
 foreach my $false ( '', '0', 'false', 'FALSE', 'no', 'off' ) {
 	my $folded = Ereshkigal::Kur->new(

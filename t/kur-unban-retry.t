@@ -184,7 +184,7 @@ $tablet_kur->{cidr_bans}{'172.16.0.0/12'}{expires} = time - 5;
 $fail_unban = 1;
 $tablet_kur->_sweep_bans;
 
-ok( -f $tablet_kur->retry_state_path,           'a owed unban wrote the retry tablet' );
+ok( -f $tablet_kur->retry_state_path,           'an owed unban wrote the retry tablet' );
 ok( -f $tablet_kur->cidr_retry_state_path,      'and the CIDR one for the CIDR side' );
 ok( !-e $tablet_kur->retry_state_path . '.tmp', 'no temp file left behind' );
 
@@ -259,7 +259,7 @@ my $status = $shown->_cmd_status;
 is( $status->{unban_retries},        0, 'status reports nothing owed' );
 is( $status->{unban_retries_oldest}, 0, 'and no oldest' );
 is( $status->{cidr_unban_retries},   0, 'nor on the CIDR side' );
-is_deeply( $shown->_cmd_banned->{unban_retries}, {}, 'banned carries a empty retry hash' );
+is_deeply( $shown->_cmd_banned->{unban_retries}, {}, 'banned carries an empty retry hash' );
 
 $shown->_cmd_ban( { 'args' => { 'ips' => [ '5.5.5.5', '6.6.6.6' ] } } );
 $shown->{bans}{$_}{expires} = time - 5 foreach ( '5.5.5.5', '6.6.6.6' );
@@ -282,7 +282,7 @@ ok( defined( $listed->{'6.6.6.6'}{next_try} ) && defined( $listed->{'6.6.6.6'}{l
 is_deeply(
 	[ sort( @{ $shown->_cmd_banned->{banned} } ) ],
 	[ '5.5.5.5', '6.6.6.6' ],
-	'a owed unban is still listed as banned, the firewall not having let go of it'
+	'an owed unban is still listed as banned, the firewall not having let go of it'
 );
 is_deeply( $shown->{bans}, {}, 'while the ban book has released it' );
 
@@ -306,7 +306,7 @@ ok( defined( $shown->{cidr_unban_retries}{'192.168.0.0/16'} ), 'the CIDR side is
 
 # clearing one that is not owed is not an error, it just clears nothing
 is( $shown->_cmd_clear_retries( { 'args' => { 'ip' => '5.5.5.5' } } )->{cleared},
-	0, 'clearing a IP that is not owed clears nothing' );
+	0, 'clearing an IP that is not owed clears nothing' );
 
 # a named CIDR clears just it
 $result = $shown->_cmd_clear_retries( { 'args' => { 'cidr' => '192.168.0.0/16' } } );
@@ -315,9 +315,9 @@ ok( !defined( $shown->{cidr_unban_retries}{'192.168.0.0/16'} ), 'the named CIDR 
 ok( defined( $shown->{unban_retries}{'6.6.6.6'} ),              'and the IP side untouched' );
 
 throws_ok { $shown->_cmd_clear_retries( { 'args' => { 'ip' => 'notanip' } } ) }
-qr/does not appear to be a IPv4 or IPv6 IP/, 'a invalid ip is refused';
+qr/does not appear to be an IPv4 or IPv6 IP/, 'an invalid ip is refused';
 throws_ok { $shown->_cmd_clear_retries( { 'args' => { 'cidr' => 'notacidr' } } ) }
-qr/does not appear to be a IPv4 or IPv6 CIDR/, 'a invalid cidr is refused';
+qr/does not appear to be an IPv4 or IPv6 CIDR/, 'an invalid cidr is refused';
 throws_ok { $shown->_cmd_clear_retries( { 'args' => { 'ip' => '1.2.3.4', 'cidr' => '1.2.3.0/24' } } ) }
 qr/only one of/, 'naming both an ip and a cidr is refused';
 

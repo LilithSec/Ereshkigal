@@ -32,7 +32,7 @@ our @EXPORT_OK = qw( normalize_ip normalize_cidr );
     # $ip is now '2001:db8::1'
 
     if ( !defined( normalize_ip($raw_ip) ) ) {
-        die( '"' . $raw_ip . '" does not appear to be a IPv4 or IPv6 IP' );
+        die( '"' . $raw_ip . '" does not appear to be an IPv4 or IPv6 IP' );
     }
 
     my $cidr = normalize_cidr('1.2.3.4/24');
@@ -43,7 +43,7 @@ our @EXPORT_OK = qw( normalize_ip normalize_cidr );
 This holds the C<normalize_ip> and C<normalize_cidr> subs used for validating
 IPs and CIDR ranges and reducing them to a single canonical string form, so
 variant spellings of the same IP, most notably IPv6 long form vs short form
-as well as case, can not be mistaken for differing IPs. C<normalize_cidr>
+as well as case, cannot be mistaken for differing IPs. C<normalize_cidr>
 additionally masks the host bits off, so C<1.2.3.4/24> and C<1.2.3.0/24> are
 one range rather than two. Anything unparseable comes back as undef, letting
 garbage be bounced at the point of entry instead of being passed along for
@@ -59,7 +59,7 @@ available via C<@EXPORT_OK>.
 =head2 normalize_ip
 
 Returns the canonical string form of the passed IP. If it does not validate
-as either a IPv4 or IPv6 IP, undef is returned. undef and refs also return
+as either an IPv4 or IPv6 IP, undef is returned. undef and refs also return
 undef.
 
     my $ip = normalize_ip($raw_ip);
@@ -130,7 +130,7 @@ accepts, so anything accepted here is also acceptable to the backends.
 
 The host bits below the prefix are masked off so the network address is
 returned, meaning C<1.2.3.4/24> and C<1.2.3.0/24> both reduce to C<1.2.3.0/24>
-and variant spellings of the same range can not be mistaken for differing
+and variant spellings of the same range cannot be mistaken for differing
 ranges. The address portion is canonicalized the same as L</normalize_ip>, so
 IPv6 long form and case variants reduce to the same short form.
 

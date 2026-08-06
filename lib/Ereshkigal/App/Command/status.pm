@@ -38,7 +38,7 @@ with how long the longest has been outstanding.
 
 With a kur name it is that one instance in full, and naming a fan_out gate
 gives its member list plus each member's status. A kur that is running but
-whose socket can not be reached shows up with a C<error> rather than a
+whose socket cannot be reached shows up with a C<error> rather than a
 C<status> block.
 
 =head1 METHODS

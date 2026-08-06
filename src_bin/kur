@@ -8,8 +8,10 @@ kur - Firewall ban manager worker for Ereshkigal.
 
 kur B<--name>=<name> B<--backend>=<backend> [B<--ports>=<ports>]
 [B<--protocols>=<protocols>] [B<--prefix>=<prefix>] [B<--option> <key>=<value>]
-[B<--self-heal> <0/1>] [B<--cache>=<cache dir>] [B<--run>=<run dir>]
-[B<-f>|B<--foreground>]
+[B<--interfaces>=<interfaces>] [B<--self-heal> <0/1>]
+[B<--ban-time>=<seconds>] [B<--checkpoint>=<seconds>]
+[B<--enable-cidr> <0/1>] [B<--cidr-silent-drop> <0/1>]
+[B<--cache>=<cache dir>] [B<--run>=<run dir>] [B<-f>|B<--foreground>]
 
 kur -v|--version
 
@@ -50,17 +52,17 @@ This must be specified.
 
 =head2 --ports=<ports>
 
-A comma seperated list of ports to block. Must be a positive integer greater
-than zero or a name resolvable via getservbyname.
+A comma separated list of ports to block. Each must be a positive integer
+or a name resolvable via getservbyname.
 
 If not specified, all are blocked.
 
 =head2 --protocols=<protocols>
 
-A comma seperated list of protocols to block. This is checked against
+A comma separated list of protocols to block. Each is checked against
 /etc/protocols via the function getprotobyname.
 
-If not specified, it will block all.
+If not specified, all are blocked.
 
 =head2 --prefix=<prefix>
 
@@ -74,8 +76,8 @@ A backend specific option. May be specified multiple times.
 
 =head2 --interfaces=<interfaces>
 
-A comma seperated list of interfaces, handed to the backend as the
-C<interfaces> option as a array. Wanted by backends taking a array of
+A comma separated list of interfaces, handed to the backend as the
+C<interfaces> option as an array. Wanted by backends taking an array of
 interfaces there, such as xdp.
 
 =head2 --self-heal <0/1>
