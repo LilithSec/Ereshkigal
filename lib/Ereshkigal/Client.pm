@@ -124,7 +124,7 @@ sub call {
 		# on this same connection and resend
 		#
 		# matched against the error prose as the JSONUnix auth_required gate
-		# answers with no code field... only it's permission policy denials
+		# answers with no code field... only its permission policy denials
 		# and Ereshkigal's own _authorize carry a machine readable code, and
 		# neither of those is the response being caught here
 		if (   defined( $response->{status} )
@@ -153,7 +153,7 @@ sub call {
 # protocol POE::Component::Server::JSONUnix speaks. Used by call for both the
 # initial request and the resend after a auth challenge, and by _authenticate
 # for the challenge itself, so it deliberately does no connecting, no timing
-# out, and no auth handling of it's own... the caller owns all three.
+# out, and no auth handling of its own... the caller owns all three.
 #
 # The request is JSON encoded, a newline appended, and written to the socket;
 # the answer is read to the first newline and JSON decoded.
@@ -230,7 +230,7 @@ sub _send_request {
 # die... on return the connection is authenticated and the caller may resend.
 #
 # Dies, with a trailing newline, if auth_start answers anything but ok or
-# with out both a cookie and a temp_dir, if the cookie file can not be
+# without both a cookie and a temp_dir, if the cookie file can not be
 # written (a full or unwritable temp dir surfaces here rather than as a
 # confusing auth_verify failure later), or if auth_verify answers anything
 # but ok, which is what a genuine refusal looks like.
@@ -282,7 +282,7 @@ sub _authenticate {
 =head2 call_many
 
 Sends the same single request to multiple sockets concurrently. This is for
-the manager fanning a command out to it's kurs, which is why it is a class
+the manager fanning a command out to its kurs, which is why it is a class
 method taking a whole hash of sockets rather than using a per socket object.
 
     my $per_name = Ereshkigal::Client->call_many(

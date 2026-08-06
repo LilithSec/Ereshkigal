@@ -73,9 +73,9 @@ the `key`; IPv4 goes to the `address-group` path, IPv6 to
 
 Each `/configure` call is its own VyOS commit — there is no separate
 apply step, and no `save`, so the group contents are running-config
-only and vanish at a router reboot (which is fine: the kur re-adds
-from its tablet, and stale bans should not survive the router
-anyway).
+only and vanish at a router reboot. That is fine: the kur re-adds
+from its tablet, and stale bans should not outlive the router
+anyway.
 
 ## self_heal
 

@@ -403,7 +403,7 @@ tearing the backend down the same as the stop command before exiting.
 IPs passed to ban and unban are validated and normalized to their canonical
 string form, so variant spellings of the same IP, most notably IPv6 long
 form vs short form as well as case, are all treated as the same IP. For ban
-anything failing to validate errors per IP with out disturbing the rest of
+anything failing to validate errors per IP without disturbing the rest of
 the request, while for unban it is fatal to the request.
 
 The JSON commands handled are as below.
@@ -411,7 +411,7 @@ The JSON commands handled are as below.
     - ban :: Ban the IPs specified via the array args.ips. args.ban_time,
           if defined, overrides the instance default for how long the bans
           should last in seconds, with 0 meaning never time out. Banning a
-          already banned IP just refreshes it's timer.
+          already banned IP just refreshes its timer.
 
     - unban :: Check if the IP, args.ip, is banned and if so unban it.
 
@@ -437,7 +437,7 @@ The JSON commands handled are as below.
     - flush :: Unban everything currently banned, ranges as well as single
           IPs, emptying both ban books and both unban retry books with them.
 
-    - re_init :: Have the backend tear it's firewall setup down and build it
+    - re_init :: Have the backend tear its firewall setup down and build it
           again, re-banning everything the ban books carry. Bans are not
           enforced while that is happening. Tearing down takes any rule a
           failed unban left behind, so the retry books are emptied too.
@@ -934,7 +934,7 @@ sub _ban_many {
 		} ## end if ( !defined($entry) )
 		my $expires = $ban_time ? time + $ban_time : 0;
 
-		# already banned, so just refresh it's timer... the backend ban is
+		# already banned, so just refresh its timer... the backend ban is
 		# not re-ran, as not every backend takes re-adding an existing entry
 		# gracefully, but self_heal still gets its chance via _refresh_heal
 		if ( defined( $self->{ $spec->{hash} }{$entry} ) ) {
@@ -1635,7 +1635,7 @@ sub _cmd_status {
 		'cidr_bans_permanent' => $cidr_permanent,
 		# unbans that failed at expiry and are still owed to the firewall...
 		# oldest is the first_tried of the longest owed, so a operator can
-		# tell a blip from something wedged with out asking for banned
+		# tell a blip from something wedged without asking for banned
 		'unban_retries'             => scalar( keys( %{ $self->{unban_retries} } ) ),
 		'unban_retries_oldest'      => $self->_retries_oldest( $family_spec{ip} ),
 		'cidr_unban_retries'        => scalar( keys( %{ $self->{cidr_unban_retries} } ) ),
@@ -1796,7 +1796,7 @@ sub _cmd_clear_retries {
 		my $named              = $args->{ $spec->{retry_arg} };
 		my $other_family_named = defined( $args->{ $family_spec{ $family eq 'ip' ? 'cidr' : 'ip' }->{retry_arg} } );
 
-		# a named entry only clears from it's own family, and naming one
+		# a named entry only clears from its own family, and naming one
 		# family means the other is left alone entirely
 		if ( defined($named) ) {
 			if ( ref($named) ne '' ) {
@@ -1971,7 +1971,7 @@ sub _cmd_stop {
 sub _stop_guts {
 	my ($self) = @_;
 
-	# keeps the ban sweeper from rescheduling so it's session can end
+	# keeps the ban sweeper from rescheduling so its session can end
 	$self->{stopping} = 1;
 
 	# leave a fresh state CSV behind
@@ -2561,7 +2561,7 @@ sub _load_retries {
 # rather than taking the file down with it.
 #
 # A restored delay is brought inside the same bounds the backoff keeps
-# itself in, since only it's own doubling is clamped and a tablet can carry
+# itself in, since only its own doubling is clamped and a tablet can carry
 # anything. A 0, which only a hand edited one would, is floored back to 2...
 # left alone it would peg the backoff at zero forever and have the sweeper
 # retrying that entry every single tick. Anything past the 60 second cap is
@@ -2655,7 +2655,7 @@ sub _load_retry_state {
 			'times_tried' => $times_tried,
 			'next_try'    => $next_try,
 			# a tablet written by hand could carry anything, and the backoff
-			# only clamps what it's own doubling produces, so a restored
+			# only clamps what its own doubling produces, so a restored
 			# value is brought inside the same bounds here... a 0 would peg
 			# the backoff at 0 forever and is floored to where a first
 			# failure would have left it, while anything past the cap would

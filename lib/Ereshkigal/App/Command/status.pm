@@ -25,19 +25,19 @@ our $VERSION = '0.0.1';
 
 =head1 DESCRIPTION
 
-Shows what the manager and it's kurs are up to. With no args it asks only the
-manager, so it answers even when a kur is wedged... it's PID and uptime, and
-per kur whether it is running, it's PID, and how many times it has been
+Shows what the manager and its kurs are up to. With no args it asks only the
+manager, so it answers even when a kur is wedged... its PID and uptime, and
+per kur whether it is running, its PID, and how many times it has been
 restarted.
 
-With C<--all> each running kur is asked for it's own status too: ban counts
+With C<--all> each running kur is asked for its own status too: ban counts
 split into timed and permanent, the next expiry, whether CIDR banning is
 enabled and whether the backend can actually do it, the checkpoint interval,
 per instance stats, and how many unbans are still owed to the firewall along
 with how long the longest has been outstanding.
 
 With a kur name it is that one instance in full, and naming a fan_out gate
-gives it's member list plus each member's status. A kur that is running but
+gives its member list plus each member's status. A kur that is running but
 whose socket can not be reached shows up with a C<error> rather than a
 C<status> block.
 

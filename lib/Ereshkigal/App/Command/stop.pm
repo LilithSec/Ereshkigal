@@ -23,8 +23,8 @@ our $VERSION = '0.0.1';
 
 =head1 DESCRIPTION
 
-Stops every kur instance and then the manager. Each kur checkpoints it's
-tablets, tears it's firewall setup down, and exits; the manager follows.
+Stops every kur instance and then the manager. Each kur checkpoints its
+tablets, tears its firewall setup down, and exits; the manager follows.
 
 Tearing down removes the tables, sets, chains, and lists the kurs own, so
 every ban stops being enforced... the host is unprotected by anything

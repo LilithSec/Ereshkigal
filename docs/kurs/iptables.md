@@ -91,10 +91,10 @@ configured) are skipped rather than emitted. `delude` is additionally
 **IPv4 only** — xtables-addons provides no IPv6 DELUDE, so the
 ip6tables rule falls back to plain DROP; banned IPv6 IPs are still
 blocked, just silently dropped rather than deluded (TARPIT does
-exist for IPv6 and is used as-is). Both also require the
-crafted replies to escape connection tracking, so with these types
-the backend additionally builds a chain in the **raw table**, jumped
-from `PREROUTING`, holding `-j CT --notrack` rules that mirror the
+exist for IPv6 and is used as-is). Both also need their crafted
+replies to escape connection tracking. With these types the backend
+therefore builds a second chain in the **raw table**, jumped from
+`PREROUTING` and holding `-j CT --notrack` rules that mirror the
 block rules — set up at init, verified by `check`, torn down with
 the rest. Without the notrack exemption the kernel stack would fight
 the crafted packets and pin an INVALID conntrack entry per attacker
@@ -147,12 +147,12 @@ removes it (`-D PREROUTING -j C`, `-F`, `-X`).
 ## self_heal and reloads
 
 `check` is thorough here: both sets, both INPUT jumps, and every
-individual block rule are verified. Anything a
+individual block rule are verified. Anything an
 `iptables-restore`/distro firewall restart swept away is noticed by
 the next ban/unban with `self_heal` on, which re-inits and re-bans
-from the kur's book. Note that ipsets survive an iptables flush (they
-are a separate subsystem), so partial damage — rules gone, sets still
-populated — is the common post-reload state, and re_init handles it.
+from the kur's book. Ipsets survive an iptables flush — they are a
+separate subsystem — so partial damage, rules gone and sets still
+populated, is the common post-reload state, and re_init handles it.
 
 ## Gotchas
 

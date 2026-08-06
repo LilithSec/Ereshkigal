@@ -1,5 +1,27 @@
 # Architecture
 
+## The words
+
+The docs speak in the underworld's terms throughout. Each one means
+exactly one thing, and this is all of them.
+
+| the word                 | the machinery                                          |
+|--------------------------|--------------------------------------------------------|
+| the world above          | the CLI, your integrations, anything outside the daemon |
+| a kur                    | one underworld: a `kur` process wrapping one backend   |
+| a gate                   | a `fan_out` kur, one name opening onto several others  |
+| Neti                     | the `enable_auth` identity check on the manager socket |
+| to banish, to send below | to ban                                                 |
+| to call back             | to unban                                               |
+| a sentence               | a ban's `ban_time`, in seconds                         |
+| to cool a sentence       | to let one run out on its own, as the sweeper does     |
+| eternal residence        | `ban_time = 0`, a ban that never expires               |
+| the sweeper              | the once-a-second loop that releases served sentences  |
+| the ban book             | a kur's in-memory record of who is below               |
+| a clay tablet            | that record on disk, as CSV                            |
+| the rolls                | what `banned` prints                                   |
+| a debt                   | an unban the firewall would not take, still owed to it |
+
 ## The shape of it
 
 ```
@@ -26,13 +48,13 @@
       pf, iptables, ...)      pf, iptables, ...)
 ```
 
-The `ereshkigal` reads the config, spawns one `kur` process per hash under
-`kur` in the config, and supervises them. Each kur owns exactly one
+The manager reads the config, spawns one `kur` process per hash under
+`kur`, and supervises them. Each kur owns exactly one
 `Net::Firewall::BlockerHelper` instance (the module that actually
 talks to the firewall) and serves it over its own unix socket. The
-CLI (and anything else in the world above) talks only to the `ereshkigal`
-via its socket. `ereshkigal` in turn conveys those messages/replies to/from each kur via
-its own socket.
+CLI — and anything else in the world above — speaks only to the
+manager's socket; the manager relays each command down to the kurs
+that need it and carries their replies back.
 
 ## What lives where
 
@@ -54,11 +76,11 @@ not.
 ## Supervision
 
 Kurs are spawned via `POE::Wheel::Run` in foreground mode so the
-manager can watch them. An underworld that collapses is raised again.
-A kur that dies is restarted with a doubling backoff (1s, 2s, 4s...
-capped at 60s, reset after a minute of healthy uptime), and on the way
-back up it restores its residents from the tablets (see below). The
-`status` command shows the restart count per kur.
+manager can watch them. An underworld that collapses is raised again
+on a doubling backoff — 1s, 2s, 4s... capped at 60s, reset after a
+minute of healthy uptime — and on the way back up it restores its
+residents from the tablets (see below). The `status` command shows
+the restart count per kur.
 
 ## The protocol
 
@@ -99,13 +121,15 @@ side is remembered in a retry list rather than left banished forever.
 The sweeper retries it, backing off by doubling from one second to a
 cap of sixty, until the backend takes it. Nothing else will clear it
 while the backend is still refusing: a hand `unban` goes to that same
-backend and fails the same way, leaving the retry pending. An entry
-leaves the list only once its rule is genuinely gone — the retry
-lands, or a `flush`/`re_init` succeeds — or once it is wanted again,
-a re-ban cancelling the retry without touching the backend, since the
-rule never actually left. The list is written to its own tablet, so a
-debt outlives a restart with its count and backoff intact — the
-firewall is owed the removal just as much after one.
+backend and fails the same way, leaving the retry pending.
+
+An entry leaves the list only once its rule is genuinely gone: the
+retry lands, or a `flush`/`re_init` succeeds. It also leaves if the
+address is wanted below again — a re-ban cancels the debt without
+touching the backend, the rule never having left in the first place.
+The list is written to its own tablet, so a debt survives a restart
+with its count and backoff intact; restarting settles nothing the
+firewall is owed.
 
 A debt that can never be paid — the rule removed by hand, or a
 backend that never carried it — would otherwise be retried forever at
@@ -117,6 +141,9 @@ touched, so a rule that really is still there is left with nothing
 tracking it.
 
 ## The clay tablets
+
+Sumer's tablets were mostly accounts, and so are these — who is held,
+what is owed, and since when.
 
 Each kur checkpoints its banishments to
 `/var/cache/ereshkigal/kur.<name>.csv`, a CSV of
@@ -133,10 +160,10 @@ owed, since when, how many times it has been asked for, when it is
 next due, and where the backoff had got to. These carry absolute
 times rather than a remaining figure, as a debt has no sentence to
 re-anchor and a `next_try` left in the past simply means it is due at
-once. A kur owing nothing has no retry tablet at all rather than a
+once. A kur owing nothing has no retry tablet at all, not even a
 header-only one.
 
-The tablets are re-written when the events below happen.
+A tablet is re-written:
 
 - on every arrival and departure (ban/unban/flush/expiry)
 - every `checkpoint` seconds (default 60) even without changes, so
@@ -149,7 +176,9 @@ taken on, retried, paid, or forgiven — and they are emptied once more
 after a successful teardown at `stop`, since tearing down takes any
 rule the kur failed to remove with it.
 
-Writes to the file are done in an atomic manner.
+Every write is atomic: the new tablet is written beside the old one
+and renamed over it, so a reader never sees a half-written file, and a
+write that fails leaves the last good tablet in place.
 
 On the way back up a tablet is read row by row, and anything that does
 not parse — a bad field count, a non-numeric time, or an address that

@@ -153,21 +153,24 @@ Notes that apply across the board...
   `ereshkigal re-init` forces the same rebuild on demand, which is
   what you want when `self_heal` is off, when the next ban is a long
   way off, or when a backend's `check` cannot see the damage.
-- Most backends take no `ports`/`protocols` at all — they block the
-  whole IP or operate somewhere ports have no meaning. The strict
-  ones (`npf`, `linux_ip_route`, `cloudflare`, `netscaler`, `nsupdate`,
-  `routeros_api`, `panos`, `fortigate`, `abuseipdb`, `pfsense`,
-  `vyos`, `f5_bigip`, `fastly`, `akamai`, `dns_rpz`, `cisco_fmc`,
-  `checkpoint`, `juniper_srx`) treat specifying either as a fatal
-  error; the lenient ones (`shorewall`, `hosts_deny`, `file_reload`,
-  `xdp`, `routeros`, `opnsense`, `aws_wafv2`, `azure`,
-  `cloud_armor`, `bgp_rtbh`, `shell`, `dummy`) accept and silently
-  ignore them — so on those, a configured `ports` list scopes
-  nothing. Each page says which.
+- Only the six local packet filters (`pf`, `ipfw`, `iptables`,
+  `nftables`, `firewalld`, `ufw`) block by port and protocol. The
+  rest block the whole IP, or work somewhere ports have no meaning.
+  Configure `ports` or `protocols` on one of those and it goes one of
+  two ways:
+    - **fatal** — `npf`, `linux_ip_route`, `routeros_api`, `pfsense`,
+      `vyos`, `panos`, `fortigate`, `cisco_fmc`, `checkpoint`,
+      `juniper_srx`, `f5_bigip`, `netscaler`, `cloudflare`, `fastly`,
+      `akamai`, `nsupdate`, `dns_rpz`, `abuseipdb`. The kur refuses
+      to start.
+    - **ignored** — `shorewall`, `xdp`, `hosts_deny`, `routeros`,
+      `opnsense`, `bgp_rtbh`, `aws_wafv2`, `cloud_armor`, `azure`,
+      `file_reload`, `shell`, `dummy`. Accepted for parity, then
+      dropped — so on these, a configured `ports` list scopes nothing.
 - IPv6 addresses are lowercased everywhere, so case variants of one
   IP cannot become two bans.
 
-## Picking one
+## Choosing an underworld
 
 | backend        | platform / where           | granularity        | kill support        |
 |----------------|----------------------------|--------------------|----------------------|

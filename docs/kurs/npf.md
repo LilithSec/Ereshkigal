@@ -99,7 +99,7 @@ which re-ban from the tablet. If you reload npf often, make
 
 - Everything interesting is in `npf.conf`. If the block rule is
   missing or ordered after a pass rule that wins, the kur will hand
-  down and cool sentences happily while nothing is blocked — the kur
+  down sentences and cool them happily while nothing is blocked — it
   can only see the table, not whether any rule consults it.
 - Underscores are allowed in the table name (unlike kur names and
   prefixes), since npf allows them.

@@ -47,7 +47,7 @@ L<Net::Firewall::BlockerHelper> instance served up over a unix socket.
 C<ereshkigal start> reads the config, by default
 C</usr/local/etc/ereshkigal.toml>, daemonizes, and spawns and supervises a
 kur process for each hash under C<kur> in the config. The other commands talk
-to the running manager over it's unix socket, by default
+to the running manager over its unix socket, by default
 C</var/run/ereshkigal/socket>.
 
 Every subcommand takes B<--help> (or B<-h>), which covers what it does,

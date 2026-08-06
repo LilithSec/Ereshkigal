@@ -23,7 +23,7 @@ our $VERSION = '0.0.1';
 
 =head1 DESCRIPTION
 
-Stops the kur instance, tearing it's firewall setup down and removing it's
+Stops the kur instance, tearing its firewall setup down and removing its
 socket and PID files, and deregisters it from the running manager. Does not
 rewrite the config file... to make it permanent, remove it from the config.
 

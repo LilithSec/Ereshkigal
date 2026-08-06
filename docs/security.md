@@ -37,9 +37,9 @@ Authorization then works from two pairs of lists:
 - A command must be authorized for **every underworld it touches**.
   `ban --kur sshd` touches one; a bare `ban`, `cidr-ban`, `unban`,
   `cidr-unban`, `banned`, `checkpoint`, `re-init`, or `clear-retries`
-  touches all of them. Commands about the manager
-  itself — `stop`, `add`, `remove`, and the whole-manager views
-  `status`/`status --all` — require the global lists.
+  touches all of them. Commands about the manager itself — `stop`,
+  `add`, `remove`, and the whole-manager views `status`/`status --all`
+  — require the global lists.
 - UID 0 is always authorized.
 
 Group membership is resolved at request time (the user's primary
@@ -75,11 +75,16 @@ kill = 1
   the banned IP.
 - **ipfw** — `kill = 1` uses tcpdrop(8) to tear down its established
   TCP connections.
-- **iptables** — `kill = 1` uses conntrack(8) to delete its
-  connection-tracking state.
+- **iptables**, **nftables**, **firewalld** — `kill = 1` uses
+  conntrack(8) to delete its connection-tracking state.
+- **ufw** — `kill` names the tool rather than taking a flag:
+  `"ss"` severs the sockets with `ss -K`, `"conntrack"` deletes the
+  conntrack state as above.
 
 All of them default to off, matching the underlying tools — so this
-is an explicit choice you have to make per kur.
+is an explicit choice you have to make per kur. Each kur's page under
+[kurs/](kurs/) has the exact commands and how they are scoped to what
+that kur blocks.
 
 ## Running as root
 
@@ -95,14 +100,15 @@ and its kurs run as root. Consequences:
   manipulate the firewall"; with `enable_auth` off it is the whole
   story. Treat membership in that group accordingly.
 
-## auth_temp_dir
+## Where the gate leaves its cookies
 
-The gate challenge writes cookie files into a shared directory
-(default: the system tmpdir). A sticky-bit `/tmp` is fine — the
-challenge only ever creates fresh files and checks their ownership —
-but a dedicated root-owned, world-writable-with-sticky-bit directory
-(or per-deployment `auth_temp_dir`) avoids pathological tmp setups
-and tmp-cleaner races on long-idle connections.
+The gate challenge writes its cookie files into a shared directory —
+`auth_temp_dir`, defaulting to the system tmpdir. A sticky-bit `/tmp`
+is fine, as the challenge only ever creates fresh files and checks
+their ownership, but pointing `auth_temp_dir` at a directory of its
+own — root-owned, world-writable, sticky bit set — avoids
+pathological tmp setups and tmp-cleaner races on long-idle
+connections.
 
 ## The tablets name names
 

@@ -28,8 +28,8 @@ our $VERSION = '0.0.1';
 =head1 DESCRIPTION
 
 Starts the manager and every kur the config defines. The manager reads the
-config, brings up a kur process per instance, and listens on it's unix
-socket. Each kur builds it's firewall setup and re-bans whatever it's tablet
+config, brings up a kur process per instance, and listens on its unix
+socket. Each kur builds its firewall setup and re-bans whatever its tablet
 was carrying, so bans that had not run out survive the restart; anything that
 expired while it was down is unbanned instead, in case the firewall still had
 the rule. A kur that dies is restarted with a backoff, doubling to a cap of a
@@ -144,11 +144,11 @@ sub execute {
 } ## end sub execute
 
 # Waits, briefly, for a previous manager to finish going away, so that a
-# restart does not race it's own predecessor. This exists because
+# restart does not race its own predecessor. This exists because
 # "ereshkigal stop" returns as soon as the shutdown has been requested
 # rather than once it has finished, which means "service ereshkigal
 # restart", and anything else that stops and immediately starts, can reach
-# start while the old manager is still tearing it's kurs down. With out this
+# start while the old manager is still tearing its kurs down. With out this
 # the start aborts with daemonize's "Pid_file already exists for running
 # process" for a manager that was a half second from being gone.
 #
@@ -158,7 +158,7 @@ sub execute {
 # can not be opened, it holds nothing that looks like a PID, or the PID it
 # holds names a process that is neither running nor merely unsignalable by
 # us. The first three are all a stale PID file, which daemonize happily
-# reclaims on it's own.
+# reclaims on its own.
 #
 # Deliberately does not decide anything. If a live manager is still there
 # when the polling runs out it returns anyway and leaves the refusing to

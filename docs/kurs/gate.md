@@ -61,9 +61,9 @@ members and run against each:
 
 Untargeted commands — a bare `ban` (no `--kur`), `unban`,
 `cidr-unban`, `banned`, and a bare `checkpoint` — never touch gates.
-They enumerate only real kurs; gates are skipped entirely. Naming a gate's *member* directly
-(`ban --kur sshd`) works normally and is authorized against the
-member's own lists, not the gate's.
+They enumerate only real kurs; gates are skipped entirely. Naming a
+gate's *member* directly (`ban --kur sshd`) works normally and is
+authorized against the member's own lists, not the gate's.
 
 ## Response shape
 

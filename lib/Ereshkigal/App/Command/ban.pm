@@ -34,11 +34,11 @@ our $VERSION = '0.0.1';
 =head1 DESCRIPTION
 
 Bans one or more IPs. Without C<--kur> every kur gets them, each blocking per
-it's own ports and protocols; with C<--kur> only that instance does, and
+its own ports and protocols; with C<--kur> only that instance does, and
 naming a fan_out gate sends them to every kur behind it.
 
 Each IP is answered for separately, so one bad address does not spoil the
-rest of the request, and re-banning something already banned just resets it's
+rest of the request, and re-banning something already banned just resets its
 sentence rather than erroring.
 
 C<--ban-time> is in seconds and overrides the kur's default for these bans

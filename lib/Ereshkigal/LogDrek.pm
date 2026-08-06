@@ -34,7 +34,7 @@ our @EXPORT_OK = qw( log_drek );
 
 This holds the C<log_drek> sub used by both C<ereshkigal> and C<kur> as well
 as the various Ereshkigal modules for logging everything they do. It is a
-plain function usable with out new or the like being called, exported on
+plain function usable without new or the like being called, exported on
 request, so everything can share one implementation instead of each carrying
 their own copy.
 

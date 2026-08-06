@@ -28,7 +28,7 @@ Defines and starts a new kur instance in the running manager. Does not
 rewrite the config file... to make it permanent, add it to the config.
 
 With C<--fan-out> in place of C<--backend> the new kur is a manager side
-fan out kur... no process of it's own, with commands targeted at it
+fan out kur... no process of its own, with commands targeted at it
 fanning out to the listed member kurs.
 
 =head1 METHODS
@@ -162,7 +162,7 @@ sub execute {
 # like as a single string, but add_kur is a JSON request where ports is a
 # array, so the splitting has to happen somewhere and it happens here.
 # Shared by --fan-out, --ports, --protocols and --interfaces rather than
-# each doing it's own, so all four treat sloppy input the same way.
+# each doing its own, so all four treat sloppy input the same way.
 #
 # The value is trimmed at both ends, split on commas with any surrounding
 # whitespace eaten, and empty elements dropped, so ",22", "22, 23," and
@@ -172,7 +172,7 @@ sub execute {
 #
 # Args, both positional and required...
 #
-#     $option_name  :: The option's name with out it's leading dashes, as in
+#     $option_name  :: The option's name without its leading dashes, as in
 #                      'ports' or 'fan-out'. Used only to build the usage
 #                      error, so it wants to be the dashed spelling the user
 #                      actually typed rather than the underscored one the
@@ -184,7 +184,7 @@ sub execute {
 #                      error anyway.
 #
 # Returns a array ref of the elements, in the order given and with
-# duplicates left alone... a caller wanting them deduped does that it's
+# duplicates left alone... a caller wanting them deduped does that its
 # self, and for ports the manager does it anyway.
 #
 # Does not return if the value yields nothing, as "" or "," would. That

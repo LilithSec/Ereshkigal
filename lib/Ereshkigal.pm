@@ -34,7 +34,7 @@ our $VERSION = '0.0.1';
 
 Ereshkigal is a ban manager for firewalls. It wrangles various
 L<Ereshkigal::Kur> instances, spawned via the C<kur> bin, each of which runs
-as it's own process and uses L<Net::Firewall::BlockerHelper> for talking to
+as its own process and uses L<Net::Firewall::BlockerHelper> for talking to
 the firewall.
 
 The manager listens on a unix socket, by default
@@ -80,18 +80,18 @@ Top level keys are manager settings.
         Default :: 30
 
     - ban_time :: How long bans should last in seconds. 0 means bans never
-          time out. May be overridden per kur via ban_time in it's hash and
+          time out. May be overridden per kur via ban_time in its hash and
           per ban request.
         Default :: 600
 
     - checkpoint :: Seconds between periodic rewrites of each kur's ban
           state CSV. 0 disables the periodic rewrite... ban/unban, stop,
           and on demand checkpoints still happen. May be overridden per kur
-          via checkpoint in it's hash.
+          via checkpoint in its hash.
         Default :: 60
 
     - enable_cidr :: Whether CIDR banning is enabled. May be overridden per
-          kur via enable_cidr in it's hash. Even when set, the cidr_ban and
+          kur via enable_cidr in its hash. Even when set, the cidr_ban and
           cidr_unban commands only work on a kur whose backend supports CIDR
           bans.
         Default :: false
@@ -101,7 +101,7 @@ Top level keys are manager settings.
           backend can not do CIDR. When set such a kur silently drops the
           command rather than erroring, which keeps a fan out across a mix of
           CIDR capable and incapable kurs from being spoiled by the incapable
-          ones. May be overridden per kur via cidr_silent_drop in it's hash.
+          ones. May be overridden per kur via cidr_silent_drop in its hash.
         Default :: false
 
     - enable_auth :: Enables the L<POE::Component::Server::JSONUnix>
@@ -121,28 +121,28 @@ Top level keys are manager settings.
 
 A kur hash may instead carry C<fan_out>, a array of other kur names, in
 place of C<backend>. Such a kur is manager side only... no process and no
-socket of it's own. Commands targeted at it (C<ban> and C<cidr_ban> with
+socket of its own. Commands targeted at it (C<ban> and C<cidr_ban> with
 args.kur, C<checkpoint>, C<re_init>, and C<clear_retries> with args.kur,
-and C<status_kur>) fan out to it's members
+and C<status_kur>) fan out to its members
 instead, making it usable as a single point of contact for driving a whole
 set of kurs. With enable_auth on, authorization for a command targeted at
 a fan_out kur is checked against the fan_out kur's own lists rather than
-it's members', so a integration may be granted just the gateway with out
+its members', so a integration may be granted just the gateway without
 being listed on any member. Members must be defined non fan_out kurs...
 fan_out kurs may not nest. Untargeted commands (C<ban> and C<cidr_ban> with
 out args.kur, C<unban>, C<cidr_unban>, C<banned>, and C<checkpoint>,
-C<re_init>, and C<clear_retries> with out args.kur) touch only real
+C<re_init>, and C<clear_retries> without args.kur) touch only real
 kurs, never fan_out ones.
 
     [kur.baphomet]
     fan_out      = [ "sshd", "smtp" ]
     authed_users = [ "baphomet" ]
 
-Each kur hash may also carry it's own C<authed_users>/C<authed_groups>,
+Each kur hash may also carry its own C<authed_users>/C<authed_groups>,
 which expand upon the global ones for that kur... the effective lists for
-a kur are the global ones plus it's own. A command must be authorized for
+a kur are the global ones plus its own. A command must be authorized for
 every kur it touches, with untargeted fan-out commands touching every kur,
-while commands about the manager it's self (stop, add_kur, remove_kur, and
+while commands about the manager itself (stop, add_kur, remove_kur, and
 the whole manager views status/status_all) require the global lists. UID 0
 is always authorized. The kur backends do no checking at all... their
 sockets are 0600 and only ereshkigal is expected to be able to write to
@@ -440,13 +440,13 @@ The JSON commands handled are as below.
     - status_all :: The above plus each kur's full status block.
 
     - status_kur :: Full status of the kur instance args.name. For a
-          fan_out kur this is it's member list plus each member's status.
+          fan_out kur this is its member list plus each member's status.
 
     - banned :: Banned IPs, grouped per kur, along with when each expires.
 
     - ban :: Ban the IPs args.ips on the kur args.kur, or on all kurs if
           args.kur is not specified. If args.kur is a fan_out kur it expands
-          to it's members. args.ban_time, if defined, is forwarded
+          to its members. args.ban_time, if defined, is forwarded
           to the kurs, overriding their default for how long the bans should
           last in seconds, with 0 meaning never time out. IPs are validated
           and normalized to their canonical form before being fanned out,
@@ -463,7 +463,7 @@ The JSON commands handled are as below.
           CIDRs are validated and reduced to their canonical network form
           before being fanned out. A targeted kur, or a untargeted fan out,
           for which CIDR is not available answers per kur with either a drop
-          or a error depending on it's cidr_silent_drop.
+          or a error depending on its cidr_silent_drop.
 
     - cidr_unban :: Validate and normalize args.cidr, erroring if it fails to
           validate, then check each kur for it and unban it from each kur it
@@ -478,7 +478,7 @@ The JSON commands handled are as below.
 
     - checkpoint :: Force the kur args.kur, or all kurs if args.kur is not
           specified, to write their ban state CSVs out now. If args.kur is a
-          fan_out kur it expands to it's members.
+          fan_out kur it expands to its members.
 
     - re_init :: Have the kur args.kur, or all kurs if args.kur is not
           specified, tear their firewall setup down and rebuild it, re-banning
@@ -722,7 +722,7 @@ sub _check_kur_def {
 # actually registered.
 #
 # Walks the member list in order and stops at the first member that is either
-# unknown to the registry or is it's self a fan_out kur, gates not being
+# unknown to the registry or is itself a fan_out kur, gates not being
 # allowed to nest.
 #
 # Args, all required and positional...
@@ -781,7 +781,7 @@ sub _check_fan_out_members {
 # Judges whether a value is usable as a authed_users or authed_groups list,
 # which has to be a array of plain strings. Used by _check_kur_def for the
 # per kur lists and by new for the manager wide ones, which is why it reports
-# rather than dies... each caller wants to wrap the answer in it's own
+# rather than dies... each caller wants to wrap the answer in its own
 # message naming which list was wrong. It is a plain sub rather than a
 # method, taking no invocant.
 #
@@ -824,7 +824,7 @@ sub _authed_list_error {
 # array or hash valued option would otherwise reach the backend stringified
 # as ARRAY(0x...) and fail confusingly at init... this catches it at config
 # load instead. The one exception is interfaces, which backends such as xdp
-# want as a array and which rides it's own --interfaces flag. Like
+# want as a array and which rides its own --interfaces flag. Like
 # _authed_list_error it reports rather than dies, and is a plain sub taking
 # no invocant.
 #
@@ -872,20 +872,20 @@ sub _options_error {
 # Checks if the user is in the passed users list or a member of one of the
 # passed groups. The one place membership is actually decided, called by
 # _authorize for both the manager level lists and the per kur ones, so the
-# rule stays identical for both. It renders no verdict of it's own about what
+# rule stays identical for both. It renders no verdict of its own about what
 # that membership means... it answers yes or no and _authorize decides what
 # to do about it.
 #
 # Names are compared as exact strings, no case folding and no globbing.
 # Group membership, primary and secondary both, comes from the JSONUnix
 # context rather than being resolved here, which is what lets user and group
-# database changes apply with out a restart... the context resolves it
+# database changes apply without a restart... the context resolves it
 # through NSS and caches it per connection.
 #
 # Args, all required and positional...
 #
 #     $ctx      :: The POE::Component::Server::JSONUnix context object for
-#                  the connection the request arrived on. Only it's in_group
+#                  the connection the request arrived on. Only its in_group
 #                  method is used here. Must be a real context... there is no
 #                  guard against undef, as every caller has already taken uid
 #                  and username off it.
@@ -984,7 +984,7 @@ sub _authorize {
 	if ( !defined($uid) ) {
 		# should be unreachable as JSONUnix gates unauthed commands first...
 		# a hash ref die carries a machine-readable code through to the
-		# JSONUnix error response, matching it's own auth_required code
+		# JSONUnix error response, matching its own auth_required code
 		die( { 'error' => 'authentication required', 'code' => 'auth_required' } );
 	}
 	if ( $uid == 0 ) {
@@ -1008,7 +1008,7 @@ sub _authorize {
 	} ## end if ( !@kurs )
 
 	foreach my $name (@kurs) {
-		# the effective lists for a kur are the global ones plus it's own
+		# the effective lists for a kur are the global ones plus its own
 		my $def = defined( $self->{kurs}{$name} ) ? $self->{kurs}{$name}{opts} : {};
 		my @users
 			= ( @{ $self->{authed_users} }, ref( $def->{authed_users} ) eq 'ARRAY' ? @{ $def->{authed_users} } : () );
@@ -1028,7 +1028,7 @@ sub _authorize {
 } ## end sub _authorize
 
 # Builds a Ereshkigal::Client aimed at one kur's socket, carrying the
-# manager wide timeout. Used where a single kur has to be spoken to on it's
+# manager wide timeout. Used where a single kur has to be spoken to on its
 # own rather than fanned to, which is the two shutdown paths, _poe_stop_all
 # and _poe_remove_kur. Everything else goes through _fan_out, as that answers
 # per kur and bounds the whole conversation with one deadline.
@@ -1044,8 +1044,8 @@ sub _authorize {
 #              name that is not registered yields a client pointed at a
 #              socket that does not exist.
 #
-# Returns a new Ereshkigal::Client instance with it's socket set to that
-# kur's path under run_base_dir/kur/ and it's timeout set to the manager's
+# Returns a new Ereshkigal::Client instance with its socket set to that
+# kur's path under run_base_dir/kur/ and its timeout set to the manager's
 # timeout setting.
 #
 #     eval { $self->_kur_client('sshd')->call_ok('stop'); };
@@ -1061,7 +1061,7 @@ sub _kur_client {
 
 # The names of the kurs that are actual processes, sorted... fan_out kurs
 # are manager side only and get excluded everywhere a untargeted command
-# resolves it's targets. Every untargeted command runs through this, which is
+# resolves its targets. Every untargeted command runs through this, which is
 # what keeps a gate from being double counted... banning with no --kur
 # reaches each real kur once rather than once directly and again through
 # every gate naming it.
@@ -1086,11 +1086,11 @@ sub _real_kur_names {
 }
 
 # Expands a targeted kur name into fan out targets... a fan_out kur becomes
-# it's members while a plain kur is just it's self. This is what makes a gate
+# its members while a plain kur is just itself. This is what makes a gate
 # usable as a single point of contact, and it is deliberately separate from
 # authorization... the caller authorizes against the name it was given, not
 # against what that name expands to, which is exactly why being granted a
-# gate covers it's members with out being listed on any of them.
+# gate covers its members without being listed on any of them.
 #
 # One level only. Gates may not nest, which _check_fan_out_members enforces
 # at definition time, so there is no recursion here.
@@ -1099,11 +1099,11 @@ sub _real_kur_names {
 #
 #     $name :: The kur instance name that was targeted, as a plain string. A
 #              name that is not registered is not a error here... it comes
-#              back as it's self, and the fan out then answers it with a not
+#              back as itself, and the fan out then answers it with a not
 #              running error. Callers that want a unknown kur to be a error
 #              check the registry themselves, after authorizing.
 #
-# Returns a list of kur names to actually act on. For a gate that is it's
+# Returns a list of kur names to actually act on. For a gate that is its
 # member list in the order the fan_out array carries them; for anything else
 # it is a one element list holding the name it was given.
 #
@@ -1122,7 +1122,7 @@ sub _expand_kur_targets {
 
 # Fans one command out to the passed kur instances concurrently via
 # Ereshkigal::Client->call_many. Almost every command handler ends in a call
-# to this, and it's return is what they hand back as the kurs value of their
+# to this, and its return is what they hand back as the kurs value of their
 # response, so the per kur shape a consumer sees is decided here.
 #
 # Kurs that are not running are answered locally with a not running error and
@@ -1131,7 +1131,7 @@ sub _expand_kur_targets {
 # them concurrently under a single shared deadline... the wall time is the
 # slowest kur capped at one timeout rather than the sum of all of them.
 #
-# It does no authorizing and no target expansion of it's own... callers have
+# It does no authorizing and no target expansion of its own... callers have
 # already run _authorize and _expand_kur_targets by the time they get here.
 #
 # Args...
@@ -1206,20 +1206,20 @@ sub _fan_out {
 # CIDR toggles do the same and are collapsed to a clean 1 or 0 so the kur is
 # not left folding config strings. ports and protocols are comma joined.
 # Backend options ride --option key=value, sorted for a stable command line,
-# with interfaces the one exception... it may be a array and so rides it's
+# with interfaces the one exception... it may be a array and so rides its
 # own --interfaces flag, comma joined, for the kur bin to split back apart.
 # _options_error has already refused any other array valued option by now.
 #
 # Always passes --foreground, as the manager supervises the process through a
-# POE::Wheel::Run and must not have it daemonize away from it's wheel.
+# POE::Wheel::Run and must not have it daemonize away from its wheel.
 #
 # Args, required and positional...
 #
 #     $name :: The kur instance name, as a plain string. Must already be
-#              registered... it's opts hash is read straight out of the
+#              registered... its opts hash is read straight out of the
 #              registry, so a unknown name warns and builds a broken command.
 #
-# Returns the command as a list, ready to hand to POE::Wheel::Run as it's
+# Returns the command as a list, ready to hand to POE::Wheel::Run as its
 # Program... the kur bin path first, then the flags. Not a string, so no
 # quoting is needed or applied and a option value carrying spaces survives.
 #
@@ -1419,7 +1419,7 @@ sub _poe_restart_kur {
 
 # The manager session's kur_stdout handler, fired by the POE::Wheel::Run of
 # a kur process for each line that child writes to stdout. A kur normally
-# says nothing there, logging through syslog it's self, so anything arriving
+# says nothing there, logging through syslog itself, so anything arriving
 # is worth relaying rather than swallowing... it is usually a module warning
 # or something printed before logging was up.
 #
@@ -1454,7 +1454,7 @@ sub _poe_kur_stdout {
 
 # The manager session's kur_stderr handler, the stderr twin of
 # _poe_kur_stdout, differing only in logging at err rather than info. This is
-# where a kur that dies before it can log for it's self ends up being heard
+# where a kur that dies before it can log for itself ends up being heard
 # from... a backend init failure or a missing binary arrives here, which is
 # why it is relayed at err and not quietly discarded.
 #
@@ -1494,12 +1494,12 @@ sub _poe_kur_stderr {
 # dropped from wheel_to_kur and the entry's wheel and pid cleared, so a kur
 # that is down is visibly down everywhere. Note the wheel_to_kur cleanup only
 # happens while the entry is still around, which is why _poe_remove_kur does
-# it's own before deleting one.
+# its own before deleting one.
 #
 # Then the restart decision. Nothing is restarted while shutting_down is set,
 # nor for a kur that has been removed or disabled... those are all deaths we
 # asked for. Otherwise the backoff runs... a process that stayed up longer
-# than 60 seconds is considered to have started fine and has it's delay reset
+# than 60 seconds is considered to have started fine and has its delay reset
 # to 1, so a kur that is merely restarted occasionally does not creep toward
 # the cap. The restart is then scheduled at the current delay and the delay
 # doubled for next time, capped at 60 seconds, and the restart count bumped.
@@ -1546,7 +1546,7 @@ sub _poe_kur_reaped {
 	# the raw wait status packs the signal that killed it into the low seven
 	# bits and the exit code into the next eight, so decode both rather than
 	# shifting blindly... a kur killed by signal 9 and one that exited 9 of
-	# it's own accord are not the same event and should not read alike
+	# its own accord are not the same event and should not read alike
 	my $signal = $exit & 127;
 	my $how    = $signal ? 'was killed by signal ' . $signal : 'exited with ' . ( $exit >> 8 );
 	log_drek( 'info', 'kur "' . $name . '" PID ' . $pid . ' ' . $how );
@@ -1569,7 +1569,7 @@ sub _poe_kur_reaped {
 	# the manager did not itself ask for is restarted, tidily as it may have
 	# gone. The stops that were asked for never reach here, stop_all having
 	# set shutting_down and remove_kur having cleared enabled before either
-	# takes a kur down, so what is left is a kur that went away on it's own.
+	# takes a kur down, so what is left is a kur that went away on its own.
 	# That is a error whatever status it managed to exit with, and is logged
 	# as one... the status only changes the wording, never the decision
 	log_drek( 'err', 'kur "' . $name . '" ' . $how . ', restarting in ' . $delay . ' seconds' );
@@ -1582,15 +1582,15 @@ sub _poe_kur_reaped {
 # The manager session's remove_kur handler, which stops one kur and drops it
 # from the registry for good. The actual removal has to happen in the manager
 # session as destroying a POE::Wheel::Run from within another session leaves
-# it's watchers behind, keeping the manager session alive forever... which is
+# its watchers behind, keeping the manager session alive forever... which is
 # why _cmd_remove_kur only marks the entry disabled and posts here rather
-# than doing the work it's self.
+# than doing the work itself.
 #
-# A running kur is asked to stop over it's own socket, so it checkpoints it's
-# tablets and tears it's firewall setup down properly. Only if that fails is
+# A running kur is asked to stop over its own socket, so it checkpoints its
+# tablets and tears its firewall setup down properly. Only if that fails is
 # it sent a TERM, which gets the process gone but leaves whatever it was
-# holding in the firewall. Either way the entry is then unwired... it's wheel
-# dropped from wheel_to_kur, it's PID from pid_to_kur, and the registry entry
+# holding in the firewall. Either way the entry is then unwired... its wheel
+# dropped from wheel_to_kur, its PID from pid_to_kur, and the registry entry
 # deleted.
 #
 # Those two lookups are cleaned here rather than being left to the reap
@@ -1648,18 +1648,18 @@ sub _poe_remove_kur {
 # The manager session's stop_all handler, which brings every kur down and
 # then lets the manager session end. Posted by the stop command handler,
 # which answers the client first and leaves the shutdown to happen behind
-# it's back.
+# its back.
 #
 # Sets shutting_down before anything else, which is what stops _poe_kur_reaped
 # from restarting the deaths that are about to happen... without that, every
 # kur stopped here would be dutifully brought back.
 #
-# Then each running kur is asked to stop over it's own socket, in name order,
-# so it checkpoints and tears it's firewall setup down properly. A kur whose
+# Then each running kur is asked to stop over its own socket, in name order,
+# so it checkpoints and tears its firewall setup down properly. A kur whose
 # socket will not answer is sent a TERM instead, which ends the process but
-# leaves it's firewall state behind. This is done one at a time and inline
+# leaves its firewall state behind. This is done one at a time and inline
 # rather than fanned out, as the manager has nothing else to do and each stop
-# should be given it's own full timeout.
+# should be given its own full timeout.
 #
 # Finally the session's alarms are cleared and the alias dropped, which is
 # what actually lets the session, and so the kernel, finish.
@@ -1671,7 +1671,7 @@ sub _poe_remove_kur {
 #
 # Returns nothing meaningful, a empty return.
 #
-#     # from the stop command handler, after it's response has been queued
+#     # from the stop command handler, after its response has been queued
 #     $poe_kernel->post( 'ereshkigal_manager', 'stop_all' );
 sub _poe_stop_all {
 	my ( $self, $kernel ) = @_[ OBJECT, KERNEL ];
@@ -1709,10 +1709,10 @@ sub _poe_stop_all {
 # wedged, and _cmd_status_all is what layers the asking on top.
 #
 # Takes only the invocant. A real kur's row reports whether it is running,
-# from whether the registry holds a PID, along with that PID, it's restart
-# count, and whether it is enabled. A gate has no process of it's own, so
-# it's row carries it's member list instead of a PID or restart count and
-# counts as running only when every one of it's members is... a gate with a
+# from whether the registry holds a PID, along with that PID, its restart
+# count, and whether it is enabled. A gate has no process of its own, so
+# its row carries its member list instead of a PID or restart count and
+# counts as running only when every one of its members is... a gate with a
 # dead member reads as not running, which is the honest answer given a
 # command through it would only partly land.
 #
@@ -1731,7 +1731,7 @@ sub _kur_summary {
 	my $kurs = {};
 	foreach my $name ( keys( %{ $self->{kurs} } ) ) {
 		my $entry = $self->{kurs}{$name};
-		# a fan_out kur has no process of it's own... it counts as running
+		# a fan_out kur has no process of its own... it counts as running
 		# when every member is
 		if ( defined( $entry->{opts}{fan_out} ) ) {
 			my $running = 1;
@@ -1769,7 +1769,7 @@ sub _kur_summary {
 # entry in start_server has already run _authorize with no kur names, this
 # being a manager level view.
 #
-# Returns a hash ref carrying the manager's pid, it's uptime in seconds since
+# Returns a hash ref carrying the manager's pid, its uptime in seconds since
 # start_server finished coming up, the config path it was loaded from,
 # enable_auth as 1 or 0, and kurs holding whatever _kur_summary built.
 #
@@ -1789,17 +1789,17 @@ sub _cmd_status {
 } ## end sub _cmd_status
 
 # Handles the status_all command... _cmd_status with each running real kur
-# additionally asked for it's own status, which is where ban counts, the next
+# additionally asked for its own status, which is where ban counts, the next
 # expiry, the CIDR flags, per instance stats, and what unbans are still owed
 # to the firewall come from. Those live kur side, so the only way to have
 # them is to ask.
 #
 # Takes only the invocant. Only running real kurs are asked... a stopped one
 # has nothing to answer with and stays a bare summary row, and a gate has no
-# socket of it's own, it's members being asked in their own right anyway.
+# socket of its own, its members being asked in their own right anyway.
 #
-# A kur that is running but will not answer has it's failure reported under a
-# error key on it's row rather than a status one, which is the same shape
+# A kur that is running but will not answer has its failure reported under a
+# error key on its row rather than a status one, which is the same shape
 # _cmd_status_kur uses, so a consumer checks one place for either view.
 #
 # Returns the same hash ref shape _cmd_status does, with each asked kur's row
@@ -1831,7 +1831,7 @@ sub _cmd_status_all {
 } ## end sub _cmd_status_all
 
 # Handles the status_kur command... the summary row for the kur named by
-# args.name plus it's own status when running, or the member list plus each
+# args.name plus its own status when running, or the member list plus each
 # member's status when it is a gate.
 #
 # Note the ordering... the name is authorized before the registry is
@@ -1858,7 +1858,7 @@ sub _cmd_status_all {
 # enabled }, gaining either a status key holding that kur's full status hash
 # or a error key when it is running but could not be reached. For a gate it
 # is { name, fan_out => [ members ], enabled, kurs => { per member } }, with
-# no running or pid of it's own.
+# no running or pid of its own.
 #
 # Dies with a plain string when args.name is missing or names no registered
 # kur. Authorization failures die with the { error, code } hash ref
@@ -1885,7 +1885,7 @@ sub _cmd_status_kur {
 		die( 'No such kur instance, "' . $name . '"' );
 	}
 
-	# a fan_out kur has no process of it's own, so it's status is it's
+	# a fan_out kur has no process of its own, so its status is its
 	# member list plus each member's status
 	if ( defined( $entry->{opts}{fan_out} ) ) {
 		return {
@@ -1933,14 +1933,14 @@ sub _cmd_status_kur {
 # reach a consumer... the retry books are in the list for exactly that
 # reason, having once been dropped on the way out.
 #
-# A kur that could not be reached keeps it's { error => ... } row untouched,
+# A kur that could not be reached keeps its { error => ... } row untouched,
 # the trimming only applying to successful answers.
 #
 # Returns a hash ref of { kurs => { name => row } }. A successful row carries
 # banned as a array ref of the IPs the firewall itself reports, expires as a
-# hash ref of IP to the epoch it's sentence ends with 0 meaning never, the
+# hash ref of IP to the epoch its sentence ends with 0 meaning never, the
 # same pair as banned_cidr and cidr_expires for ranges, and unban_retries and
-# cidr_unban_retries as hash refs of entry to it's retry book keeping. A
+# cidr_unban_retries as hash refs of entry to its retry book keeping. A
 # failed row is { error => '...' }.
 #
 #     my $result = $self->_cmd_banned;
@@ -2019,7 +2019,7 @@ sub _cmd_ban {
 # The all form is a flush rather than a mass unban, so it empties range bans
 # alongside single IPs on every kur in one command.
 #
-# Note this takes no context and does no authorizing of it's own... the
+# Note this takes no context and does no authorizing of its own... the
 # dispatch entry in start_server has already authorized against every real
 # kur before calling, this being untargeted either way.
 #
@@ -2031,7 +2031,7 @@ sub _cmd_ban {
 #                 The IP is normalized here rather than kur side, so garbage
 #                 is bounced once instead of by every kur, and what is fanned
 #                 out is the canonical form... which is what lets a variant
-#                 spelling of a IPv6 address still find it's ban.
+#                 spelling of a IPv6 address still find its ban.
 #
 # Returns a hash ref of { kurs => { name => per kur result } }. For the all
 # form each result is that kur's flush answer, { flushed => 1 }; for a single
@@ -2082,8 +2082,8 @@ sub _cmd_unban {
 #
 # Whether a given kur will actually act on it is not decided here. A kur with
 # CIDR banning off, or on a backend that cannot match a prefix, either
-# refuses or silently drops per it's own cidr_silent_drop setting, and that
-# answer comes back in it's row like any other.
+# refuses or silently drops per its own cidr_silent_drop setting, and that
+# answer comes back in its row like any other.
 #
 # Args...
 #
@@ -2126,7 +2126,7 @@ sub _cmd_cidr_ban {
 # who is not entitled can neither enumerate kur names nor make the manager
 # burn cycles validating a list it is never going to send. Within that, a
 # named kur is authorized against the name as given rather than what it
-# expands to, which is what makes a gate grant cover it's members; and a
+# expands to, which is what makes a gate grant cover its members; and a
 # untargeted command authorizes before reporting that there are no kurs, so
 # a refusal never leaks whether the manager is carrying anything.
 #
@@ -2154,7 +2154,7 @@ sub _cmd_cidr_ban {
 #                   noun_long  :: the long one, 'IPv4 or IPv6 IP' or the CIDR
 #                                 equivalent
 #                   normalizer :: a code ref taking a raw entry and returning
-#                                 it's canonical form or undef, so normalize_ip
+#                                 its canonical form or undef, so normalize_ip
 #                                 or normalize_cidr
 #                   command    :: the command name to fan out, 'ban' or
 #                                 'cidr_ban'
@@ -2315,8 +2315,8 @@ sub _cmd_cidr_unban {
 } ## end sub _cmd_cidr_unban
 
 # Handles the checkpoint command... fans checkpoint out to the kurs behind
-# args.kur when given, or every real kur otherwise, having each write it's
-# tablets to disk now rather than waiting for it's next mutation or interval.
+# args.kur when given, or every real kur otherwise, having each write its
+# tablets to disk now rather than waiting for its next mutation or interval.
 #
 # Authorization follows the same pattern every targeted command uses... a
 # named kur is authorized against the name as given, before the registry is
@@ -2426,7 +2426,7 @@ sub _cmd_re_init {
 # unban to forget rather than the lot.
 #
 # What is being forgotten is book keeping only. When a ban's sentence runs
-# out but the backend refuses the unban, the kur drops it from it's ban book
+# out but the backend refuses the unban, the kur drops it from its ban book
 # and keeps owing the firewall the removal, retrying with a backoff. This
 # forgets that debt. Nothing is sent to the firewall, so a rule that really
 # is still in place is left with nothing tracking it... which is why the CLI
@@ -2529,7 +2529,7 @@ sub _cmd_clear_retries {
 # supervision machinery finds what it expects... a fresh restart count, a
 # backoff delay of 1, and enabled set.
 #
-# Note this takes no context and authorizes nothing of it's own... the
+# Note this takes no context and authorizes nothing of its own... the
 # dispatch entry has already run _authorize with no kur names, adding a kur
 # being a manager level act.
 #
@@ -2537,7 +2537,7 @@ sub _cmd_clear_retries {
 #
 #     $request :: Required. The decoded request hash ref. Must carry args
 #                 holding a name key, the new kur's name as a plain string,
-#                 and a opts key holding it's definition hash ref, which
+#                 and a opts key holding its definition hash ref, which
 #                 takes the same keys a config kur hash does... backend or
 #                 fan_out, ports, protocols, prefix, self_heal, ban_time,
 #                 checkpoint, enable_cidr, cidr_silent_drop, options,
@@ -2610,13 +2610,13 @@ sub _cmd_add_kur {
 # actually kills it.
 #
 # The real work is left to the manager session, as a POE::Wheel::Run must be
-# destroyed in the session watching it or it's watchers outlive it and keep
+# destroyed in the session watching it or its watchers outlive it and keep
 # the session alive forever.
 #
 # The config file is not rewritten, so a kur defined there returns at the
 # next manager start.
 #
-# Note this takes no context and authorizes nothing of it's own... the
+# Note this takes no context and authorizes nothing of its own... the
 # dispatch entry has already run _authorize with no kur names.
 #
 # Args...

@@ -166,7 +166,7 @@ sub _result_has_failures {
 
 # Overrides the App::Cmd::Command hook of the same name so every subcommand
 # gains a --help/-h flag. App::Cmd wires up a help command but no such flag,
-# so with out this each subcommand answers "Unknown option: help" to the
+# so without this each subcommand answers "Unknown option: help" to the
 # first thing most people reach for. Doing it here means the twelve
 # subcommands do not each have to remember to put it in their own opt_spec,
 # and can not drift from one another over it.
@@ -185,7 +185,7 @@ sub _result_has_failures {
 #              here.
 #
 # Returns a list, not a ref... the usage_desc string first, then each
-# opt_spec entry as it's own array ref of [ spec, description ] or
+# opt_spec entry as its own array ref of [ spec, description ] or
 # [ spec, description, \%opts ], then [ 'help|h', 'show this help and
 # exit' ] last. Last so it renders at the bottom of the options listing,
 # under the subcommand's own options, rather than in amongst them.
@@ -210,7 +210,7 @@ sub _option_processing_params {
 # behaves that way because the help is answered before validate_args ever
 # sees the empty arg list. It is public rather than underscored only
 # because App::Cmd names the hook, and it carries no POD for the same
-# reason it's siblings do not... it is a framework callback, not a API
+# reason its siblings do not... it is a framework callback, not a API
 # anyone here calls.
 #
 # The parent is left to do all the real work, parsing the options and
@@ -258,14 +258,14 @@ sub prepare {
 
 # Renders the help screen prepare prints for --help, assembled the same way
 # and out of the same three pieces App::Cmd's own help command assembles
-# it's own. That sameness is the whole point... "ereshkigal help ban" and
+# its own. That sameness is the whole point... "ereshkigal help ban" and
 # "ereshkigal ban --help" have to agree, and they only reliably do so by
 # being built identically rather than by two bits of code being kept in step
 # by hand.
 #
 # The three pieces are the usage leader line, the subcommand's description,
 # and the option listing, joined with newlines. The description gets a
-# leading newline of it's own so it sits in a paragraph of it's own under
+# leading newline of its own so it sits in a paragraph of its own under
 # the usage line, but only when there is one... a subcommand with a empty
 # description gets no stray blank line for it.
 #

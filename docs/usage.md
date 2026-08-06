@@ -21,11 +21,11 @@ reaching for either; both can undo a lot of blocking in one go.
 ## Raising and quieting the underworlds
 
 ```shell
-ereshkigal start                      # read the config, daemonize, raise every kur
-ereshkigal start --foreground        # same, staying attached (for supervisors/testing)
+ereshkigal start                 # read the config, daemonize, raise every kur
+ereshkigal start --foreground    # same, staying attached (supervisors, testing)
 ereshkigal start --config /etc/e.toml
-ereshkigal stop                       # stop every kur (tearing down their firewall
-                                      # state) and then the manager
+ereshkigal stop                  # stop every kur (tearing down their firewall
+                                 # state) and then the manager
 ```
 
 ## A census of who dwells below
@@ -92,12 +92,12 @@ There is no `cidr-unban --all` — `unban --all` already empties every
 underworld, single IPs and ranges alike.
 
 A kur without CIDR banning available for it (not enabled, or a backend
-that can not carry ranges) either answers a plain error or, when its
+that cannot carry ranges) either answers a plain error or, when its
 `cidr_silent_drop` is set, quietly drops the command with `dropped:1`.
 That keeps a fan-out across a mix of range-capable and range-incapable
-underworlds from being spoiled by the ones that can not oblige.
+underworlds from being spoiled by the ones that cannot oblige.
 
-## Managing underworlds at runtime
+## Raising and tearing down underworlds at runtime
 
 ```shell
 ereshkigal add dns --backend pf --ports 53 --protocols tcp,udp \
@@ -175,7 +175,7 @@ each kur already checks its setup before every ban and unban and
 rebuilds it if it has gone missing. Reach for `re-init` when you want
 that now rather than at the next ban, or when `self_heal` is off.
 
-## Driving the socket directly
+## Communing with Ereshkigal directly
 
 Integrations (log watchers, IDS glue) do not need the CLI. The
 manager socket speaks newline-delimited JSON: send one object, read
@@ -215,19 +215,28 @@ my $response = $client->call('status');
 if ( $response->{status} eq 'ok' ) { ... }
 ```
 
-The commands and their args mirror the CLI exactly: `status`,
-`status_all`, `status_kur` (`{"name":...}`), `banned`, `ban`
-(`{"ips":[...], "kur":..., "ban_time":...}` with kur/ban_time
-optional), `unban` (`{"ip":...}` or `{"all":true}`), `cidr_ban`
-(`{"cidrs":[...], "kur":..., "ban_time":...}` with kur/ban_time
-optional), `cidr_unban` (`{"cidr":...}`), `add_kur`
-(`{"name":..., "opts":{...}}`), `remove_kur` (`{"name":...}`),
-`checkpoint` (`{"kur":...}` optional), `re_init` (`{"kur":...}`
-optional), `clear_retries`
-(`{"kur":..., "ip":...}` or `{"kur":..., "cidr":...}`, all optional),
-and `stop`. Responses are
-`{"status":"ok","result":...}` or `{"status":"error","error":"..."}`.
+The commands and their args mirror the CLI exactly:
 
-Note that with `enable_auth` on, a raw `nc` integration must complete
-the auth challenge itself (see [security](security.md)) — using
+| command         | args                                                    |
+|-----------------|----------------------------------------------------------|
+| `status`        | none                                                    |
+| `status_all`    | none                                                    |
+| `status_kur`    | `{"name":...}`                                          |
+| `banned`        | none                                                    |
+| `ban`           | `{"ips":[...]}`; `kur` and `ban_time` optional          |
+| `unban`         | `{"ip":...}`, or `{"all":true}` to flush every kur      |
+| `cidr_ban`      | `{"cidrs":[...]}`; `kur` and `ban_time` optional        |
+| `cidr_unban`    | `{"cidr":...}`                                          |
+| `add_kur`       | `{"name":..., "opts":{...}}`                            |
+| `remove_kur`    | `{"name":...}`                                          |
+| `checkpoint`    | `{"kur":...}`, or nothing for every kur                 |
+| `re_init`       | `{"kur":...}`, or nothing for every kur                 |
+| `clear_retries` | `{"kur":..., "ip":...}` or `{"kur":..., "cidr":...}`, all optional |
+| `stop`          | none                                                    |
+
+Every reply is either `{"status":"ok","result":...}` or
+`{"status":"error","error":"..."}`.
+
+With `enable_auth` on, a raw `nc` integration must complete the auth
+challenge itself (see [security](security.md)) — using
 Ereshkigal::Client is much less bother.

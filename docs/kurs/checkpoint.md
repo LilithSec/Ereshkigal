@@ -88,8 +88,8 @@ init POSTs `/web_api/login` and carries the returned session id as
 session, nothing about objects, group, policy, or installation. A
 timed-out session fails checks and bans; the `re_init` that
 self_heal then triggers performs a fresh login, so session expiry
-heals itself at the next ban/unban. Note that with `self_heal` on, every ban's
-keepalive also conveniently keeps the session alive.
+heals itself at the next ban/unban. With `self_heal` on, every ban's
+keepalive also keeps the session alive.
 
 ## Gotchas
 

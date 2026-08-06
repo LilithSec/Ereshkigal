@@ -47,8 +47,8 @@ make install
 
 ```shell
 pkg install p5-App-Cmd p5-Error-Helper p5-JSON-MaybeXS p5-Net-Server \
-    p5-POE p5-App-cpanminus
-cpanm TOML::Tiny Net::Firewall::BlockerHelper \
+    p5-POE p5-Regexp-IPv6 p5-App-cpanminus
+cpanm TOML::Tiny Regexp::IPv4 Net::Firewall::BlockerHelper \
     POE::Component::Server::JSONUnix
 ```
 
@@ -56,8 +56,9 @@ cpanm TOML::Tiny Net::Firewall::BlockerHelper \
 
 ```shell
 apt-get install libapp-cmd-perl libjson-maybexs-perl libnet-server-perl \
-    libpoe-perl libtoml-tiny-perl cpanminus build-essential
-cpanm Error::Helper Net::Firewall::BlockerHelper \
+    libpoe-perl libregexp-ipv6-perl libtoml-tiny-perl cpanminus \
+    build-essential
+cpanm Error::Helper Regexp::IPv4 Net::Firewall::BlockerHelper \
     POE::Component::Server::JSONUnix
 ```
 
@@ -114,5 +115,5 @@ On systems where `/var/run` is a tmpfs, `/var/run/ereshkigal` is
 created automatically at startup — but if you point `run_base_dir`
 somewhere deeper, make sure the parents exist at boot (a
 `RuntimeDirectory=` line or a tmpfiles.d entry does it on systemd).
-Note that unix socket paths are limited to roughly 104 characters on
-the BSDs, so keep `run_base_dir` short.
+Unix socket paths are limited to roughly 104 characters on the BSDs,
+so keep `run_base_dir` short.

@@ -1,10 +1,10 @@
 # linux_ip_route — null routes via iproute2
 
-Blocks whole IPs by adding unreachable/blackhole routes with `ip(8)`. No
-firewall required at all, traffic dies in the routing decision before
-it reaches any firewall chain, and it stays fast with very large
-numbers of banned IPs — a good fallback and a good "block everything
-from this IP everywhere" hammer.
+Blocks whole IPs by adding unreachable/blackhole routes with `ip(8)`.
+No firewall is required at all: traffic dies in the routing decision,
+before it would reach any firewall chain, and it stays fast with very
+large numbers of banned IPs — a good fallback, and a good "block
+everything from this IP everywhere" hammer.
 
 ```toml
 [kur.blocklist]
@@ -17,8 +17,8 @@ blocktype = "blackhole"
 
 ## What it creates
 
-One route per banned IP (per the configured `blocktype` —
-`unreachable` here, the default):
+One route per banned IP, of whichever `blocktype` is configured. With
+the default `unreachable`:
 
 ```
 ip route add unreachable 1.2.3.4
@@ -27,11 +27,11 @@ ip -6 route add unreachable 2001:db8::bad
 
 The IP's family picks the command (`ip` vs `ip -6`) automatically.
 
-Note the asymmetry with firewall backends: a route affects traffic
-**to** the banned IP (and replies from the host), which in practice
-kills the conversation both ways for anything the host itself
-terminates — but it is not a filter on the interface, and it cannot
-be scoped to a port or protocol.
+Note the asymmetry with the firewall backends: a route affects
+traffic **to** the banned IP, replies from the host included, which
+in practice kills the conversation both ways for anything the host
+itself terminates. It is not a filter on the interface, though, and
+it cannot be scoped to a port or protocol.
 
 ## Requirements
 

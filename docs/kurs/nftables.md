@@ -29,11 +29,11 @@ nft 'add rule inet kur_sshd kur_sshd tcp dport { 22 } ip6 saddr @kur_sshd_6 drop
 ```
 
 Because the whole setup is its own table with its own input hook, it
-composes with whatever other nftables tables exist (including
-firewalld's, on hosts where firewalld uses the nftables backend —
-though the [firewalld](firewalld.md) backend is still the politer
-choice there) — nftables runs every base chain hooked to input, in
-priority order.
+composes with whatever other nftables tables exist — nftables runs
+every base chain hooked to input, in priority order. That includes
+firewalld's own, on hosts where firewalld sits on nftables, though
+the [firewalld](firewalld.md) backend is still the politer choice
+there.
 
 ## Requirements
 

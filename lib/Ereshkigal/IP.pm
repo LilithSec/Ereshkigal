@@ -92,7 +92,7 @@ sub normalize_ip {
 				return undef;
 			}
 		}
-		# a valid dotted quad with out leading zero octets is already
+		# a valid dotted quad without leading zero octets is already
 		# canonical
 		return $ip;
 	} ## end if ( $ip =~ /\A$IPv4_re\z/ )

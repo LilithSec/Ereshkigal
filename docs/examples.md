@@ -101,7 +101,7 @@ ereshkigal remove dns
 Neither command edits ereshkigal.toml — to keep the dns kur across
 restarts, add its `[kur.dns]` hash to the config.
 
-## A minimal log watcher
+## Feeding an underworld from a log
 
 The simplest possible integration, banning via the CLI...
 
@@ -176,7 +176,7 @@ backend = "cloudflare"
 token = "someAPItoken"
 zone  = "somezoneID"
 
-# the gate... no process, no firewall of it's own, just a name
+# the gate... no process, no firewall of its own, just a name
 [kur.baphomet]
 fan_out      = [ "sshd", "smtp", "edge" ]
 authed_users = [ "baphomet" ]
