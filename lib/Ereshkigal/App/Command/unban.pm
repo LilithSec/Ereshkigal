@@ -39,8 +39,8 @@ tablets are rewritten straight after, so a restart will not bring any of them
 back.
 
 Ranges banned with L<cidr_ban|Ereshkigal::App::Command::cidr_ban> are matched
-by L<cidr_unban|Ereshkigal::App::Command::cidr_unban> rather than by naming a
-IP inside them, though C<--all> takes those too.
+by L<cidr_unban|Ereshkigal::App::Command::cidr_unban> rather than by naming
+an IP inside them, though C<--all> takes those too.
 
 =head1 METHODS
 
@@ -68,8 +68,8 @@ them back. If you meant one address, name it.
   ereshkigal unban 1.2.3.4        # release the one
   ereshkigal unban --all          # empty every underworld, everywhere
 
-Ranges banned with cidr-ban are matched by "cidr-unban", not by naming a
-IP inside them... but --all takes those too.
+Ranges banned with cidr-ban are matched by "cidr-unban", not by naming
+an IP inside them... but --all takes those too.
 DESCRIPTION
 } ## end sub description
 

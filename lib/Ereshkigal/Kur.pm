@@ -87,9 +87,9 @@ it will die.
           banning is not available for this instance, either because
           enable_cidr is off or the backend does not support it. When set the
           command is silently dropped, returning dropped => 1, rather than
-          erroring, which is the point of contact when fanning out to a mix of
-          CIDR capable and incapable instances. Folded the same way
-          enable_cidr is.
+          erroring, which is the point when fanning out to a mix of CIDR
+          capable and incapable instances. Folded the same way enable_cidr
+          is.
         Default :: 0
 
     - run_base_dir :: Base dir for run files. The socket and PID for this
@@ -410,7 +410,7 @@ The JSON commands handled are as below.
 
     - ban :: Ban the IPs specified via the array args.ips. args.ban_time,
           if defined, overrides the instance default for how long the bans
-          should last in seconds, with 0 meaning never time out. Banning a
+          should last in seconds, with 0 meaning never time out. Banning an
           already banned IP just refreshes its timer.
 
     - unban :: Check if the IP, args.ip, is banned and if so unban it.
@@ -2825,7 +2825,7 @@ sub _load_state {
 	return;
 } ## end sub _load_state
 
-=head1 ERRORS CODES / ERROR FLAGS
+=head1 ERROR CODES / ERROR FLAGS
 
 Error handling is provided by L<Error::Helper>. All errors
 are considered fatal.
@@ -2853,8 +2853,7 @@ The cache base dir does not exist or is not a directory.
 
 =head2 6, nonRWcacheBaseDir
 
-The cache base dir or the kur dir under it is not readable or writable by
-the current user.
+The cache base dir is not readable or writable by the current user.
 
 =head2 7, invalidBanTime
 

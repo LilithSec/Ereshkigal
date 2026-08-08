@@ -148,7 +148,7 @@ sub execute {
 # "ereshkigal stop" returns as soon as the shutdown has been requested
 # rather than once it has finished, which means "service ereshkigal
 # restart", and anything else that stops and immediately starts, can reach
-# start while the old manager is still tearing its kurs down. With out this
+# start while the old manager is still tearing its kurs down. Without this
 # the start aborts with daemonize's "Pid_file already exists for running
 # process" for a manager that was a half second from being gone.
 #
@@ -161,8 +161,8 @@ sub execute {
 # reclaims on its own.
 #
 # Deliberately does not decide anything. If a live manager is still there
-# when the polling runs out it returns anyway and leaves the refusing to
-# daemonize, or to the foreground branch's own liveness check... this only
+# when the polling runs out it returns anyway and leaves refusing the start
+# to daemonize, or to the foreground branch's own liveness check... this only
 # ever buys time, and never turns a running manager into a startable one.
 #
 # Args, one, positional and required...

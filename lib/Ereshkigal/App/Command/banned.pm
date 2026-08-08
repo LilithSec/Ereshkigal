@@ -24,7 +24,7 @@ our $VERSION = '0.0.1';
 =head1 DESCRIPTION
 
 Lists who each kur is holding... the banned IPs as the firewall itself
-reports them, a C<expires> map giving when each sentence runs out with 0
+reports them, an C<expires> map giving when each sentence runs out with 0
 meaning never, and the same pair for range bans under C<banned_cidr> and
 C<cidr_expires>.
 

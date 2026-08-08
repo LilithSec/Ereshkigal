@@ -42,7 +42,7 @@ rest of the request, and re-banning something already banned just resets its
 sentence rather than erroring.
 
 C<--ban-time> is in seconds and overrides the kur's default for these bans
-only, with 0 meaning never time out... nothing will release it but a
+only, with 0 meaning never time out... nothing will release it but an
 C<unban>. Both IPv4 and IPv6 are taken in any spelling, v6 being
 canonicalized so long and short forms of one address cannot become two
 bans. For whole ranges see L<cidr_ban|Ereshkigal::App::Command::cidr_ban>.

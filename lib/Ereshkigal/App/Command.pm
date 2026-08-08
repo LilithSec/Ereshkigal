@@ -167,7 +167,7 @@ sub _result_has_failures {
 # Overrides the App::Cmd::Command hook of the same name so every subcommand
 # gains a --help/-h flag. App::Cmd wires up a help command but no such flag,
 # so without this each subcommand answers "Unknown option: help" to the
-# first thing most people reach for. Doing it here means the twelve
+# first thing most people reach for. Doing it here means the thirteen
 # subcommands do not each have to remember to put it in their own opt_spec,
 # and cannot drift from one another over it.
 #

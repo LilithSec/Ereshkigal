@@ -312,7 +312,7 @@ method taking a whole hash of sockets rather than using a per socket object.
 
 The return is a hash keyed the same as sockets, each value being either
 C<{ result =E<gt> ... }> for a response with an ok status or
-C<{ error =E<gt> "..." }> for anything else... connect failure, EOF, a
+C<{ error =E<gt> "..." }> for anything else... connect failure, EOF, an
 undecodable response, an error status response, or the deadline passing. A
 failure with one socket never disturbs the others.
 

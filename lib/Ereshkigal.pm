@@ -126,7 +126,7 @@ args.kur, C<checkpoint>, C<re_init>, and C<clear_retries> with args.kur,
 and C<status_kur>) fan out to its members instead, making it usable as a
 single point of contact for driving a whole set of kurs. With enable_auth
 on, authorization for a command targeted at a fan_out kur is checked
-against the fan_out kur's own lists rather than its members', so a
+against the fan_out kur's own lists rather than its members', so an
 integration may be granted just the gate without being listed on any
 member. Members must be defined non fan_out kurs... fan_out kurs may not
 nest. Untargeted commands (C<ban> and C<cidr_ban> without args.kur,
@@ -2675,7 +2675,7 @@ sub _cmd_remove_kur {
 	return { 'removed' => $name };
 } ## end sub _cmd_remove_kur
 
-=head1 ERRORS CODES / ERROR FLAGS
+=head1 ERROR CODES / ERROR FLAGS
 
 Error handling is provided by L<Error::Helper>. All errors
 are considered fatal.
